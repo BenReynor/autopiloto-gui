@@ -6,3 +6,5 @@ venv/
 *~
 dist/
 build/
+# Lanzador local (rutas de esta máquina)
+lanzar.sh

@@ -11,6 +11,9 @@ proyectos sin tocar archivos ni terminal.
   `--push`, `MAX_ITER`.
 - Salida en vivo del loop y de `gate.sh`.
 - Vista de rama, `git status` y últimos commits.
+- Temas: Claro, Oscuro y Hacker (verde/negro).
+- Auto-provisión: al agregar un proyecto, genera los archivos necesarios
+  (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `progreso.log`).
 
 ## Requisitos e instalación
 
@@ -24,26 +27,25 @@ pip install -r requirements.txt
 python -m autopiloto_gui
 ```
 
-## Preparar un proyecto
+## Crear un proyecto nuevo
 
-Copia las plantillas a la raíz de cada proyecto (son los scripts que el
-panel ejecuta) y edita su `plan.md`:
+1. Crea la carpeta vacía de tu proyecto.
+2. En el panel: **Agregar…** → selecciona esa carpeta.
+3. La app instala sola `autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`
+   (plantilla) y crea `progreso.log`.
+4. Edita `plan.md` con tus tareas y pulsa **▶ Iniciar loop**.
 
-```bash
-cp plantillas/autopiloto.sh plantillas/gate.sh plantillas/mapear.sh <proyecto>/
-```
-
-`mapear.sh` genera `mapeo.txt` (mapa módulos → tests) cada vez que arranca el
-loop. Los scripts son portátiles (deducen su propia raíz); consulta los
-comentarios de cada uno para ver las variables de entorno que admiten.
+El botón "Instalar plantillas" re-hace ese paso en el proyecto seleccionado.
 
 ## Estructura
 
 ```
 autopiloto_gui/
-  __main__.py     entrada
-  app.py          ventana principal
-  proceso.py      captura en vivo de procesos
-  proyectos.py    registro de proyectos
-plantillas/       scripts por proyecto (autopiloto.sh, gate.sh, mapear.sh, plan.md)
+  __main__.py      entrada
+  app.py           ventana principal
+  proceso.py       captura en vivo de procesos
+  plantillas.py    instalación de scripts en un proyecto
+  plantillas/      autopiloto.sh, gate.sh, mapear.sh, plan.md (empaquetados)
+  proyectos.py     registro de proyectos y tema
+  temas.py         estilos Claro / Oscuro / Hacker
 ```

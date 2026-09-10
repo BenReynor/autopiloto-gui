@@ -12,8 +12,10 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QGridLayout, QGroupBox,
 )
 
+from . import plantillas
 from .proceso import PanelTarea, Proceso
-from .proyectos import cargar, guardar
+from .proyectos import cargar, guardar, leer_tema
+from .temas import TEMAS, NOMBRES
 
 FUENTE_MONO = "monospace"
 
@@ -35,15 +37,17 @@ class Ventana(QMainWindow):
             candidato = os.getcwd()
             if os.path.isfile(os.path.join(candidato, "plan.md")):
                 self.proyectos[os.path.basename(candidato)] = {"ruta": candidato}
-            guardar(self.proyectos)
+            guardar(self.proyectos, leer_tema())
 
         self.loop = None
         self.gate = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tail_log)
         self._nombre_activo = ""
+        self.tema = leer_tema()
 
         self._ui()
+        self._aplicar_tema(self.tema)
         self._cargar_proyecto()
 
     def _ui(self):
@@ -61,8 +65,19 @@ class Ventana(QMainWindow):
         b_agregar.clicked.connect(self._agregar_proyecto)
         b_quitar = QPushButton("Quitar")
         b_quitar.clicked.connect(self._quitar_proyecto)
+        b_plantillas = QPushButton("Instalar plantillas")
+        b_plantillas.clicked.connect(self._instalar_plantillas)
         barra.addWidget(b_agregar)
         barra.addWidget(b_quitar)
+        barra.addWidget(b_plantillas)
+        barra.addStretch()
+        barra.addWidget(QLabel("Tema:"))
+        self.cmb_tema = QComboBox()
+        self.cmb_tema.addItems(NOMBRES)
+        if self.tema in NOMBRES:
+            self.cmb_tema.setCurrentText(self.tema)
+        self.cmb_tema.currentTextChanged.connect(self._cambiar_tema)
+        barra.addWidget(self.cmb_tema)
         root.addLayout(barra)
 
         self.tabs = QTabWidget()
@@ -159,6 +174,15 @@ class Ventana(QMainWindow):
 
     # ---------- Proyectos ----------
 
+    def _aplicar_tema(self, nombre):
+        if nombre in TEMAS:
+            QApplication.instance().setStyleSheet(TEMAS[nombre])
+
+    def _cambiar_tema(self, nombre):
+        self.tema = nombre
+        guardar(self.proyectos, nombre)
+        self._aplicar_tema(nombre)
+
     def _proyecto_actual(self):
         nombre = self.cmb.currentText()
         if not nombre:
@@ -177,7 +201,7 @@ class Ventana(QMainWindow):
                                 "Detén el loop antes de cambiar de proyecto.")
             return
         self._nombre_activo = n
-        guardar(self.proyectos)
+        guardar(self.proyectos, self.tema)
         self._cargar_proyecto()
 
     def _cargar_proyecto(self):
@@ -194,14 +218,13 @@ class Ventana(QMainWindow):
         self.txt_loop.clear()
         self._tail_log()
 
-        faltan = [s for s in ("autopiloto.sh", "gate.sh")
-                  if not os.path.exists(os.path.join(ruta, s))]
+        faltan = plantillas.faltan(ruta)
         if faltan:
             self.b_iniciar.setEnabled(False)
             self.b_gate.setEnabled(False)
             self.estado.setText(
                 f"{self.estado.text()}  |  FALTAN: {', '.join(faltan)} "
-                "(copia los scripts de plantillas/)")
+                "(pulsa 'Instalar plantillas')")
         else:
             self.b_iniciar.setEnabled(True)
             self.b_gate.setEnabled(True)
@@ -212,17 +235,42 @@ class Ventana(QMainWindow):
         if not ruta:
             return
         nombre = os.path.basename(ruta)
+        creados = plantillas.instalar(ruta)
         self.proyectos[nombre] = {"ruta": ruta}
-        guardar(self.proyectos)
+        guardar(self.proyectos, self.tema)
         self.cmb.addItem(nombre)
         self.cmb.setCurrentText(nombre)
+        if creados:
+            QMessageBox.information(
+                self, "Proyecto listo",
+                f"Se generaron en {ruta}:\n\n  · " + "\n  · ".join(creados) +
+                "\n\nPulsa '▶ Iniciar loop' cuando quieras arrancar.")
+        else:
+            QMessageBox.information(
+                self, "Proyecto", "Ya tenía todos los archivos del autopiloto.")
+
+    def _instalar_plantillas(self):
+        p = self._proyecto_actual()
+        if not p:
+            return
+        _, ruta = p
+        creados = plantillas.instalar(ruta)
+        if creados:
+            QMessageBox.information(
+                self, "Plantillas instaladas",
+                "Creados en " + ruta + ":\n  · " + "\n  · ".join(creados))
+        else:
+            QMessageBox.information(
+                self, "Ya está todo", "El proyecto ya tiene autopiloto.sh, "
+                "gate.sh, mapear.sh y plan.md.")
+        self._cargar_proyecto()
 
     def _quitar_proyecto(self):
         nombre = self.cmb.currentText()
         if not nombre:
             return
         if self.proyectos.pop(nombre, None) is not None:
-            guardar(self.proyectos)
+            guardar(self.proyectos, self.tema)
             self.cmb.removeItem(self.cmb.currentIndex())
 
     # ---------- Plan ----------
