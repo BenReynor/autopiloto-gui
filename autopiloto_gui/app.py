@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 from PySide6.QtCore import QProcess, QTimer
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QComboBox, QPlainTextEdit, QTabWidget, QLineEdit, QCheckBox,
@@ -413,6 +413,9 @@ class Ventana(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+    icono = os.path.join(os.path.dirname(__file__), "icono.svg")
+    if os.path.exists(icono):
+        app.setWindowIcon(QIcon(icono))
     ventana = Ventana()
     ventana.show()
     sys.exit(app.exec())
