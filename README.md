@@ -15,12 +15,16 @@ proyectos sin tocar archivos ni terminal.
 - Auto-provisión: al agregar un proyecto, genera los archivos necesarios
   (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `progreso.log`).
 - Gate dual: al terminar una tarea, un segundo agente revisa el diff y debe
-  emitir `VERDICT: PASS` antes de commitear (agente tarea y revisor seleccionables).
+  emitir `VERDICT: PASS` antes de commitear. Modelos de opencode seleccionables
+  por separado para tarea y revisor (lista en vivo con `opencode models`, botón
+  ↻ Refrescar).
 - Presupuesto estimado en USD/iteración con parada automática al agotarse.
 - **Protección térmica**: vigila la temperatura de la CPU y, si supera el
   umbral, muestra el aviso dentro de la ventana con una cuenta regresiva;
   si nadie responde, el loop se detiene y la aplicación se apaga sola.
-  Botones Continuar / Apagar ahora (pestaña Seguridad).
+  Botones Continuar / Apagar ahora (pestaña Seguridad). La visualización en el
+  panel es opcional (la verificación de fondo sigue activa) y, al activarla,
+  la temperatura se actualiza cada segundo.
 
 ## Requisitos e instalación
 
@@ -50,6 +54,7 @@ El botón "Instalar plantillas" re-hace ese paso en el proyecto seleccionado.
 autopiloto_gui/
   __main__.py      entrada
   app.py           ventana principal
+  modelos.py       lista de modelos de opencode (`opencode models`)
   sensor.py        lectura de temperatura de CPU
   proceso.py       captura en vivo de procesos
   plantillas.py    instalación de scripts en un proyecto

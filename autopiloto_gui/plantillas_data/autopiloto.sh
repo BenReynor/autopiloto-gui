@@ -22,7 +22,9 @@
 #
 # Variables de entorno (opcional):
 #   AGENTE_TAREA     agente que implementa (opencode | claude | codex).  def: opencode
+#   MODELO_TAREA     modelo provider/model para la tarea (opencode --model).  def: vacío (usa config)
 #   AGENTE_REVISOR   agente revisor del diff; vacío = auto (prefiere uno distinto).
+#   MODELO_REVISOR   modelo provider/model para el revisor del diff.
 #   REVISION_DUAL    "1" activa el gate dual (def), "0" lo apaga.
 #   MAX_COSTO        presupuesto en USD (0 = sin límite). Costo estimado por iteración.
 #   COSTO_POR_ITER   costo estimado USD por tarea+revisión (def 0.50).
@@ -43,7 +45,9 @@ TIMEOUT_POR_TAREA="${TIMEOUT_POR_TAREA:-900}"
 MAX_REINTENTOS=2
 CLI_OPENCODE="${CLI_OPENCODE:-opencode}"
 AGENTE_TAREA="${AGENTE_TAREA:-opencode}"
+MODELO_TAREA="${MODELO_TAREA:-}"
 AGENTE_REVISOR="${AGENTE_REVISOR:-}"
+MODELO_REVISOR="${MODELO_REVISOR:-}"
 REVISION_DUAL="${REVISION_DUAL:-1}"
 VOZ="${VOZ:-0}"
 MAX_COSTO="${MAX_COSTO:-0}"
@@ -80,11 +84,15 @@ alerta() {
 }
 
 run_agente() {
-    local agente="$1" salida="$2"
-    shift 2
+    local agente="$1" salida="$2" modelo="${3:-}"
+    shift 3
     case "$agente" in
         opencode)
-            timeout "$TIMEOUT_POR_TAREA" "$CLI_OPENCODE" run --agent build "$@" > "$salida" 2>&1 ;;
+            if [ -n "$modelo" ]; then
+                timeout "$TIMEOUT_POR_TAREA" "$CLI_OPENCODE" run --agent build --model "$modelo" "$@" > "$salida" 2>&1
+            else
+                timeout "$TIMEOUT_POR_TAREA" "$CLI_OPENCODE" run --agent build "$@" > "$salida" 2>&1
+            fi ;;
         claude)
             timeout "$TIMEOUT_POR_TAREA" claude -p --dangerously-skip-permissions "$@" > "$salida" 2>&1 ;;
         codex)
@@ -120,7 +128,7 @@ ${vdiff}
 Evalúa SOLO: (1) la tarea satisface su criterio, (2) no rompe nada obvio del proyecto,
 (3) sin secretos, (4) sin scope creep (cambios ajenos a la tarea).
 Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERDICT: PASS o VERDICT: FAIL"
-    run_agente "$rev" "$rev_out" "$PROMPT_REV"
+    run_agente "$rev" "$rev_out" "$MODELO_REVISOR" "$PROMPT_REV"
     cat "$rev_out" >> "$LOG"
     if grep -q "VERDICT: PASS" "$rev_out"; then
         echo "[autopiloto] ✔ revisor ($rev): PASS"
@@ -160,10 +168,10 @@ proxima_tarea() {
 
 REVISOR="$(elegir_revisor)"
 COSTO_TOTAL=0
-logx "== AUTOPILOTO INICIADO (agente=$AGENTE_TAREA, revisor=${REVISOR:-ninguno}, dual=$REVISION_DUAL, max_iter=$MAX_ITER, hasta=${HASTA:-sin limite}, base=$RAMA_BASE, costo_max=$MAX_COSTO) =="
+logx "== AUTOPILOTO INICIADO (agente=$AGENTE_TAREA, modelo=$MODELO_TAREA, revisor=${REVISOR:-ninguno}, modelo_rev=$MODELO_REVISOR, dual=$REVISION_DUAL, max_iter=$MAX_ITER, hasta=${HASTA:-sin limite}, base=$RAMA_BASE, costo_max=$MAX_COSTO) =="
 
-echo "[autopiloto] Agente de tarea: $AGENTE_TAREA"
-echo "[autopiloto] Revisor dual:    ${REVISOR:-NINGUNO} (dual=$REVISION_DUAL)"
+echo "[autopiloto] Agente de tarea: ${AGENTE_TAREA} ${MODELO_TAREA:+($MODELO_TAREA)}"
+echo "[autopiloto] Revisor dual:    ${REVISOR:-NINGUNO} ${MODELO_REVISOR:+($MODELO_REVISOR)} (dual=$REVISION_DUAL)"
 
 echo "[autopiloto] Baseline: gate.sh..."
 if ! bash "$GATE"; then
@@ -234,7 +242,7 @@ NO hagas commits, NO crees, cambies ni borres ramas: el script gestiona git.
 NO edites autopiloto.sh, gate.sh, mapear.sh, mapeo.txt, plan.md, progreso.log, endpoints.txt, .env ni SECURITY.md.
 Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corriste."
 
-        run_agente "$AGENTE_TAREA" "$OUT" "$PROMPT"
+        run_agente "$AGENTE_TAREA" "$OUT" "$MODELO_TAREA" "$PROMPT"
         rc=$?
         if [ "$rc" -eq 124 ]; then
             echo "[autopiloto] ⚠ timeout: ${AGENTE_TAREA} tardó más de ${TIMEOUT_POR_TAREA}s" | tee -a "$LOG"

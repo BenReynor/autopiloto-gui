@@ -12,9 +12,9 @@ REGISTRO = os.path.join(CONFIG_DIR, "proyectos.json")
 TEMA_DEFECTO = "Oscuro"
 SEGURIDAD_DEFECTO = {
     "activo": True,
+    "ver": False,
     "umbral": 85,
     "segundos": 5,
-    "intervalo": 10,
 }
 
 

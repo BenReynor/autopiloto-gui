@@ -1,7 +1,6 @@
 """Ventana principal del panel de control."""
 
 import os
-import shutil
 import subprocess
 import sys
 
@@ -13,17 +12,12 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QGridLayout, QGroupBox, QDialog,
 )
 
-from . import plantillas, sensor
+from . import modelos, plantillas, sensor
 from .proceso import PanelTarea, Proceso
 from .proyectos import cargar, guardar, leer_tema, leer_seguridad
 from .temas import TEMAS, NOMBRES
 
 FUENTE_MONO = "monospace"
-AGENTES = ["opencode", "claude", "codex"]
-
-
-def _agentes_detectados():
-    return [a for a in AGENTES if shutil.which(a)]
 
 
 def _fuente_monospace(objeto):
@@ -116,6 +110,7 @@ class Ventana(QMainWindow):
         self._nombre_activo = ""
         self.tema = leer_tema()
         self.seguridad = leer_seguridad()
+        self._modelos = modelos.lista_modelos() or [modelos.MODELO_SUGERIDO]
 
         self._ui()
         self._aplicar_tema(self.tema)
@@ -124,11 +119,19 @@ class Ventana(QMainWindow):
 
     def _iniciar_vigilancia(self):
         seg = self.seguridad
-        if seg.get("activo") and sensor.leer_temperatura() is not None:
-            self.timer_temp.start(max(5, int(seg.get("intervalo", 10))) * 1000)
-            self._comprobar_temp()
+        activo = bool(seg.get("activo"))
+        ver = bool(seg.get("ver"))
+        self._aplicar_visibilidad_temp(ver)
+        if (activo or ver) and sensor.leer_temperatura() is not None:
+            self.timer_temp.start(1000)
         else:
-            self._mostrar_temp(None)
+            self.timer_temp.stop()
+        self._comprobar_temp()
+
+    def _aplicar_visibilidad_temp(self, ver):
+        if hasattr(self, "lbl_temp"):
+            self.lbl_temp.setVisible(ver)
+            self.lbl_estado_temp.setVisible(ver)
 
     def _ui(self):
         central = QWidget()
@@ -205,34 +208,34 @@ class Ventana(QMainWindow):
         g.addWidget(QLabel("Padre (rama base):"), 2, 0)
         self.txt_padre = QLineEdit("master")
         g.addWidget(self.txt_padre, 2, 1)
-        g.addWidget(QLabel("Agente de tarea:"), 3, 0)
+        g.addWidget(QLabel("Modelo (agente de tarea):"), 3, 0)
         self.cmb_agente = QComboBox()
-        detectados = _agentes_detectados()
-        preferido = detectados[0] if detectados else "opencode"
-        self.cmb_agente.addItems(AGENTES)
-        self.cmb_agente.setCurrentText(preferido)
+        self.cmb_agente.addItems(self._modelos)
         g.addWidget(self.cmb_agente, 3, 1)
-        g.addWidget(QLabel("Agente revisor del diff:"), 4, 0)
+        g.addWidget(QLabel("Modelo (agente revisor del diff):"), 4, 0)
         self.cmb_revisor = QComboBox()
-        self.cmb_revisor.addItems(["auto"] + AGENTES)
+        self.cmb_revisor.addItems(self._modelos)
         g.addWidget(self.cmb_revisor, 4, 1)
-        self.lbl_agentes = QLabel(
-            "Detectados: " + (", ".join(detectados) if detectados else "ninguno"))
-        g.addWidget(self.lbl_agentes, 5, 0, 1, 2)
+        b_modelos = QPushButton("↻ Refrescar modelos")
+        b_modelos.clicked.connect(self._refrescar_modelos)
+        g.addWidget(b_modelos, 5, 0, 1, 2)
+        self.lbl_modelos = QLabel(
+            f"{len(self._modelos)} modelos de opencode cargados")
+        g.addWidget(self.lbl_modelos, 6, 0, 1, 2)
         self.chk_dual = QCheckBox("Gate dual: el revisor exige VERDICT: PASS antes del commit")
         self.chk_dual.setChecked(True)
-        g.addWidget(self.chk_dual, 6, 0, 1, 2)
+        g.addWidget(self.chk_dual, 7, 0, 1, 2)
         self.chk_voz = QCheckBox("Alertas de voz al bloquear/terminar (notify-send/spd-say)")
-        g.addWidget(self.chk_voz, 7, 0, 1, 2)
-        g.addWidget(QLabel("Presupuesto máx (USD, 0 = sin límite):"), 8, 0)
+        g.addWidget(self.chk_voz, 8, 0, 1, 2)
+        g.addWidget(QLabel("Presupuesto máx (USD, 0 = sin límite):"), 9, 0)
         self.txt_costo_max = QLineEdit("0")
-        g.addWidget(self.txt_costo_max, 8, 1)
-        g.addWidget(QLabel("Costo estimado por tarea (USD):"), 9, 0)
+        g.addWidget(self.txt_costo_max, 9, 1)
+        g.addWidget(QLabel("Costo estimado por tarea (USD):"), 10, 0)
         self.txt_costo_iter = QLineEdit("0.50")
-        g.addWidget(self.txt_costo_iter, 9, 1)
+        g.addWidget(self.txt_costo_iter, 10, 1)
         self.chk_push = QCheckBox("--push al final")
         self.chk_push.setChecked(True)
-        g.addWidget(self.chk_push, 10, 0, 1, 2)
+        g.addWidget(self.chk_push, 11, 0, 1, 2)
         v.addWidget(grupo)
 
         h = QHBoxLayout()
@@ -281,21 +284,23 @@ class Ventana(QMainWindow):
     def _tab_seguridad(self):
         w = QWidget()
         v = QVBoxLayout(w)
-        grupo = QGroupBox("Protección térmica")
+        grupo = QGroupBox("Temperatura y protección")
         g = QGridLayout(grupo)
         seg = self.seguridad
-        self.chk_activo = QCheckBox("Activar: apagar la aplicación si la PC se sobrecalienta")
+        self.chk_activo = QCheckBox(
+            "Verificar la temperatura y apagar la app si se sobrecalienta")
         self.chk_activo.setChecked(bool(seg.get("activo")))
         g.addWidget(self.chk_activo, 0, 0, 1, 2)
-        g.addWidget(QLabel("Umbral de peligro (°C):"), 1, 0)
+        self.chk_ver = QCheckBox(
+            "Mostrar la temperatura en este panel (actualiza cada segundo)")
+        self.chk_ver.setChecked(bool(seg.get("ver")))
+        g.addWidget(self.chk_ver, 1, 0, 1, 2)
+        g.addWidget(QLabel("Umbral de peligro (°C):"), 2, 0)
         self.txt_umbral = QLineEdit(str(seg.get("umbral", 85)))
-        g.addWidget(self.txt_umbral, 1, 1)
-        g.addWidget(QLabel("Segundos de aviso antes de apagar:"), 2, 0)
+        g.addWidget(self.txt_umbral, 2, 1)
+        g.addWidget(QLabel("Segundos de aviso antes de apagar:"), 3, 0)
         self.txt_segundos = QLineEdit(str(seg.get("segundos", 5)))
-        g.addWidget(self.txt_segundos, 2, 1)
-        g.addWidget(QLabel("Intervalo de comprobación (s):"), 3, 0)
-        self.txt_intervalo = QLineEdit(str(seg.get("intervalo", 10)))
-        g.addWidget(self.txt_intervalo, 3, 1)
+        g.addWidget(self.txt_segundos, 3, 1)
         b_guardar = QPushButton("Guardar ajustes")
         b_guardar.clicked.connect(self._guardar_seguridad)
         g.addWidget(b_guardar, 4, 0, 1, 2)
@@ -307,9 +312,6 @@ class Ventana(QMainWindow):
         v.addWidget(self.lbl_temp)
         self.lbl_estado_temp = QLabel("")
         v.addWidget(self.lbl_estado_temp)
-        b_ahora = QPushButton("Comprobar ahora")
-        b_ahora.clicked.connect(self._comprobar_temp)
-        v.addWidget(b_ahora)
         v.addStretch()
         return w
 
@@ -324,9 +326,9 @@ class Ventana(QMainWindow):
 
         seg = {
             "activo": self.chk_activo.isChecked(),
+            "ver": self.chk_ver.isChecked(),
             "umbral": n_int(self.txt_umbral.text(), 85),
             "segundos": n_int(self.txt_segundos.text(), 5),
-            "intervalo": n_int(self.txt_intervalo.text(), 10),
         }
         self.seguridad = seg
         guardar(self.proyectos, self.tema, seg)
@@ -533,6 +535,28 @@ class Ventana(QMainWindow):
 
     # ---------- Loop ----------
 
+    def _refrescar_modelos(self):
+        nuevos = modelos.lista_modelos()
+        if not nuevos:
+            nuevos = [modelos.MODELO_SUGERIDO]
+        actual_agente = self.cmb_agente.currentText()
+        actual_revisor = self.cmb_revisor.currentText()
+        self._modelos = nuevos
+        self.cmb_agente.blockSignals(True)
+        self.cmb_revisor.blockSignals(True)
+        self.cmb_agente.clear()
+        self.cmb_revisor.clear()
+        self.cmb_agente.addItems(nuevos)
+        self.cmb_revisor.addItems(nuevos)
+        if actual_agente in nuevos:
+            self.cmb_agente.setCurrentText(actual_agente)
+        if actual_revisor in nuevos:
+            self.cmb_revisor.setCurrentText(actual_revisor)
+        self.cmb_agente.blockSignals(False)
+        self.cmb_revisor.blockSignals(False)
+        self.lbl_modelos.setText(f"{len(nuevos)} modelos de opencode cargados")
+        self.estado.setText("Modelos refrescados")
+
     def _iniciar_loop(self):
         p = self._proyecto_actual()
         if not p:
@@ -553,7 +577,10 @@ class Ventana(QMainWindow):
             iter_v = 40
         env = list(QProcess.systemEnvironment())
         env.append(f"MAX_ITER={iter_v}")
-        env.append(f"AGENTE_TAREA={self.cmb_agente.currentText()}")
+        env.append("AGENTE_TAREA=opencode")
+        env.append(f"MODELO_TAREA={self.cmb_agente.currentText()}")
+        env.append("AGENTE_REVISOR=opencode")
+        env.append(f"MODELO_REVISOR={self.cmb_revisor.currentText()}")
 
         def _fl(texto, defv, tipo=float):
             try:
@@ -561,9 +588,6 @@ class Ventana(QMainWindow):
             except ValueError:
                 return defv
 
-        revision = self.cmb_revisor.currentText()
-        if revision != "auto":
-            env.append(f"AGENTE_REVISOR={revision}")
         env.append(f"REVISION_DUAL={'1' if self.chk_dual.isChecked() else '0'}")
         env.append(f"VOZ={'1' if self.chk_voz.isChecked() else '0'}")
         env.append(f"MAX_COSTO={_fl(self.txt_costo_max.text(), 0)}")
@@ -571,8 +595,9 @@ class Ventana(QMainWindow):
         self.txt_loop.clear()
         self.txt_loop.appendPlainText(
             f"> bash autopiloto.sh {' '.join(args)}  "
-            f"(agente={self.cmb_agente.currentText()}, "
-            f"revisor={revision}, dual={self.chk_dual.isChecked()}, "
+            f"(modelo tarea={self.cmb_agente.currentText()}, "
+            f"modelo revisor={self.cmb_revisor.currentText()}, "
+            f"dual={self.chk_dual.isChecked()}, "
             f"costo={env[-2].split('=')[1]}, iter={iter_v})")
         self.loop = Proceso(self.txt_loop, on_fin=self._loop_fin)
         self.loop.setWorkingDirectory(ruta)
