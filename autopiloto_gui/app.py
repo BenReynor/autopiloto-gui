@@ -1,6 +1,7 @@
 """Ventana principal del panel de control."""
 
 import os
+import shutil
 import subprocess
 import sys
 
@@ -18,6 +19,11 @@ from .proyectos import cargar, guardar, leer_tema
 from .temas import TEMAS, NOMBRES
 
 FUENTE_MONO = "monospace"
+AGENTES = ["opencode", "claude", "codex"]
+
+
+def _agentes_detectados():
+    return [a for a in AGENTES if shutil.which(a)]
 
 
 def _fuente_monospace(objeto):
@@ -124,9 +130,34 @@ class Ventana(QMainWindow):
         g.addWidget(QLabel("Padre (rama base):"), 2, 0)
         self.txt_padre = QLineEdit("master")
         g.addWidget(self.txt_padre, 2, 1)
+        g.addWidget(QLabel("Agente de tarea:"), 3, 0)
+        self.cmb_agente = QComboBox()
+        detectados = _agentes_detectados()
+        preferido = detectados[0] if detectados else "opencode"
+        self.cmb_agente.addItems(AGENTES)
+        self.cmb_agente.setCurrentText(preferido)
+        g.addWidget(self.cmb_agente, 3, 1)
+        g.addWidget(QLabel("Agente revisor del diff:"), 4, 0)
+        self.cmb_revisor = QComboBox()
+        self.cmb_revisor.addItems(["auto"] + AGENTES)
+        g.addWidget(self.cmb_revisor, 4, 1)
+        self.lbl_agentes = QLabel(
+            "Detectados: " + (", ".join(detectados) if detectados else "ninguno"))
+        g.addWidget(self.lbl_agentes, 5, 0, 1, 2)
+        self.chk_dual = QCheckBox("Gate dual: el revisor exige VERDICT: PASS antes del commit")
+        self.chk_dual.setChecked(True)
+        g.addWidget(self.chk_dual, 6, 0, 1, 2)
+        self.chk_voz = QCheckBox("Alertas de voz al bloquear/terminar (notify-send/spd-say)")
+        g.addWidget(self.chk_voz, 7, 0, 1, 2)
+        g.addWidget(QLabel("Presupuesto máx (USD, 0 = sin límite):"), 8, 0)
+        self.txt_costo_max = QLineEdit("0")
+        g.addWidget(self.txt_costo_max, 8, 1)
+        g.addWidget(QLabel("Costo estimado por tarea (USD):"), 9, 0)
+        self.txt_costo_iter = QLineEdit("0.50")
+        g.addWidget(self.txt_costo_iter, 9, 1)
         self.chk_push = QCheckBox("--push al final")
         self.chk_push.setChecked(True)
-        g.addWidget(self.chk_push, 3, 0, 1, 2)
+        g.addWidget(self.chk_push, 10, 0, 1, 2)
         v.addWidget(grupo)
 
         h = QHBoxLayout()
@@ -332,9 +363,27 @@ class Ventana(QMainWindow):
             iter_v = 40
         env = list(QProcess.systemEnvironment())
         env.append(f"MAX_ITER={iter_v}")
+        env.append(f"AGENTE_TAREA={self.cmb_agente.currentText()}")
+
+        def _fl(texto, defv, tipo=float):
+            try:
+                return tipo(texto.strip() or defv)
+            except ValueError:
+                return defv
+
+        revision = self.cmb_revisor.currentText()
+        if revision != "auto":
+            env.append(f"AGENTE_REVISOR={revision}")
+        env.append(f"REVISION_DUAL={'1' if self.chk_dual.isChecked() else '0'}")
+        env.append(f"VOZ={'1' if self.chk_voz.isChecked() else '0'}")
+        env.append(f"MAX_COSTO={_fl(self.txt_costo_max.text(), 0)}")
+        env.append(f"COSTO_POR_ITER={_fl(self.txt_costo_iter.text(), 0.50)}")
         self.txt_loop.clear()
         self.txt_loop.appendPlainText(
-            f"> bash autopiloto.sh {' '.join(args)}  (MAX_ITER={iter_v})")
+            f"> bash autopiloto.sh {' '.join(args)}  "
+            f"(agente={self.cmb_agente.currentText()}, "
+            f"revisor={revision}, dual={self.chk_dual.isChecked()}, "
+            f"costo={env[-2].split('=')[1]}, iter={iter_v})")
         self.loop = Proceso(self.txt_loop, on_fin=self._loop_fin)
         self.loop.setWorkingDirectory(ruta)
         self.loop.setEnvironment(env)

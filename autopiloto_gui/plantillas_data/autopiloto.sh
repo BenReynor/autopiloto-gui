@@ -1,31 +1,35 @@
 #!/usr/bin/env bash
-# autopiloto.sh — Bucle autónomo para opencode, con git por ramas.
+# autopiloto.sh — Bucle autónomo para agentes IA, con git por ramas.
 #
 # Workflow de ramas (por tarea):
 #   autopiloto/<fecha>                  <- rama base del run (hija de RAMA_BASE)
 #   └── autopiloto/<fecha>/t<N>         <- una rama por tarea
-#        · gate OK  -> merge (--ff-only) a la rama base y se borra
-#        · gate KO  -> se borra con sus commits, nada toca la base
+#        · gate OK + revisor PASS -> merge (--ff-only) a la base y se borra
+#        · gate KO o revisor FAIL -> reintento; si agota, se borra sin tocar la base
 #   master nunca recibe commits del loop.
 #
 # Por cada tarea de plan.md:
-#   1. Crea la rama de la tarea y lanza opencode en headless (--agent build).
+#   1. Crea la rama de la tarea y ejecuta el agente configurado (AGENTE_TAREA).
 #   2. Verifica con gate.sh (DB, migraciones, backend, endpoints, imports, tests).
-#   3. Si el gate pasa: commitea SOLO lo de esa tarea, fusiona y marca [x].
-#   4. Si el gate falla: borra la rama de la tarea y la marca [B].
+#   3. GATE DUAL: si pasó el gate, un segundo agente (AGENTE_REVISOR) revisa el
+#      diff en frío y exige "VERDICT: PASS" antes de commitear.
+#   4. Si pasa todo: commitea SOLO lo de esa tarea, fusiona y marca [x].
+#   5. Si falla: renitenta y, al agotar, borra la rama y marca [B].
 #
 # Uso:
-#   ./autopiloto.sh [archivo_plan] [--hasta HH:MM] [--push] [--padre <rama>]
+#   ./autopiloto.sh [plan] [--hasta HH:MM] [--push] [--padre <rama>]
 #   MAX_ITER=60 ./autopiloto.sh plan.md
 #
-# Portátil: deduce su raíz de su propia ubicación; funciona en cualquier
-# proyecto copiando gate.sh, mapear.sh y autopiloto.sh a su raíz.
+# Variables de entorno (opcional):
+#   AGENTE_TAREA     agente que implementa (opencode | claude | codex).  def: opencode
+#   AGENTE_REVISOR   agente revisor del diff; vacío = auto (prefiere uno distinto).
+#   REVISION_DUAL    "1" activa el gate dual (def), "0" lo apaga.
+#   MAX_COSTO        presupuesto en USD (0 = sin límite). Costo estimado por iteración.
+#   COSTO_POR_ITER   costo estimado USD por tarea+revisión (def 0.50).
+#   VOZ              "1" activa alertas al bloquearte/terminar (notify-send, spd-say).
 #
-# Requisitos:
-#   - PostgreSQL corriendo, .venv y frontend/venv con dependencias.
-#   - opencode en el PATH (si pide confirmaciones, añade --auto a CLI_OPENCODE).
-#   - Árbol de trabajo razonablemente limpio (los archivos sucios se llevan a
-#     la rama base y pueden impedir el checkout si difieren).
+# Portátil: deduce su raíz de su propia ubicación; copia gate.sh, mapear.sh y
+# autopiloto.sh a la raíz de cualquier proyecto.
 set -uo pipefail
 
 PROYECTO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,6 +42,12 @@ MAX_ITER="${MAX_ITER:-40}"
 TIMEOUT_POR_TAREA="${TIMEOUT_POR_TAREA:-900}"
 MAX_REINTENTOS=2
 CLI_OPENCODE="${CLI_OPENCODE:-opencode}"
+AGENTE_TAREA="${AGENTE_TAREA:-opencode}"
+AGENTE_REVISOR="${AGENTE_REVISOR:-}"
+REVISION_DUAL="${REVISION_DUAL:-1}"
+VOZ="${VOZ:-0}"
+MAX_COSTO="${MAX_COSTO:-0}"
+COSTO_POR_ITER="${COSTO_POR_ITER:-0.50}"
 RAMA_BASE="${RAMA_BASE:-master}"
 PUSH=""
 HASTA=""
@@ -48,7 +58,7 @@ while [[ $# -gt 0 ]]; do
         --hasta) HASTA="${2:-}"; shift 2 ;;
         --push) PUSH="1"; shift ;;
         --padre) RAMA_BASE="${2:-}"; shift 2 ;;
-        -h|--help) sed -n '1,18p' "$0"; exit 0 ;;
+        -h|--help) sed -n '1,22p' "$0"; exit 0 ;;
         *) PLAN="$1"; shift ;;
     esac
 done
@@ -60,13 +70,75 @@ RAMA_RUN="autopiloto/$FECHA"
 logx() { echo "[$(date '+%F %H:%M')] $*" >> "$LOG"; }
 hora_limite() { [[ -n "$HASTA" && "$(date +%H:%M)" > "$HASTA" ]]; }
 
+agente_disponible() { command -v "$1" >/dev/null 2>&1; }
+
+alerta() {
+    [ "$VOZ" = "1" ] || return 0
+    command -v notify-send >/dev/null 2>&1 && notify-send "Autopiloto" "$1" 2>/dev/null
+    command -v spd-say >/dev/null 2>&1 && spd-say "$1" >/dev/null 2>&1
+    printf '\a' 2>/dev/null || true
+}
+
+run_agente() {
+    local agente="$1" salida="$2"
+    shift 2
+    case "$agente" in
+        opencode)
+            timeout "$TIMEOUT_POR_TAREA" "$CLI_OPENCODE" run --agent build "$@" > "$salida" 2>&1 ;;
+        claude)
+            timeout "$TIMEOUT_POR_TAREA" claude -p --dangerously-skip-permissions "$@" > "$salida" 2>&1 ;;
+        codex)
+            timeout "$TIMEOUT_POR_TAREA" codex exec --yolo "$@" > "$salida" 2>&1 ;;
+        *)
+            timeout "$TIMEOUT_POR_TAREA" "$agente" "$@" > "$salida" 2>&1 ;;
+    esac
+    return $?
+}
+
+elegir_revisor() {
+    local preferido="${AGENTE_REVISOR:-}"
+    for a in "$preferido" codex claude opencode; do
+        [ -z "$a" ] && continue
+        agente_disponible "$a" || continue
+        [ "$a" != "$AGENTE_TAREA" ] && { echo "$a"; return 0; }
+    done
+    [ -n "$preferido" ] && agente_disponible "$preferido" && { echo "$preferido"; return 0; }
+    agente_disponible "$AGENTE_TAREA" && { echo "$AGENTE_TAREA"; return 0; }
+    echo ""
+}
+
+revisar_diff() {
+    local rev="$1" rev_out vdiff
+    rev_out="$(mktemp)"
+    vdiff="$(git -C "$PROYECTO" diff --stat; echo '── diff ──'; git -C "$PROYECTO" diff)"
+    local PROMPT_REV="Eres el REVISOR en modo autopiloto (skills autopiloto y veracidad).
+Revisas el diff COMPLETO de una tarea, en frío, sin haber participado de ella.
+Tarea: ${TAREA}
+
+${vdiff}
+
+Evalúa SOLO: (1) la tarea satisface su criterio, (2) no rompe nada obvio del proyecto,
+(3) sin secretos, (4) sin scope creep (cambios ajenos a la tarea).
+Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERDICT: PASS o VERDICT: FAIL"
+    run_agente "$rev" "$rev_out" "$PROMPT_REV"
+    cat "$rev_out" >> "$LOG"
+    if grep -q "VERDICT: PASS" "$rev_out"; then
+        echo "[autopiloto] ✔ revisor ($rev): PASS"
+        grep -iE "VERDICT:" "$rev_out" | tail -1
+        rm -f "$rev_out"
+        return 0
+    fi
+    echo "[autopiloto] ✗ revisor ($rev): FAIL"
+    grep -iE "VERDICT:" "$rev_out" | tail -1
+    rm -f "$rev_out"
+    return 1
+}
+
 snapshot() {
     git -C "$PROYECTO" status --porcelain | sed 's/^...//' | sort > "$1"
 }
 
 revertir() {
-    # Revierte/borra solo los archivos que cambiaron durante la tarea,
-    # preservando los archivos de control.
     comm -13 <(sort "$1") <(sort "$2") \
         | grep -vE "^($CONTROL)$" \
         | while IFS= read -r f; do
@@ -86,22 +158,26 @@ proxima_tarea() {
     return 1
 }
 
-logx "== AUTOPILOTO INICIADO (max_iter=$MAX_ITER, hasta=${HASTA:-sin limite}, base=$RAMA_BASE) =="
+REVISOR="$(elegir_revisor)"
+COSTO_TOTAL=0
+logx "== AUTOPILOTO INICIADO (agente=$AGENTE_TAREA, revisor=${REVISOR:-ninguno}, dual=$REVISION_DUAL, max_iter=$MAX_ITER, hasta=${HASTA:-sin limite}, base=$RAMA_BASE, costo_max=$MAX_COSTO) =="
+
+echo "[autopiloto] Agente de tarea: $AGENTE_TAREA"
+echo "[autopiloto] Revisor dual:    ${REVISOR:-NINGUNO} (dual=$REVISION_DUAL)"
 
 echo "[autopiloto] Baseline: gate.sh..."
 if ! bash "$GATE"; then
     echo "El repo NO pasa la verificación baseline. Corrige y relanza."
     logx "ABORTADO: baseline falló"
+    alerta "Baseline falló, el autopiloto no arranca"
     exit 1
 fi
 logx "Baseline GATE OK"
 
-# ---- Mapa módulos -> tests (estilo test_map) ----
 if [ -f "$MAPEAR" ]; then
     bash "$MAPEAR" > "$MAPA" 2>/dev/null && logx "mapeo.txt regenerado" || echo "[autopiloto] ⚠ no se pudo generar mapeo.txt"
 fi
 
-# ---- Rama base del run ----
 if git -C "$PROYECTO" rev-parse --verify "$RAMA_RUN" >/dev/null 2>&1; then
     git -C "$PROYECTO" checkout -q "$RAMA_RUN"
     echo "[autopiloto] Reusando rama $RAMA_RUN"
@@ -120,6 +196,13 @@ while (( iter < MAX_ITER )); do
     if hora_limite; then
         logx "Hora límite ($HASTA) alcanzada."
         echo "[autopiloto] ⏰ Hora límite alcanzada."
+        alerta "Hora límite alcanzada"
+        break
+    fi
+    if [ "$MAX_COSTO" -gt 0 ] && awk -v t="$COSTO_TOTAL" -v m="$MAX_COSTO" 'BEGIN{exit !(t>=m)}'; then
+        logx "Presupuesto agotado (${COSTO_TOTAL}/${MAX_COSTO} USD)."
+        echo "[autopiloto] 💸 Presupuesto agotado (${COSTO_TOTAL}/${MAX_COSTO} USD)."
+        alerta "Presupuesto agotado"
         break
     fi
 
@@ -151,30 +234,40 @@ NO hagas commits, NO crees, cambies ni borres ramas: el script gestiona git.
 NO edites autopiloto.sh, gate.sh, mapear.sh, mapeo.txt, plan.md, progreso.log, endpoints.txt, .env ni SECURITY.md.
 Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corriste."
 
-        timeout "$TIMEOUT_POR_TAREA" "$CLI_OPENCODE" run --agent build "$PROMPT" > "$OUT" 2>&1
+        run_agente "$AGENTE_TAREA" "$OUT" "$PROMPT"
         rc=$?
         if [ "$rc" -eq 124 ]; then
-            echo "[autopiloto] ⚠ timeout: la tarea tardó más de ${TIMEOUT_POR_TAREA}s" | tee -a "$LOG"
+            echo "[autopiloto] ⚠ timeout: ${AGENTE_TAREA} tardó más de ${TIMEOUT_POR_TAREA}s" | tee -a "$LOG"
+            alerta "Tiempo agotado en una tarea"
         elif [ "$rc" -ne 0 ]; then
-            echo "[autopiloto] ⚠ opencode salió con rc=$rc" | tee -a "$LOG"
+            echo "[autopiloto] ⚠ ${AGENTE_TAREA} salió con rc=$rc" | tee -a "$LOG"
         fi
         cat "$OUT" >> "$LOG"
         cat "$OUT"
 
-        # Guardia: opencode no debe haberse movido de rama
         if [ "$(git -C "$PROYECTO" branch --show-current)" != "$RAMA_TAREA" ]; then
-            echo "[autopiloto] ✗✗ opencode cambió de rama. Abortando el run: requiere revisión humana." | tee -a "$LOG"
-            echo "[autopiloto] rama actual: $(git -C "$PROYECTO" branch --show-current)"
+            echo "[autopiloto] ✗✗ el agente cambió de rama. Abortando: requiere revisión humana." | tee -a "$LOG"
             logx "ABORTADO: se detectó cambio de rama no autorizado"
+            alerta "El agente cambió de rama, se aborta el run"
             exit 3
         fi
 
         if bash "$GATE"; then
-            hecho=1
-            break
+            if [ "$REVISION_DUAL" = "1" ] && [ -n "$REVISOR" ]; then
+                if revisar_diff "$REVISOR"; then
+                    hecho=1
+                    break
+                fi
+                logx "REVISOR FAIL (intento $intento)"
+                echo "[autopiloto] ✗ el revisor rechazó el diff (intento $intento/$MAX_REINTENTOS)"
+            else
+                hecho=1
+                break
+            fi
+        else
+            logx "GATE FALLÓ tras el agente (intento $intento)"
+            echo "[autopiloto] ✗ la tarea no pasó el gate (intento $intento/$MAX_REINTENTOS)"
         fi
-        logx "GATE FALLÓ tras opencode (intento $intento)"
-        echo "[autopiloto] ✗ la tarea no pasó el gate (intento $intento/$MAX_REINTENTOS)"
     done
 
     snapshot "$AFTER"
@@ -205,12 +298,16 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         sed -i "0,/^- \[ \]/s//- [B]/" "$PLAN"
         logx "tarea BLOQUEADA: $TAREA (rama $RAMA_TAREA descartada)"
         echo "[autopiloto] ✗ tarea bloqueada tras $MAX_REINTENTOS intentos. Marcada [B] en plan.md"
+        alerta "Tarea bloqueada: $TAREA"
     fi
+
+    COSTO_TOTAL="$(awk -v t="$COSTO_TOTAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a}')"
+    logx "Costo estimado acumulado: $COSTO_TOTAL USD"
+    echo "[autopiloto] 💰 Costo estimado acumulado: ${COSTO_TOTAL} USD"
 
     rm -f "$BEFORE" "$AFTER" "$OUT"
 done
 
-# ---- Push opcional de la rama base ----
 if [ -n "$PUSH" ]; then
     git -C "$PROYECTO" push -u origin "$RAMA_RUN" && logx "push: origin/$RAMA_RUN"
     echo "[autopiloto] push OK: origin/$RAMA_RUN"
@@ -220,5 +317,6 @@ fi
 echo ""
 echo "== RESUMEN (final de progreso.log) =="
 tail -25 "$LOG"
-logx "== AUTOPILOTO FINALIZADO (iter=$iter, rama=$RAMA_RUN) =="
+logx "== AUTOPILOTO FINALIZADO (iter=$iter, rama=$RAMA_RUN, costo≈$COSTO_TOTAL) =="
+alerta "Autopiloto finalizado"
 exit 0
