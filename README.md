@@ -14,6 +14,13 @@ proyectos sin tocar archivos ni terminal.
 - Temas: Claro, Oscuro y Hacker (verde/negro).
 - Auto-provisión: al agregar un proyecto, genera los archivos necesarios
   (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `progreso.log`).
+- Gate dual: al terminar una tarea, un segundo agente revisa el diff y debe
+  emitir `VERDICT: PASS` antes de commitear (agente tarea y revisor seleccionables).
+- Presupuesto estimado en USD/iteración con parada automática al agotarse.
+- **Protección térmica**: vigila la temperatura de la CPU y, si supera el
+  umbral, muestra el aviso dentro de la ventana con una cuenta regresiva;
+  si nadie responde, el loop se detiene y la aplicación se apaga sola.
+  Botones Continuar / Apagar ahora (pestaña Seguridad).
 
 ## Requisitos e instalación
 
@@ -43,9 +50,10 @@ El botón "Instalar plantillas" re-hace ese paso en el proyecto seleccionado.
 autopiloto_gui/
   __main__.py      entrada
   app.py           ventana principal
+  sensor.py        lectura de temperatura de CPU
   proceso.py       captura en vivo de procesos
   plantillas.py    instalación de scripts en un proyecto
   plantillas/      autopiloto.sh, gate.sh, mapear.sh, plan.md (empaquetados)
-  proyectos.py     registro de proyectos y tema
+  proyectos.py     registro de proyectos, tema y ajustes de seguridad
   temas.py         estilos Claro / Oscuro / Hacker
 ```
