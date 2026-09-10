@@ -10,12 +10,12 @@ from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QComboBox, QPlainTextEdit, QTabWidget, QLineEdit, QCheckBox,
-    QFileDialog, QMessageBox, QGridLayout, QGroupBox,
+    QFileDialog, QMessageBox, QGridLayout, QGroupBox, QDialog,
 )
 
-from . import plantillas
+from . import plantillas, sensor
 from .proceso import PanelTarea, Proceso
-from .proyectos import cargar, guardar, leer_tema
+from .proyectos import cargar, guardar, leer_tema, leer_seguridad
 from .temas import TEMAS, NOMBRES
 
 FUENTE_MONO = "monospace"
@@ -30,6 +30,66 @@ def _fuente_monospace(objeto):
     fuente = QFont(objeto.font())
     fuente.setFamily(FUENTE_MONO)
     objeto.setFont(fuente)
+
+
+class AvisoTemperatura(QDialog):
+    """Aviso de sobrecalentamiento con cuenta regresiva.
+
+    Si nadie toca los botones antes de que llegue a 0, apaga la aplicación.
+    """
+
+    def __init__(self, temp, segundos, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("⚠ PC demasiado caliente")
+        self.setModal(True)
+        self._segundos = max(1, int(segundos))
+        self._restante = self._segundos
+        self._apagar = None
+
+        v = QVBoxLayout(self)
+        self.lbl_temp = QLabel(f"<b>⚠ Temperatura crítica: {temp} °C</b>")
+        v.addWidget(self.lbl_temp)
+        self.lbl_conteo = QLabel(
+            f"La aplicación se apagará en <b>{self._restante}</b> s.")
+        self.lbl_conteo.setStyleSheet("font-size: 18px;")
+        v.addWidget(self.lbl_conteo)
+
+        h = QHBoxLayout()
+        b_continuar = QPushButton("Continuar")
+        b_continuar.clicked.connect(self._continuar)
+        b_apagar = QPushButton("Apagar ahora")
+        b_apagar.clicked.connect(self._apagar_ahora)
+        h.addWidget(b_continuar)
+        h.addWidget(b_apagar)
+        v.addLayout(h)
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._tick)
+        self.timer.start(1000)
+
+    def _tick(self):
+        self._restante -= 1
+        if self._restante <= 0:
+            self.timer.stop()
+            self._apagar = True
+            self.accept()
+        else:
+            self.lbl_conteo.setText(
+                f"La aplicación se apagará en <b>{self._restante}</b> s.")
+
+    def _continuar(self):
+        self.timer.stop()
+        self._apagar = False
+        self.accept()
+
+    def _apagar_ahora(self):
+        self.timer.stop()
+        self._apagar = True
+        self.accept()
+
+    @property
+    def apagar(self):
+        return self._apagar is True
 
 
 class Ventana(QMainWindow):
@@ -49,12 +109,26 @@ class Ventana(QMainWindow):
         self.gate = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tail_log)
+        self.timer_temp = QTimer(self)
+        self.timer_temp.timeout.connect(self._comprobar_temp)
+        self.timer_aviso = None
+        self._aviso_abierto = None
         self._nombre_activo = ""
         self.tema = leer_tema()
+        self.seguridad = leer_seguridad()
 
         self._ui()
         self._aplicar_tema(self.tema)
         self._cargar_proyecto()
+        self._iniciar_vigilancia()
+
+    def _iniciar_vigilancia(self):
+        seg = self.seguridad
+        if seg.get("activo") and sensor.leer_temperatura() is not None:
+            self.timer_temp.start(max(5, int(seg.get("intervalo", 10))) * 1000)
+            self._comprobar_temp()
+        else:
+            self._mostrar_temp(None)
 
     def _ui(self):
         central = QWidget()
@@ -91,6 +165,7 @@ class Ventana(QMainWindow):
         self.tabs.addTab(self._tab_plan(), "Plan")
         self.tabs.addTab(self._tab_ejecucion(), "Ejecución")
         self.tabs.addTab(self._tab_git(), "Git")
+        self.tabs.addTab(self._tab_seguridad(), "Seguridad")
 
         self.estado = QLabel("Sin proyecto")
         root.addWidget(self.estado)
@@ -202,6 +277,121 @@ class Ventana(QMainWindow):
         _fuente_monospace(self.txt_git)
         v.addWidget(self.txt_git, 1)
         return w
+
+    def _tab_seguridad(self):
+        w = QWidget()
+        v = QVBoxLayout(w)
+        grupo = QGroupBox("Protección térmica")
+        g = QGridLayout(grupo)
+        seg = self.seguridad
+        self.chk_activo = QCheckBox("Activar: apagar la aplicación si la PC se sobrecalienta")
+        self.chk_activo.setChecked(bool(seg.get("activo")))
+        g.addWidget(self.chk_activo, 0, 0, 1, 2)
+        g.addWidget(QLabel("Umbral de peligro (°C):"), 1, 0)
+        self.txt_umbral = QLineEdit(str(seg.get("umbral", 85)))
+        g.addWidget(self.txt_umbral, 1, 1)
+        g.addWidget(QLabel("Segundos de aviso antes de apagar:"), 2, 0)
+        self.txt_segundos = QLineEdit(str(seg.get("segundos", 5)))
+        g.addWidget(self.txt_segundos, 2, 1)
+        g.addWidget(QLabel("Intervalo de comprobación (s):"), 3, 0)
+        self.txt_intervalo = QLineEdit(str(seg.get("intervalo", 10)))
+        g.addWidget(self.txt_intervalo, 3, 1)
+        b_guardar = QPushButton("Guardar ajustes")
+        b_guardar.clicked.connect(self._guardar_seguridad)
+        g.addWidget(b_guardar, 4, 0, 1, 2)
+        v.addWidget(grupo)
+
+        v.addWidget(QLabel("Temperatura actual:"))
+        self.lbl_temp = QLabel("—")
+        self.lbl_temp.setStyleSheet("font-size: 26px;")
+        v.addWidget(self.lbl_temp)
+        self.lbl_estado_temp = QLabel("")
+        v.addWidget(self.lbl_estado_temp)
+        b_ahora = QPushButton("Comprobar ahora")
+        b_ahora.clicked.connect(self._comprobar_temp)
+        v.addWidget(b_ahora)
+        v.addStretch()
+        return w
+
+    def _guardar_seguridad(self):
+        import re
+
+        def n_int(texto, defv):
+            try:
+                return max(1, int(re.sub(r"\D", "", texto) or defv))
+            except ValueError:
+                return defv
+
+        seg = {
+            "activo": self.chk_activo.isChecked(),
+            "umbral": n_int(self.txt_umbral.text(), 85),
+            "segundos": n_int(self.txt_segundos.text(), 5),
+            "intervalo": n_int(self.txt_intervalo.text(), 10),
+        }
+        self.seguridad = seg
+        guardar(self.proyectos, self.tema, seg)
+        self._iniciar_vigilancia()
+        self.estado.setText("Ajustes de seguridad guardados")
+
+    def _temperatura_texto(self, t):
+        umbral = self.seguridad.get("umbral", 85)
+        if t is None:
+            return "desconocida", ""
+        color = "color: orange;" if t >= umbral - 10 else "color: green;"
+        if t >= umbral:
+            color = "color: red;"
+        return f"{t:.1f} °C", f"font-size: 26px; {color}"
+
+    def _comprobar_temp(self):
+        t = sensor.leer_temperatura()
+        self._mostrar_temp(t)
+        seg = self.seguridad
+        if not seg.get("activo") or t is None:
+            return
+        if t >= float(seg.get("umbral", 85)):
+            if not self._aviso_abierto or not self._aviso_abierto.isVisible():
+                self._abrir_aviso(t)
+        elif self._aviso_abierto is not None:
+            self._aviso_abierto._continuar()
+
+    def _mostrar_temp(self, t):
+        if not hasattr(self, "lbl_temp"):
+            return
+        texto, estilo = self._temperatura_texto(t)
+        self.lbl_temp.setStyleSheet(estilo)
+        self.lbl_temp.setText(texto)
+        if t is None:
+            self.lbl_estado_temp.setText("No hay sensor de temperatura disponible.")
+        elif t >= float(self.seguridad.get("umbral", 85)):
+            self.lbl_estado_temp.setText(
+                "⚠ SOBRECALENTAMIENTO: se abrirá el aviso de apagado.")
+        elif t >= float(self.seguridad.get("umbral", 85)) - 10:
+            self.lbl_estado_temp.setText("Temperatura alta: vigila.")
+        else:
+            self.lbl_estado_temp.setText("Temperatura normal.")
+
+    def _abrir_aviso(self, t):
+        aviso = AvisoTemperatura(t, self.seguridad.get("segundos", 5), self)
+        self._aviso_abierto = aviso
+        aviso.finished.connect(self._aviso_terminado)
+        aviso.show()
+        aviso.raise_()
+        aviso.activateWindow()
+
+    def _aviso_terminado(self, _codigo):
+        aviso = self._aviso_abierto
+        self._aviso_abierto = None
+        if aviso and aviso.apagar:
+            self._apagar_aplicacion()
+
+    def _apagar_aplicacion(self):
+        self.estado.setText("🔥 Apagado por sobrecalentamiento")
+        if self.loop and self.loop.state() == QProcess.Running:
+            self._detener_loop()
+        self.timer.stop()
+        self.timer_temp.stop()
+        self.estado.setText("🔥 Apagado por sobrecalentamiento. Hasta luego.")
+        QTimer.singleShot(1200, QApplication.instance().quit)
 
     # ---------- Proyectos ----------
 
