@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (
 
 from . import modelos, plantillas, sensor
 from .proceso import PanelTarea, Proceso
-from .proyectos import cargar, guardar, leer_tema, leer_seguridad
+from .proyectos import (cargar, guardar, leer_tema, leer_seguridad,
+                        leer_modelos)
 from .temas import TEMAS, NOMBRES
 
 FUENTE_MONO = "monospace"
@@ -111,6 +112,7 @@ class Ventana(QMainWindow):
         self.tema = leer_tema()
         self.seguridad = leer_seguridad()
         self._modelos = modelos.lista_modelos() or [modelos.MODELO_SUGERIDO]
+        self._sel_modelos = leer_modelos()
 
         self._ui()
         self._aplicar_tema(self.tema)
@@ -211,11 +213,14 @@ class Ventana(QMainWindow):
         g.addWidget(QLabel("Modelo (agente de tarea):"), 3, 0)
         self.cmb_agente = QComboBox()
         self.cmb_agente.addItems(self._modelos)
+        self.cmb_agente.currentTextChanged.connect(self._guardar_sel_modelos)
         g.addWidget(self.cmb_agente, 3, 1)
         g.addWidget(QLabel("Modelo (agente revisor del diff):"), 4, 0)
         self.cmb_revisor = QComboBox()
         self.cmb_revisor.addItems(self._modelos)
+        self.cmb_revisor.currentTextChanged.connect(self._guardar_sel_modelos)
         g.addWidget(self.cmb_revisor, 4, 1)
+        self._aplicar_sel_modelos()
         b_modelos = QPushButton("↻ Refrescar modelos")
         b_modelos.clicked.connect(self._refrescar_modelos)
         g.addWidget(b_modelos, 5, 0, 1, 2)
@@ -535,6 +540,26 @@ class Ventana(QMainWindow):
 
     # ---------- Loop ----------
 
+    def _aplicar_sel_modelos(self):
+        sel_tarea = self._sel_modelos.get("tarea")
+        sel_revisor = self._sel_modelos.get("revisor")
+        if sel_tarea in self._modelos:
+            self.cmb_agente.setCurrentText(sel_tarea)
+        else:
+            self.cmb_agente.setCurrentText(modelos.sugerido(self._modelos))
+        if sel_revisor in self._modelos:
+            self.cmb_revisor.setCurrentText(sel_revisor)
+        else:
+            self.cmb_revisor.setCurrentText(modelos.sugerido(self._modelos))
+
+    def _guardar_sel_modelos(self, *_):
+        self._sel_modelos = {
+            "tarea": self.cmb_agente.currentText(),
+            "revisor": self.cmb_revisor.currentText(),
+        }
+        guardar(self.proyectos, self.tema,
+                seguridad=self.seguridad, modelos=self._sel_modelos)
+
     def _refrescar_modelos(self):
         nuevos = modelos.lista_modelos()
         if not nuevos:
@@ -550,12 +575,17 @@ class Ventana(QMainWindow):
         self.cmb_revisor.addItems(nuevos)
         if actual_agente in nuevos:
             self.cmb_agente.setCurrentText(actual_agente)
+        else:
+            self.cmb_agente.setCurrentText(modelos.sugerido(nuevos))
         if actual_revisor in nuevos:
             self.cmb_revisor.setCurrentText(actual_revisor)
+        else:
+            self.cmb_revisor.setCurrentText(modelos.sugerido(nuevos))
         self.cmb_agente.blockSignals(False)
         self.cmb_revisor.blockSignals(False)
         self.lbl_modelos.setText(f"{len(nuevos)} modelos de opencode cargados")
         self.estado.setText("Modelos refrescados")
+        self._guardar_sel_modelos()
 
     def _iniciar_loop(self):
         p = self._proyecto_actual()

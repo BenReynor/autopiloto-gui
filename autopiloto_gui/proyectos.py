@@ -41,13 +41,20 @@ def leer_seguridad():
     return seg
 
 
-def guardar(proyectos, tema=None, seguridad=None):
+def leer_modelos():
+    """Modelos seleccionados (tarea/revisor) guardados entre sesiones."""
+    return _leer_archivo().get("modelos", {})
+
+
+def guardar(proyectos, tema=None, seguridad=None, modelos=None):
     datos = _leer_archivo()
     datos["proyectos"] = proyectos
     if tema:
         datos["tema"] = tema
     if seguridad is not None:
         datos["seguridad"] = seguridad
+    if modelos is not None:
+        datos["modelos"] = modelos
     os.makedirs(CONFIG_DIR, exist_ok=True)
     with open(REGISTRO, "w", encoding="utf-8") as f:
         json.dump(datos, f, indent=2, ensure_ascii=False)
