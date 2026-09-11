@@ -27,6 +27,13 @@ proyectos sin tocar archivos ni terminal.
   emitir `VERDICT: PASS` antes de commitear. Modelos de opencode seleccionables
   por separado para tarea y revisor (lista en vivo con `opencode models`, botón
   ↻ Refrescar).
+- Modelos de IA en dos niveles: el selector muestra primero el proveedor
+  (`opencode`, `google`…) y luego el modelo de ese proveedor. La lista se
+  rellena con lo que detecta `opencode models` (Zen + proveedores con
+  credenciales), y ambos campos son editables: puedes escribir a mano cualquier
+  modelo de otro proveedor (`openai/gpt-5.2`, `anthropic/claude-...`…) aunque
+  no tenga credenciales o no esté detectado. La selección se conserva al
+  refrescar y entre sesiones.
 - Presupuesto estimado en USD/iteración con parada automática al agotarse.
 - **Protección térmica**: vigila la temperatura de la CPU y, si supera el
   umbral, muestra el aviso dentro de la ventana con una cuenta regresiva;
@@ -63,6 +70,7 @@ autopiloto_gui/
   __main__.py      entrada
   app.py           ventana principal
   modelos.py       lista de modelos de opencode (`opencode models`)
+  selector_modelo.py selector proveedor→modelo de dos niveles (editable)
   sensor.py        lectura de temperatura de CPU
   proceso.py       captura en vivo de procesos
   plantillas.py    instalación de scripts en un proyecto

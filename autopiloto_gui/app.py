@@ -16,6 +16,7 @@ from . import modelos, net, plantillas, sensor
 from .proceso import PanelTarea, Proceso
 from .proyectos import (cargar, guardar, leer_tema, leer_seguridad,
                         leer_modelos)
+from .selector_modelo import SelectorModelo
 from .temas import TEMAS, NOMBRES
 
 FUENTE_MONO = "monospace"
@@ -213,13 +214,11 @@ class Ventana(QMainWindow):
         self.txt_padre = QLineEdit("master")
         g.addWidget(self.txt_padre, 2, 1)
         g.addWidget(QLabel("Modelo (agente de tarea):"), 3, 0)
-        self.cmb_agente = QComboBox()
-        self.cmb_agente.addItems(self._modelos)
+        self.cmb_agente = SelectorModelo(self._modelos)
         self.cmb_agente.currentTextChanged.connect(self._guardar_sel_modelos)
         g.addWidget(self.cmb_agente, 3, 1)
         g.addWidget(QLabel("Modelo (agente revisor del diff):"), 4, 0)
-        self.cmb_revisor = QComboBox()
-        self.cmb_revisor.addItems(self._modelos)
+        self.cmb_revisor = SelectorModelo(self._modelos)
         self.cmb_revisor.currentTextChanged.connect(self._guardar_sel_modelos)
         g.addWidget(self.cmb_revisor, 4, 1)
         self._aplicar_sel_modelos()
@@ -556,14 +555,10 @@ class Ventana(QMainWindow):
     def _aplicar_sel_modelos(self):
         sel_tarea = self._sel_modelos.get("tarea")
         sel_revisor = self._sel_modelos.get("revisor")
-        if sel_tarea in self._modelos:
-            self.cmb_agente.setCurrentText(sel_tarea)
-        else:
-            self.cmb_agente.setCurrentText(modelos.sugerido(self._modelos))
-        if sel_revisor in self._modelos:
-            self.cmb_revisor.setCurrentText(sel_revisor)
-        else:
-            self.cmb_revisor.setCurrentText(modelos.sugerido(self._modelos))
+        self.cmb_agente.setCurrentText(
+            sel_tarea if sel_tarea else modelos.sugerido(self._modelos))
+        self.cmb_revisor.setCurrentText(
+            sel_revisor if sel_revisor else modelos.sugerido(self._modelos))
 
     def _guardar_sel_modelos(self, *_):
         self._sel_modelos = {
@@ -582,21 +577,14 @@ class Ventana(QMainWindow):
         self._modelos = nuevos
         self.cmb_agente.blockSignals(True)
         self.cmb_revisor.blockSignals(True)
-        self.cmb_agente.clear()
-        self.cmb_revisor.clear()
         self.cmb_agente.addItems(nuevos)
         self.cmb_revisor.addItems(nuevos)
-        if actual_agente in nuevos:
-            self.cmb_agente.setCurrentText(actual_agente)
-        else:
-            self.cmb_agente.setCurrentText(modelos.sugerido(nuevos))
-        if actual_revisor in nuevos:
-            self.cmb_revisor.setCurrentText(actual_revisor)
-        else:
-            self.cmb_revisor.setCurrentText(modelos.sugerido(nuevos))
+        self.cmb_agente.setCurrentText(actual_agente)
+        self.cmb_revisor.setCurrentText(actual_revisor)
         self.cmb_agente.blockSignals(False)
         self.cmb_revisor.blockSignals(False)
-        self.lbl_modelos.setText(f"{len(nuevos)} modelos de opencode cargados")
+        self.lbl_modelos.setText(
+            f"{len(nuevos)} modelos de opencode + selección manual")
         self.estado.setText("Modelos refrescados")
         self._guardar_sel_modelos()
 
