@@ -13,8 +13,10 @@ proyectos sin tocar archivos ni terminal.
 - Vista de rama, `git status` y últimos commits.
 - Temas: Claro, Oscuro y Hacker (verde/negro).
 - Auto-provisión y actualización: al abrir un proyecto, instala los archivos
-  que falten (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `progreso.log`)
-  y actualiza automáticamente los que tengan una versión distinta a la de la app.
+  que falten (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`) y actualiza
+  automáticamente los scripts `.sh` si su versión difiere de la de la app.
+  `plan.md` solo se crea si falta: nunca se sobreescribe con la plantilla (es
+  el contenido editable de tus tareas).
 - Sin internet: el loop de tareas se aborta/rebota y la GUI lo indica en
   pantalla y no arranca sin conexión (los modelos IA necesitan red).
 - Gate dual: al terminar una tarea, un segundo agente revisa el diff y debe
