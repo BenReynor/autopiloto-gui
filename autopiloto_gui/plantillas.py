@@ -10,9 +10,13 @@ ARCHIVOS = SCRIPTS + ("plan.md",)
 
 
 def _desactualizados(ruta):
-    """Devuelve los nombres de archivos de la plantilla que difieren del proyecto."""
+    """Scripts .sh que difieren entre la plantilla y el proyecto.
+
+    plan.md NO se compara: es contenido editable del usuario (sus tareas);
+    solo se crea si falta, nunca se sobreescribe.
+    """
     diff = []
-    for nombre in ARCHIVOS:
+    for nombre in SCRIPTS:
         src = os.path.join(PLANTILLA_DIR, nombre)
         dst = os.path.join(ruta, nombre)
         if os.path.exists(dst) and os.path.exists(src):
