@@ -34,7 +34,7 @@ QPushButton {{
     padding: 7px 14px;
     font-weight: bold;
 }}
-QPushButton:hover {{ background-color: {c['boton_hover']}; }}
+QPushButton:hover {{ background-color: {c['boton_hover']}; color: {c['texto_boton_hover']}; }}
 QPushButton:pressed {{ background-color: {c['boton_active']}; }}
 QPushButton:disabled {{
     background-color: {c['disabled']};
@@ -84,7 +84,7 @@ QTabBar::tab:selected {{
     color: {c['texto_boton']};
     font-weight: bold;
 }}
-QTabBar::tab:hover:!selected {{ background-color: {c['boton_hover']}; }}
+QTabBar::tab:hover:!selected {{ background-color: {c['boton_hover']}; color: {c['texto_boton_hover']}; }}
 QCheckBox {{ background: transparent; spacing: 8px; }}
 QCheckBox::indicator {{
     width: 16px; height: 16px;
@@ -123,6 +123,7 @@ TEMAS = {
         "entrada": "#ffffff",
         "texto": "#1f2430",
         "texto_boton": "#ffffff",
+        "texto_boton_hover": "#ffffff",
         "boton": "#4f46e5",
         "boton_hover": "#6366f1",
         "boton_active": "#4338ca",
@@ -138,6 +139,7 @@ TEMAS = {
         "entrada": "#1e2733",
         "texto": "#e6e9ef",
         "texto_boton": "#ffffff",
+        "texto_boton_hover": "#ffffff",
         "boton": "#2f3a4c",
         "boton_hover": "#3d4c63",
         "boton_active": "#232c3a",
@@ -153,6 +155,7 @@ TEMAS = {
         "entrada": "#04180d",
         "texto": "#00ff99",
         "texto_boton": "#04080a",
+        "texto_boton_hover": "#04080a",
         "boton": "#00ff77",
         "boton_hover": "#33ff99",
         "boton_active": "#00cc5f",
