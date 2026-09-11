@@ -490,9 +490,29 @@ class Ventana(QMainWindow):
         nombre = self.cmb.currentText()
         if not nombre:
             return
+        p = self._proyecto_actual()
+        if not p:
+            return
+        _, ruta = p
+        resp = QMessageBox.question(
+            self, "Quitar proyecto",
+            "¿Eliminar el proyecto de la lista?\n\nTambién se borrarán sus "
+            "archivos de autopiloto del disco:\n"
+            "  · autopiloto.sh, gate.sh, mapear.sh\n"
+            "  · plan.md y progreso.log\n\n"
+            "El resto del código del proyecto NO se toca.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if resp != QMessageBox.Yes:
+            return
         if self.proyectos.pop(nombre, None) is not None:
+            eliminados = plantillas.quitar(ruta)
             guardar(self.proyectos, self.tema)
             self.cmb.removeItem(self.cmb.currentIndex())
+            if eliminados:
+                QMessageBox.information(
+                    self, "Proyecto eliminado",
+                    "Eliminado de la lista y borrados:\n  · "
+                    + "\n  · ".join(eliminados))
 
     # ---------- Plan ----------
 

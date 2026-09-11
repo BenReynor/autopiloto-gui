@@ -9,6 +9,23 @@ SCRIPTS = ("autopiloto.sh", "gate.sh", "mapear.sh")
 ARCHIVOS = SCRIPTS + ("plan.md",)
 
 
+def quitar(ruta):
+    """Borra los archivos que la app instaló. Devuelve los eliminados.
+
+    Solo toca autopiloto.sh, gate.sh, mapear.sh, plan.md y progreso.log:
+    jamás el resto del proyecto.
+    """
+    eliminados = []
+    log = os.path.join(ruta, "progreso.log")
+    nombres = list(ARCHIVOS) + (["progreso.log"] if os.path.exists(log) else [])
+    for nombre in nombres:
+        destino = os.path.join(ruta, nombre)
+        if os.path.exists(destino):
+            os.remove(destino)
+            eliminados.append(nombre)
+    return eliminados
+
+
 def _desactualizados(ruta):
     """Scripts .sh que difieren entre la plantilla y el proyecto.
 

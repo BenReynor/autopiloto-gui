@@ -17,6 +17,10 @@ proyectos sin tocar archivos ni terminal.
   automáticamente los scripts `.sh` si su versión difiere de la de la app.
   `plan.md` solo se crea si falta: nunca se sobreescribe con la plantilla (es
   el contenido editable de tus tareas).
+- Quitar proyecto: al eliminar un proyecto de la lista se pregunta primero y,
+  si confirmas, borra solo los archivos de autopiloto del disco
+  (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `progreso.log`); el
+  resto del proyecto jamás se toca.
 - Sin internet: el loop de tareas se aborta/rebota y la GUI lo indica en
   pantalla y no arranca sin conexión (los modelos IA necesitan red).
 - Gate dual: al terminar una tarea, un segundo agente revisa el diff y debe
