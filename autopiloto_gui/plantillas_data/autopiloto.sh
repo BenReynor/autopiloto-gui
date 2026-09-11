@@ -74,6 +74,15 @@ RAMA_RUN="autopiloto/$FECHA"
 logx() { echo "[$(date '+%F %H:%M')] $*" >> "$LOG"; }
 hora_limite() { [[ -n "$HASTA" && "$(date +%H:%M)" > "$HASTA" ]]; }
 
+hay_internet() {
+    local i
+    for i in 1 2 3; do
+        if ping -c1 -W2 8.8.8.8 >/dev/null 2>&1; then return 0; fi
+        sleep 2
+    done
+    return 1
+}
+
 agente_disponible() { command -v "$1" >/dev/null 2>&1; }
 
 alerta() {
@@ -173,6 +182,15 @@ logx "== AUTOPILOTO INICIADO (agente=$AGENTE_TAREA, modelo=$MODELO_TAREA, reviso
 echo "[autopiloto] Agente de tarea: ${AGENTE_TAREA} ${MODELO_TAREA:+($MODELO_TAREA)}"
 echo "[autopiloto] Revisor dual:    ${REVISOR:-NINGUNO} ${MODELO_REVISOR:+($MODELO_REVISOR)} (dual=$REVISION_DUAL)"
 
+echo "[autopiloto] Comprobando internet…"
+if ! hay_internet; then
+    echo "[autopiloto] ✗ SIN INTERNET. Los modelos IA no pueden responder; abortando."
+    logx "ABORTADO: sin internet"
+    alerta "Sin internet, se aborta el autopiloto"
+    exit 4
+fi
+logx "Internet OK"
+
 echo "[autopiloto] Baseline: gate.sh..."
 if ! bash "$GATE"; then
     echo "El repo NO pasa la verificación baseline. Corrige y relanza."
@@ -211,6 +229,13 @@ while (( iter < MAX_ITER )); do
         logx "Presupuesto agotado (${COSTO_TOTAL}/${MAX_COSTO} USD)."
         echo "[autopiloto] 💸 Presupuesto agotado (${COSTO_TOTAL}/${MAX_COSTO} USD)."
         alerta "Presupuesto agotado"
+        break
+    fi
+
+    if ! hay_internet; then
+        logx "SIN INTERNET: loop detenido para no lanzar tareas sin modelo disponible."
+        echo "[autopiloto] ✗ SIN INTERNET. Deteniendo el loop (los modelos IA no responden)."
+        alerta "Sin internet, se detiene el autopiloto"
         break
     fi
 

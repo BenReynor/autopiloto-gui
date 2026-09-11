@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QGridLayout, QGroupBox, QDialog,
 )
 
-from . import modelos, plantillas, sensor
+from . import modelos, net, plantillas, sensor
 from .proceso import PanelTarea, Proceso
 from .proyectos import (cargar, guardar, leer_tema, leer_seguridad,
                         leer_modelos)
@@ -106,6 +106,8 @@ class Ventana(QMainWindow):
         self.timer.timeout.connect(self._tail_log)
         self.timer_temp = QTimer(self)
         self.timer_temp.timeout.connect(self._comprobar_temp)
+        self.timer_net = QTimer(self)
+        self.timer_net.timeout.connect(self._comprobar_net)
         self.timer_aviso = None
         self._aviso_abierto = None
         self._nombre_activo = ""
@@ -118,6 +120,8 @@ class Ventana(QMainWindow):
         self._aplicar_tema(self.tema)
         self._cargar_proyecto()
         self._iniciar_vigilancia()
+        self._comprobar_net()
+        self.timer_net.start(15000)
 
     def _iniciar_vigilancia(self):
         seg = self.seguridad
@@ -132,6 +136,7 @@ class Ventana(QMainWindow):
 
     def _aplicar_visibilidad_temp(self, ver):
         if hasattr(self, "lbl_temp"):
+            self.lbl_titulo_temp.setVisible(ver)
             self.lbl_temp.setVisible(ver)
             self.lbl_estado_temp.setVisible(ver)
 
@@ -150,11 +155,8 @@ class Ventana(QMainWindow):
         b_agregar.clicked.connect(self._agregar_proyecto)
         b_quitar = QPushButton("Quitar")
         b_quitar.clicked.connect(self._quitar_proyecto)
-        b_plantillas = QPushButton("Instalar plantillas")
-        b_plantillas.clicked.connect(self._instalar_plantillas)
         barra.addWidget(b_agregar)
         barra.addWidget(b_quitar)
-        barra.addWidget(b_plantillas)
         barra.addStretch()
         barra.addWidget(QLabel("Tema:"))
         self.cmb_tema = QComboBox()
@@ -224,23 +226,25 @@ class Ventana(QMainWindow):
         b_modelos = QPushButton("↻ Refrescar modelos")
         b_modelos.clicked.connect(self._refrescar_modelos)
         g.addWidget(b_modelos, 5, 0, 1, 2)
+        self.lbl_net = QLabel("")
+        g.addWidget(self.lbl_net, 6, 0, 1, 2)
         self.lbl_modelos = QLabel(
             f"{len(self._modelos)} modelos de opencode cargados")
-        g.addWidget(self.lbl_modelos, 6, 0, 1, 2)
+        g.addWidget(self.lbl_modelos, 7, 0, 1, 2)
         self.chk_dual = QCheckBox("Gate dual: el revisor exige VERDICT: PASS antes del commit")
         self.chk_dual.setChecked(True)
-        g.addWidget(self.chk_dual, 7, 0, 1, 2)
+        g.addWidget(self.chk_dual, 8, 0, 1, 2)
         self.chk_voz = QCheckBox("Alertas de voz al bloquear/terminar (notify-send/spd-say)")
-        g.addWidget(self.chk_voz, 8, 0, 1, 2)
-        g.addWidget(QLabel("Presupuesto máx (USD, 0 = sin límite):"), 9, 0)
+        g.addWidget(self.chk_voz, 9, 0, 1, 2)
+        g.addWidget(QLabel("Presupuesto máx (USD, 0 = sin límite):"), 10, 0)
         self.txt_costo_max = QLineEdit("0")
-        g.addWidget(self.txt_costo_max, 9, 1)
-        g.addWidget(QLabel("Costo estimado por tarea (USD):"), 10, 0)
+        g.addWidget(self.txt_costo_max, 10, 1)
+        g.addWidget(QLabel("Costo estimado por tarea (USD):"), 11, 0)
         self.txt_costo_iter = QLineEdit("0.50")
-        g.addWidget(self.txt_costo_iter, 10, 1)
+        g.addWidget(self.txt_costo_iter, 11, 1)
         self.chk_push = QCheckBox("--push al final")
         self.chk_push.setChecked(True)
-        g.addWidget(self.chk_push, 11, 0, 1, 2)
+        g.addWidget(self.chk_push, 12, 0, 1, 2)
         v.addWidget(grupo)
 
         h = QHBoxLayout()
@@ -311,9 +315,10 @@ class Ventana(QMainWindow):
         g.addWidget(b_guardar, 4, 0, 1, 2)
         v.addWidget(grupo)
 
-        v.addWidget(QLabel("Temperatura actual:"))
+        self.lbl_titulo_temp = QLabel("Temperatura actual:")
         self.lbl_temp = QLabel("—")
         self.lbl_temp.setStyleSheet("font-size: 26px;")
+        v.addWidget(self.lbl_titulo_temp)
         v.addWidget(self.lbl_temp)
         self.lbl_estado_temp = QLabel("")
         v.addWidget(self.lbl_estado_temp)
@@ -448,14 +453,18 @@ class Ventana(QMainWindow):
 
         faltan = plantillas.faltan(ruta)
         if faltan:
-            self.b_iniciar.setEnabled(False)
-            self.b_gate.setEnabled(False)
-            self.estado.setText(
-                f"{self.estado.text()}  |  FALTAN: {', '.join(faltan)} "
-                "(pulsa 'Instalar plantillas')")
-        else:
-            self.b_iniciar.setEnabled(True)
-            self.b_gate.setEnabled(True)
+            plantillas.instalar(ruta)
+            self.txt_loop.appendPlainText(
+                f"[auto-provision] Plantillas instaladas: {', '.join(faltan)}")
+
+        desactualizados = plantillas._desactualizados(ruta)
+        if desactualizados:
+            plantillas.actualizar(ruta)
+            self.txt_loop.appendPlainText(
+                f"[auto-update] Plantillas actualizadas: {', '.join(desactualizados)}")
+
+        self.b_iniciar.setEnabled(True)
+        self.b_gate.setEnabled(True)
 
     def _agregar_proyecto(self):
         ruta = QFileDialog.getExistingDirectory(
@@ -476,22 +485,6 @@ class Ventana(QMainWindow):
         else:
             QMessageBox.information(
                 self, "Proyecto", "Ya tenía todos los archivos del autopiloto.")
-
-    def _instalar_plantillas(self):
-        p = self._proyecto_actual()
-        if not p:
-            return
-        _, ruta = p
-        creados = plantillas.instalar(ruta)
-        if creados:
-            QMessageBox.information(
-                self, "Plantillas instaladas",
-                "Creados en " + ruta + ":\n  · " + "\n  · ".join(creados))
-        else:
-            QMessageBox.information(
-                self, "Ya está todo", "El proyecto ya tiene autopiloto.sh, "
-                "gate.sh, mapear.sh y plan.md.")
-        self._cargar_proyecto()
 
     def _quitar_proyecto(self):
         nombre = self.cmb.currentText()
@@ -587,9 +580,26 @@ class Ventana(QMainWindow):
         self.estado.setText("Modelos refrescados")
         self._guardar_sel_modelos()
 
+    def _comprobar_net(self):
+        ok = net.hay_internet()
+        if hasattr(self, "lbl_net"):
+            self.lbl_net.setText(
+                ("🟢 Internet: OK" if ok else "🔴 Internet: SIN CONEXIÓN — "
+                 "los modelos IA no responderán; el loop no arrancará")
+            )
+        self._net_ok = ok
+        return ok
+
     def _iniciar_loop(self):
         p = self._proyecto_actual()
         if not p:
+            return
+        if not self._comprobar_net():
+            QMessageBox.warning(
+                self, "Sin internet",
+                "No hay conexión a internet.\n\nLos modelos IA de opencode "
+                "no pueden responder y el loop se detendrá al arrancar. "
+                "Conecta la red e inténtalo de nuevo.")
             return
         _, ruta = p
         args = []

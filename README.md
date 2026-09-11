@@ -12,8 +12,11 @@ proyectos sin tocar archivos ni terminal.
 - Salida en vivo del loop y de `gate.sh`.
 - Vista de rama, `git status` y últimos commits.
 - Temas: Claro, Oscuro y Hacker (verde/negro).
-- Auto-provisión: al agregar un proyecto, genera los archivos necesarios
-  (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `progreso.log`).
+- Auto-provisión y actualización: al abrir un proyecto, instala los archivos
+  que falten (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `progreso.log`)
+  y actualiza automáticamente los que tengan una versión distinta a la de la app.
+- Sin internet: el loop de tareas se aborta/rebota y la GUI lo indica en
+  pantalla y no arranca sin conexión (los modelos IA necesitan red).
 - Gate dual: al terminar una tarea, un segundo agente revisa el diff y debe
   emitir `VERDICT: PASS` antes de commitear. Modelos de opencode seleccionables
   por separado para tarea y revisor (lista en vivo con `opencode models`, botón
@@ -43,10 +46,9 @@ python -m autopiloto_gui
 1. Crea la carpeta vacía de tu proyecto.
 2. En el panel: **Agregar…** → selecciona esa carpeta.
 3. La app instala sola `autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`
-   (plantilla) y crea `progreso.log`.
+   (plantilla) y crea `progreso.log`. Las actualizaciones de estas plantillas
+   se aplican automáticamente al abrir el proyecto.
 4. Edita `plan.md` con tus tareas y pulsa **▶ Iniciar loop**.
-
-El botón "Instalar plantillas" re-hace ese paso en el proyecto seleccionado.
 
 ## Estructura
 
