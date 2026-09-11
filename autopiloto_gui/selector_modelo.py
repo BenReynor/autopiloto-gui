@@ -1,88 +1,75 @@
 """Selector de modelo IA en dos niveles: proveedor -> modelo.
 
-Permite elegir un proveedor (editable) y luego un modelo de ese proveedor
-(editable), para poder apuntar a cualquier modelo aunque no esté en la lista
-detectada por `opencode models` (p. ej. openai/..., claude/anthropic/...).
+Al elegir un proveedor (opencode, google, openai, anthropic...) el combo de
+modelos se rellena con la lista real de modelos de esa empresa. Todo por
+selección, sin escribir: los catálogos vienen de `opencode models` (cuando el
+proveedor tiene credenciales) o de models.dev.
 """
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget, QComboBox
 
-PROVEEDORES = [
-    "opencode", "google", "openai", "anthropic", "xai", "groq",
-    "together", "deepseek", "azure", "bedrock", "ollama", "lmstudio",
-    "mistral", "github",
-]
+from . import modelos
 
 
 class SelectorModelo(QWidget):
-    """Combos encadenados proveedor/modelo con texto editable.
+    """Combos encadenados proveedor/modelo, ambos de selección.
 
-    Expone la misma API que un QComboBox (addItems, currentText,
-    setCurrentText, clear, blockSignals) pero con dos coopos que devuelven
-    siempre 'proveedor/modelo'.
+    Expone API parecida a un QComboBox (addItems, currentText, setCurrentText,
+    clear, blockSignals) pero devolviendo siempre 'proveedor/modelo'.
     """
 
     currentTextChanged = Signal(str)
 
-    def __init__(self, modelos, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self._modelos = list(modelos)
-        self._mapeo = {}
+        self._mapa = {}
 
         h = QHBoxLayout(self)
         h.setContentsMargins(0, 0, 0, 0)
         self.cmb_proveedor = QComboBox()
-        self.cmb_proveedor.setEditable(True)
         self.cmb_modelo = QComboBox()
-        self.cmb_modelo.setEditable(True)
         h.addWidget(self.cmb_proveedor, 2)
         h.addWidget(QLabel("/"))
         h.addWidget(self.cmb_modelo, 3)
 
-        self.cmb_proveedor.currentTextChanged.connect(self._proveedor_cambiado)
+        self.cmb_proveedor.currentTextChanged.connect(self._cargar_modelos)
         self.cmb_modelo.currentTextChanged.connect(self._emitir)
-        self.cmb_modelo.editTextChanged.connect(self._emitir)
-
-        for modelo in self._modelos:
-            if "/" in modelo:
-                prov, idm = modelo.split("/", 1)
-                self._mapeo.setdefault(prov, []).append(idm)
-        self._rellenar_proveedores()
-
-    def _rellenar_proveedores(self):
-        self.cmb_proveedor.blockSignals(True)
-        self.cmb_proveedor.clear()
-        todos = list(PROVEEDORES)
-        for prov in self._mapeo:
-            if prov not in todos:
-                todos.append(prov)
-        self.cmb_proveedor.addItems(todos)
-        self.cmb_proveedor.blockSignals(False)
-
-    def _proveedor_cambiado(self, prov):
-        prov = (prov or "").strip()
-        self.cmb_modelo.blockSignals(True)
-        self.cmb_modelo.clear()
-        if prov in self._mapeo:
-            self.cmb_modelo.addItems(self._mapeo[prov])
-        self.cmb_modelo.blockSignals(False)
-        self.currentTextChanged.emit(self.currentText())
+        self._cargar_proveedores()
 
     def _emitir(self, _=None):
         self.currentTextChanged.emit(self.currentText())
 
-    def addItems(self, modelos):
+    def _cargar_proveedores(self):
+        proveedores = modelos.nombres_proveedores()
+        self.cmb_proveedor.blockSignals(True)
+        actual_prov = self.cmb_proveedor.currentText()
+        self.cmb_proveedor.clear()
+        self.cmb_proveedor.addItems(proveedores)
+        if actual_prov and self.cmb_proveedor.findText(actual_prov) >= 0:
+            self.cmb_proveedor.setCurrentText(actual_prov)
+        self.cmb_proveedor.blockSignals(False)
+        self._cargar_modelos(self.cmb_proveedor.currentText())
+
+    def addItems(self, modelos_prov=None):
+        self._cargar_proveedores()
+        lista = [m.split("/", 1)[1] for m in (modelos_prov or []) if "/" in m]
+        self._mapa = {}
+        if lista:
+            self._mapa[self.cmb_proveedor.currentText()] = lista
+
+    def _cargar_modelos(self, prov):
+        prov = (prov or "").strip()
         self.cmb_modelo.blockSignals(True)
         self.cmb_modelo.clear()
+        lista = self._mapa.get(prov)
+        if lista is None:
+            lista = modelos.lista_modelos_proveedor(prov)
+            self._mapa[prov] = lista
+        if lista:
+            self.cmb_modelo.addItems(lista)
         self.cmb_modelo.blockSignals(False)
-        self._modelos = list(modelos)
-        self._mapeo = {}
-        for modelo in modelos:
-            if "/" in modelo:
-                prov, idm = modelo.split("/", 1)
-                self._mapeo.setdefault(prov, []).append(idm)
-        self._rellenar_proveedores()
+        self._emitir()
 
     def clear(self):
         self.cmb_proveedor.blockSignals(True)
@@ -90,8 +77,7 @@ class SelectorModelo(QWidget):
         self.cmb_proveedor.clear()
         self.cmb_modelo.clear()
         self.blockSignals()
-        self._modelos = []
-        self._mapeo = {}
+        self._mapa = {}
         self.cmb_proveedor.blockSignals(False)
         self.cmb_modelo.blockSignals(False)
 
@@ -107,27 +93,21 @@ class SelectorModelo(QWidget):
             return ""
         if not idm:
             return prov
-        if "/" in self.cmb_modelo.currentText():
-            return self.cmb_modelo.currentText().strip()
+        if "/" in idm and not idm.startswith(prov + "/"):
+            return idm
         return f"{prov}/{idm}"
 
     def setCurrentText(self, valor):
         valor = (valor or "").strip()
-        self.cmb_proveedor.blockSignals(True)
-        self.cmb_modelo.blockSignals(True)
+        self.blockSignals(True)
         if valor:
             if "/" in valor:
                 prov, idm = valor.split("/", 1)
             else:
                 prov, idm = valor, ""
             self.cmb_proveedor.setCurrentText(prov)
-            if prov in self._mapeo:
-                self.cmb_modelo.clear()
-                self.cmb_modelo.addItems(self._mapeo[prov])
+            if idm:
+                self._cargar_modelos(prov)
                 self.cmb_modelo.setCurrentText(idm)
-            else:
-                self.cmb_modelo.clear()
-                self.cmb_modelo.setCurrentText(idm)
-        self.cmb_proveedor.blockSignals(False)
-        self.cmb_modelo.blockSignals(False)
-        self.currentTextChanged.emit(self.currentText())
+        self.blockSignals(False)
+        self._emitir()

@@ -214,11 +214,11 @@ class Ventana(QMainWindow):
         self.txt_padre = QLineEdit("master")
         g.addWidget(self.txt_padre, 2, 1)
         g.addWidget(QLabel("Modelo (agente de tarea):"), 3, 0)
-        self.cmb_agente = SelectorModelo(self._modelos)
+        self.cmb_agente = SelectorModelo()
         self.cmb_agente.currentTextChanged.connect(self._guardar_sel_modelos)
         g.addWidget(self.cmb_agente, 3, 1)
         g.addWidget(QLabel("Modelo (agente revisor del diff):"), 4, 0)
-        self.cmb_revisor = SelectorModelo(self._modelos)
+        self.cmb_revisor = SelectorModelo()
         self.cmb_revisor.currentTextChanged.connect(self._guardar_sel_modelos)
         g.addWidget(self.cmb_revisor, 4, 1)
         self._aplicar_sel_modelos()
@@ -584,7 +584,8 @@ class Ventana(QMainWindow):
         self.cmb_agente.blockSignals(False)
         self.cmb_revisor.blockSignals(False)
         self.lbl_modelos.setText(
-            f"{len(nuevos)} modelos de opencode + selección manual")
+            f"{len(modelos.nombres_proveedores())} proveedores"
+            " con sus modelos")
         self.estado.setText("Modelos refrescados")
         self._guardar_sel_modelos()
 

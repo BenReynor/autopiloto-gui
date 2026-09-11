@@ -28,12 +28,11 @@ proyectos sin tocar archivos ni terminal.
   por separado para tarea y revisor (lista en vivo con `opencode models`, botón
   ↻ Refrescar).
 - Modelos de IA en dos niveles: el selector muestra primero el proveedor
-  (`opencode`, `google`…) y luego el modelo de ese proveedor. La lista se
-  rellena con lo que detecta `opencode models` (Zen + proveedores con
-  credenciales), y ambos campos son editables: puedes escribir a mano cualquier
-  modelo de otro proveedor (`openai/gpt-5.2`, `anthropic/claude-...`…) aunque
-  no tenga credenciales o no esté detectado. La selección se conserva al
-  refrescar y entre sesiones.
+  (`opencode`, `google`, `openai`, `anthropic`, etc.) y, al elegirlo, muestra
+  los modelos de esa empresa. La lista se obtiene con `opencode models` (cuando
+  el proveedor tiene credenciales) y, si no, del catálogo oficial de models.dev
+  (la misma fuente de opencode, cacheado 7 días). Todo por selección, sin
+  escribir; la elección se conserva entre sesiones.
 - Presupuesto estimado en USD/iteración con parada automática al agotarse.
 - **Protección térmica**: vigila la temperatura de la CPU y, si supera el
   umbral, muestra el aviso dentro de la ventana con una cuenta regresiva;
