@@ -118,20 +118,12 @@ tokens_agotados() {
 run_agente() {
     local agente="$1" salida="$2" modelo="${3:-}"
     shift 3
-    case "$agente" in
-        opencode)
-            if [ -n "$modelo" ]; then
-                timeout "$TIMEOUT_POR_TAREA" "$CLI_OPENCODE" run --agent build --model "$modelo" "$@" > "$salida" 2>&1
-            else
-                timeout "$TIMEOUT_POR_TAREA" "$CLI_OPENCODE" run --agent build "$@" > "$salida" 2>&1
-            fi ;;
-        claude)
-            timeout "$TIMEOUT_POR_TAREA" claude -p --dangerously-skip-permissions "$@" > "$salida" 2>&1 ;;
-        codex)
-            timeout "$TIMEOUT_POR_TAREA" codex exec --yolo "$@" > "$salida" 2>&1 ;;
-        *)
-            timeout "$TIMEOUT_POR_TAREA" "$agente" "$@" > "$salida" 2>&1 ;;
-    esac
+    # Solo opencode: los otros agentes no tienen integración de modelo en la GUI.
+    if [ -n "$modelo" ]; then
+        timeout "$TIMEOUT_POR_TAREA" "$CLI_OPENCODE" run --agent build --model "$modelo" "$@" > "$salida" 2>&1
+    else
+        timeout "$TIMEOUT_POR_TAREA" "$CLI_OPENCODE" run --agent build "$@" > "$salida" 2>&1
+    fi
     return $?
 }
 

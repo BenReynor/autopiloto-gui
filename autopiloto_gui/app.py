@@ -378,13 +378,11 @@ class Ventana(QMainWindow):
 
         env = list(QProcess.systemEnvironment())
         env.append(f"MAX_ITER={conf['iteraciones']}")
-        env.append("AGENTE_TAREA=opencode")
         # Solo pasa --model si la selección es provider/model completo;
         # si es solo proveedor, deja que opencode use su config.
         modelo_tarea = conf['agente'] if "/" in conf['agente'] else ""
         modelo_revisor = conf['revisor'] if "/" in conf['revisor'] else ""
         env.append(f"MODELO_TAREA={modelo_tarea}")
-        env.append("AGENTE_REVISOR=opencode")
         env.append(f"MODELO_REVISOR={modelo_revisor}")
         env.append(f"REVISION_DUAL={'1' if conf['dual'] else '0'}")
         env.append(f"VOZ={'1' if conf['voz'] else '0'}")

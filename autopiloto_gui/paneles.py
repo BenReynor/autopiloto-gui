@@ -517,12 +517,12 @@ class PanelEjecucion(QWidget):
                   self._crear_lineedit(cfg.LAUNCH_DEFECTO["padre"]))
         self.txt_padre = g.itemAtPosition(2, 1).widget()
 
-        add_field(3, "Modelo (agente de tarea):",
+        add_field(3, "Modelo (tarea):",
                   SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
         self.cmb_agente = g.itemAtPosition(3, 1).widget()
         self.cmb_agente.currentTextChanged.connect(self.modelos_modificados)
 
-        add_field(4, "Modelo (agente revisor del diff):",
+        add_field(4, "Modelo (revisor del diff):",
                   SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
         self.cmb_revisor = g.itemAtPosition(4, 1).widget()
         self.cmb_revisor.currentTextChanged.connect(self.modelos_modificados)
