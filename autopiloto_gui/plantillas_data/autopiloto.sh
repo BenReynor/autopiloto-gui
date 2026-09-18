@@ -433,6 +433,8 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
             && git -C "$PROYECTO" merge -q --ff-only "$RAMA_TAREA" 2>/dev/null; then
             git -C "$PROYECTO" branch -q -d "$RAMA_TAREA"
             logx "mergeada $RAMA_TAREA -> $RAMA_RUN"
+            # Actualizar mapeo.txt automáticamente tras tarea completada
+            bash "$MAPEAR" > "$MAPA" 2>/dev/null && logx "mapeo.txt actualizado tras $TAREA"
         else
             echo "[autopiloto] ⚠ no se pudo fusionar $RAMA_TAREA; sigue creada." | tee -a "$LOG"
         fi
