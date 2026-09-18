@@ -94,6 +94,27 @@ alerta() {
     printf '\a' 2>/dev/null || true
 }
 
+# Verifica si la salida indica agotamiento de tokens/cuota del proveedor IA.
+# Devuelve 0 si detecta agotamiento, 1 si no.
+tokens_agotados() {
+    local archivo="$1"
+    # Patrones comunes de error de cuota/tokens en proveedores principales
+    grep -qiE \
+        -e "insufficient_quota" \
+        -e "rate_limit_exceeded" \
+        -e "quota.exceeded" \
+        -e "credit.balance.is.too.low" \
+        -e "billing.hard.limit" \
+        -e "RESOURCE_EXHAUSTED" \
+        -e "tokens?.exhausted" \
+        -e "out.of.tokens" \
+        -e "no.quota" \
+        -e "quota.depleted" \
+        -e "monthly.limit" \
+        -e "usage.limit" \
+        "$archivo" >/dev/null 2>&1
+}
+
 run_agente() {
     local agente="$1" salida="$2" modelo="${3:-}"
     shift 3
@@ -141,6 +162,15 @@ Evalúa SOLO: (1) la tarea satisface su criterio, (2) no rompe nada obvio del pr
 Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERDICT: PASS o VERDICT: FAIL"
     run_agente "$rev" "$rev_out" "$MODELO_REVISOR" "$PROMPT_REV"
     cat "$rev_out" >> "$LOG"
+
+    # Comprobar agotamiento de tokens/cuota en la salida del revisor
+    if tokens_agotados "$rev_out"; then
+        echo "[autopiloto] ✗ Tokens/cuota agotados del proveedor IA (revisor) — deteniendo loop" | tee -a "$LOG"
+        logx "ABORTADO: tokens/cuota agotados (revisor)"
+        alerta "Tokens agotados, se detiene el autopiloto"
+        exit 5
+    fi
+
     if grep -q "VERDICT: PASS" "$rev_out"; then
         echo "[autopiloto] ✔ revisor ($rev): PASS"
         grep -iE "VERDICT:" "$rev_out" | tail -1
@@ -335,6 +365,14 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         fi
         cat "$OUT" >> "$LOG"
         cat "$OUT"
+
+        # Comprobar agotamiento de tokens/cuota en la salida del agente
+        if tokens_agotados "$OUT"; then
+            echo "[autopiloto] ✗ Tokens/cuota agotados del proveedor IA — deteniendo loop" | tee -a "$LOG"
+            logx "ABORTADO: tokens/cuota agotados"
+            alerta "Tokens agotados, se detiene el autopiloto"
+            exit 5
+        fi
 
         # Snapshot del árbol tras el agente: permite revertir este intento
         # si el revisor dual o la revisión manual lo rechazan.
