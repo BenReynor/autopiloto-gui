@@ -1,98 +1,35 @@
-"""Ventana principal del panel de control."""
+"""Ventana principal del panel de control (orquestación).
+
+La UI de cada pestaña vive en `paneles.py`; aquí solo se conectan señales,
+se gestionan los procesos (loop/gate), la configuración persistida y la
+vigilancia (temperatura e internet).
+"""
 
 import os
-import subprocess
+import re
 import sys
 
 from PySide6.QtCore import QProcess, QTimer
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QComboBox, QPlainTextEdit, QTabWidget, QLineEdit, QCheckBox,
-    QFileDialog, QMessageBox, QGridLayout, QGroupBox, QDialog,
+    QPushButton, QComboBox, QTabWidget, QFileDialog, QMessageBox,
 )
 
-from . import modelos, net, plantillas, sensor
-from .proceso import PanelTarea, Proceso
-from .proyectos import (cargar, guardar, leer_tema, leer_seguridad,
-                        leer_modelos)
-from .selector_modelo import SelectorModelo
-from .temas import TEMAS, NOMBRES
-
-FUENTE_MONO = "monospace"
-
-
-def _fuente_monospace(objeto):
-    fuente = QFont(objeto.font())
-    fuente.setFamily(FUENTE_MONO)
-    objeto.setFont(fuente)
-
-
-class AvisoTemperatura(QDialog):
-    """Aviso de sobrecalentamiento con cuenta regresiva.
-
-    Si nadie toca los botones antes de que llegue a 0, apaga la aplicación.
-    """
-
-    def __init__(self, temp, segundos, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("⚠ PC demasiado caliente")
-        self.setModal(True)
-        self._segundos = max(1, int(segundos))
-        self._restante = self._segundos
-        self._apagar = None
-
-        v = QVBoxLayout(self)
-        self.lbl_temp = QLabel(f"<b>⚠ Temperatura crítica: {temp} °C</b>")
-        v.addWidget(self.lbl_temp)
-        self.lbl_conteo = QLabel(
-            f"La aplicación se apagará en <b>{self._restante}</b> s.")
-        self.lbl_conteo.setStyleSheet("font-size: 18px;")
-        v.addWidget(self.lbl_conteo)
-
-        h = QHBoxLayout()
-        b_continuar = QPushButton("Continuar")
-        b_continuar.clicked.connect(self._continuar)
-        b_apagar = QPushButton("Apagar ahora")
-        b_apagar.clicked.connect(self._apagar_ahora)
-        h.addWidget(b_continuar)
-        h.addWidget(b_apagar)
-        v.addLayout(h)
-
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self._tick)
-        self.timer.start(1000)
-
-    def _tick(self):
-        self._restante -= 1
-        if self._restante <= 0:
-            self.timer.stop()
-            self._apagar = True
-            self.accept()
-        else:
-            self.lbl_conteo.setText(
-                f"La aplicación se apagará en <b>{self._restante}</b> s.")
-
-    def _continuar(self):
-        self.timer.stop()
-        self._apagar = False
-        self.accept()
-
-    def _apagar_ahora(self):
-        self.timer.stop()
-        self._apagar = True
-        self.accept()
-
-    @property
-    def apagar(self):
-        return self._apagar is True
+from . import configuracion as cfg, modelos, net, plantillas, sensor
+from .paneles import (PanelEjecucion, PanelGit, PanelPlan, PanelSeguridad,
+                      AvisoTemperatura, PanelRevision, PanelLogs)
+from .proceso import Proceso, Trabajo
+from .proyectos import (cargar, guardar, leer_modelos, leer_seguridad,
+                        leer_tema)
+from .temas import NOMBRES, obtener_temas, inicializar_temas
 
 
 class Ventana(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Autopiloto — panel de control")
-        self.resize(980, 680)
+        self.resize(cfg.ANCHO, cfg.ALTO)
 
         self.proyectos = cargar()
         if not self.proyectos:
@@ -109,37 +46,47 @@ class Ventana(QMainWindow):
         self.timer_temp.timeout.connect(self._comprobar_temp)
         self.timer_net = QTimer(self)
         self.timer_net.timeout.connect(self._comprobar_net)
-        self.timer_aviso = None
         self._aviso_abierto = None
         self._nombre_activo = ""
+        self._log_tam = 0
+        self._revision_pendiente = False
+        self._ultima_bloqueada = False
         self.tema = leer_tema()
         self.seguridad = leer_seguridad()
-        self._modelos = modelos.lista_modelos() or [modelos.MODELO_SUGERIDO]
+        self._modelos = []
         self._sel_modelos = leer_modelos()
 
         self._ui()
         self._aplicar_tema(self.tema)
         self._cargar_proyecto()
+        self._cargar_modelos_en_fondo()
         self._iniciar_vigilancia()
         self._comprobar_net()
-        self.timer_net.start(15000)
+        self.timer_net.start(cfg.TIMER_NET_MS)
 
-    def _iniciar_vigilancia(self):
-        seg = self.seguridad
-        activo = bool(seg.get("activo"))
-        ver = bool(seg.get("ver"))
-        self._aplicar_visibilidad_temp(ver)
-        if (activo or ver) and sensor.leer_temperatura() is not None:
-            self.timer_temp.start(1000)
-        else:
-            self.timer_temp.stop()
-        self._comprobar_temp()
+        # Timer para detectar revisión pendiente (cuando revision_manual está activo)
+        self.timer_revision = QTimer(self)
+        self.timer_revision.timeout.connect(self._comprobar_revision_pendiente)
+        self.timer_revision.start(1000)
 
-    def _aplicar_visibilidad_temp(self, ver):
-        if hasattr(self, "lbl_temp"):
-            self.lbl_titulo_temp.setVisible(ver)
-            self.lbl_temp.setVisible(ver)
-            self.lbl_estado_temp.setVisible(ver)
+    def _cargar_modelos_en_fondo(self):
+        """Consulta opencode/models.dev sin bloquear el arranque."""
+        self._worker_modelos = Trabajo(modelos.lista_modelos)
+        self._worker_modelos.listo.connect(self._modelos_cargados)
+        self._worker_modelos.start()
+
+    def _modelos_cargados(self, lista):
+        self._worker_modelos = None
+        nuevos = lista or [cfg.MODELO_SUGERIDO]
+        self._modelos = nuevos
+        for sel in (self.pan_ejec.cmb_agente, self.pan_ejec.cmb_revisor):
+            sel.activar_catalogo_global()
+        self.pan_ejec.agregar_catalogo(nuevos)
+        self.pan_ejec.info_modelos(len(nuevos),
+                                   len(modelos.nombres_proveedores()))
+        self._aplicar_sel_modelos()
+
+    # ---------- UI ----------
 
     def _ui(self):
         central = QWidget()
@@ -170,192 +117,52 @@ class Ventana(QMainWindow):
 
         self.tabs = QTabWidget()
         root.addWidget(self.tabs, 1)
-        self.tabs.addTab(self._tab_plan(), "Plan")
-        self.tabs.addTab(self._tab_ejecucion(), "Ejecución")
-        self.tabs.addTab(self._tab_git(), "Git")
-        self.tabs.addTab(self._tab_seguridad(), "Seguridad")
+        self.pan_plan = PanelPlan()
+        self.pan_plan.guardado.connect(
+            lambda ruta: self.estado.setText(f"plan.md guardado ({ruta})"))
+        self.pan_ejec = PanelEjecucion()
+        self.pan_ejec.iniciar.connect(self._iniciar_loop)
+        self.pan_ejec.detener.connect(self._detener_loop)
+        self.pan_ejec.gate.connect(self._ejecutar_gate)
+        self.pan_ejec.refrescar_modelos.connect(self._refrescar_modelos)
+        self.pan_ejec.modelos_modificados.connect(self._guardar_sel_modelos)
+        # Conectar panel de revisión
+        self.pan_ejec.panel_revision.aprobado.connect(self._revision_aprobada)
+        self.pan_ejec.panel_revision.rechazado.connect(self._revision_rechazada)
+        self.pan_git = PanelGit()
+        self.pan_logs = PanelLogs()
+        self.pan_seg = PanelSeguridad(self.seguridad)
+        self.pan_seg.guardar_ajustes.connect(self._guardar_seguridad)
+        self.tabs.addTab(self.pan_plan, "Plan")
+        self.tabs.addTab(self.pan_ejec, "Ejecución")
+        self.tabs.addTab(self.pan_logs, "Logs")
+        self.tabs.addTab(self.pan_git, "Git")
+        self.tabs.addTab(self.pan_seg, "Seguridad")
 
         self.estado = QLabel("Sin proyecto")
         root.addWidget(self.estado)
 
-    def _tab_plan(self):
-        w = QWidget()
-        v = QVBoxLayout(w)
-        self.lbl_conteo = QLabel("")
-        v.addWidget(self.lbl_conteo)
-        self.editor_plan = QPlainTextEdit()
-        _fuente_monospace(self.editor_plan)
-        v.addWidget(self.editor_plan, 1)
-        h = QHBoxLayout()
-        b_recargar = QPushButton("Recargar")
-        b_recargar.clicked.connect(self._cargar_plan)
-        b_guardar = QPushButton("Guardar plan.md")
-        b_guardar.clicked.connect(self._guardar_plan)
-        h.addStretch()
-        h.addWidget(b_recargar)
-        h.addWidget(b_guardar)
-        v.addLayout(h)
-        return w
+    def _aplicar_tema(self, nombre):
+        temas = obtener_temas()
+        if nombre in temas:
+            QApplication.instance().setStyleSheet(temas[nombre])
 
-    def _tab_ejecucion(self):
-        w = QWidget()
-        v = QVBoxLayout(w)
+    # ---------- Vigilancia térmica ----------
 
-        grupo = QGroupBox("Opciones de lanzamiento")
-        g = QGridLayout(grupo)
-        g.addWidget(QLabel("Hasta (HH:MM, vacío = sin límite):"), 0, 0)
-        self.txt_hasta = QLineEdit("22:00")
-        self.txt_hasta.setPlaceholderText("22:00")
-        g.addWidget(self.txt_hasta, 0, 1)
-        g.addWidget(QLabel("Máx iteraciones:"), 1, 0)
-        self.txt_iter = QLineEdit("40")
-        g.addWidget(self.txt_iter, 1, 1)
-        g.addWidget(QLabel("Padre (rama base):"), 2, 0)
-        self.txt_padre = QLineEdit("master")
-        g.addWidget(self.txt_padre, 2, 1)
-        g.addWidget(QLabel("Modelo (agente de tarea):"), 3, 0)
-        self.cmb_agente = SelectorModelo()
-        self.cmb_agente.currentTextChanged.connect(self._guardar_sel_modelos)
-        g.addWidget(self.cmb_agente, 3, 1)
-        g.addWidget(QLabel("Modelo (agente revisor del diff):"), 4, 0)
-        self.cmb_revisor = SelectorModelo()
-        self.cmb_revisor.currentTextChanged.connect(self._guardar_sel_modelos)
-        g.addWidget(self.cmb_revisor, 4, 1)
-        self._aplicar_sel_modelos()
-        b_modelos = QPushButton("↻ Refrescar modelos")
-        b_modelos.clicked.connect(self._refrescar_modelos)
-        g.addWidget(b_modelos, 5, 0, 1, 2)
-        self.lbl_net = QLabel("")
-        g.addWidget(self.lbl_net, 6, 0, 1, 2)
-        self.lbl_modelos = QLabel(
-            f"{len(self._modelos)} modelos de opencode cargados")
-        g.addWidget(self.lbl_modelos, 7, 0, 1, 2)
-        self.chk_dual = QCheckBox("Gate dual: el revisor exige VERDICT: PASS antes del commit")
-        self.chk_dual.setChecked(True)
-        g.addWidget(self.chk_dual, 8, 0, 1, 2)
-        self.chk_voz = QCheckBox("Alertas de voz al bloquear/terminar (notify-send/spd-say)")
-        g.addWidget(self.chk_voz, 9, 0, 1, 2)
-        g.addWidget(QLabel("Presupuesto máx (USD, 0 = sin límite):"), 10, 0)
-        self.txt_costo_max = QLineEdit("0")
-        g.addWidget(self.txt_costo_max, 10, 1)
-        g.addWidget(QLabel("Costo estimado por tarea (USD):"), 11, 0)
-        self.txt_costo_iter = QLineEdit("0.50")
-        g.addWidget(self.txt_costo_iter, 11, 1)
-        self.chk_push = QCheckBox("--push al final")
-        self.chk_push.setChecked(True)
-        g.addWidget(self.chk_push, 12, 0, 1, 2)
-        v.addWidget(grupo)
-
-        h = QHBoxLayout()
-        self.b_iniciar = QPushButton("▶ Iniciar loop")
-        self.b_iniciar.clicked.connect(self._iniciar_loop)
-        self.b_detener = QPushButton("■ Detener")
-        self.b_detener.clicked.connect(self._detener_loop)
-        self.b_detener.setEnabled(False)
-        self.b_gate = QPushButton("Ejecutar gate.sh")
-        self.b_gate.clicked.connect(self._ejecutar_gate)
-        h.addWidget(self.b_iniciar)
-        h.addWidget(self.b_detener)
-        h.addWidget(self.b_gate)
-        h.addStretch()
-        v.addLayout(h)
-
-        v.addWidget(QLabel("Salida del loop (progreso en vivo):"))
-        self.txt_loop = PanelTarea()
-        _fuente_monospace(self.txt_loop)
-        v.addWidget(self.txt_loop, 1)
-
-        v.addWidget(QLabel("Salida de gate.sh:"))
-        self.txt_gate = PanelTarea()
-        self.txt_gate.setMaximumHeight(180)
-        _fuente_monospace(self.txt_gate)
-        v.addWidget(self.txt_gate)
-        return w
-
-    def _tab_git(self):
-        w = QWidget()
-        v = QVBoxLayout(w)
-        h = QHBoxLayout()
-        self.lbl_rama = QLabel("")
-        b_ref = QPushButton("Refrescar")
-        b_ref.clicked.connect(self._cargar_git)
-        h.addWidget(self.lbl_rama)
-        h.addStretch()
-        h.addWidget(b_ref)
-        v.addLayout(h)
-        self.txt_git = QPlainTextEdit()
-        self.txt_git.setReadOnly(True)
-        _fuente_monospace(self.txt_git)
-        v.addWidget(self.txt_git, 1)
-        return w
-
-    def _tab_seguridad(self):
-        w = QWidget()
-        v = QVBoxLayout(w)
-        grupo = QGroupBox("Temperatura y protección")
-        g = QGridLayout(grupo)
+    def _iniciar_vigilancia(self):
         seg = self.seguridad
-        self.chk_activo = QCheckBox(
-            "Verificar la temperatura y apagar la app si se sobrecalienta")
-        self.chk_activo.setChecked(bool(seg.get("activo")))
-        g.addWidget(self.chk_activo, 0, 0, 1, 2)
-        self.chk_ver = QCheckBox(
-            "Mostrar la temperatura en este panel (actualiza cada segundo)")
-        self.chk_ver.setChecked(bool(seg.get("ver")))
-        g.addWidget(self.chk_ver, 1, 0, 1, 2)
-        g.addWidget(QLabel("Umbral de peligro (°C):"), 2, 0)
-        self.txt_umbral = QLineEdit(str(seg.get("umbral", 85)))
-        g.addWidget(self.txt_umbral, 2, 1)
-        g.addWidget(QLabel("Segundos de aviso antes de apagar:"), 3, 0)
-        self.txt_segundos = QLineEdit(str(seg.get("segundos", 5)))
-        g.addWidget(self.txt_segundos, 3, 1)
-        b_guardar = QPushButton("Guardar ajustes")
-        b_guardar.clicked.connect(self._guardar_seguridad)
-        g.addWidget(b_guardar, 4, 0, 1, 2)
-        v.addWidget(grupo)
-
-        self.lbl_titulo_temp = QLabel("Temperatura actual:")
-        self.lbl_temp = QLabel("—")
-        self.lbl_temp.setStyleSheet("font-size: 26px;")
-        v.addWidget(self.lbl_titulo_temp)
-        v.addWidget(self.lbl_temp)
-        self.lbl_estado_temp = QLabel("")
-        v.addWidget(self.lbl_estado_temp)
-        v.addStretch()
-        return w
-
-    def _guardar_seguridad(self):
-        import re
-
-        def n_int(texto, defv):
-            try:
-                return max(1, int(re.sub(r"\D", "", texto) or defv))
-            except ValueError:
-                return defv
-
-        seg = {
-            "activo": self.chk_activo.isChecked(),
-            "ver": self.chk_ver.isChecked(),
-            "umbral": n_int(self.txt_umbral.text(), 85),
-            "segundos": n_int(self.txt_segundos.text(), 5),
-        }
-        self.seguridad = seg
-        guardar(self.proyectos, self.tema, seg)
-        self._iniciar_vigilancia()
-        self.estado.setText("Ajustes de seguridad guardados")
-
-    def _temperatura_texto(self, t):
-        umbral = self.seguridad.get("umbral", 85)
-        if t is None:
-            return "desconocida", ""
-        color = "color: orange;" if t >= umbral - 10 else "color: green;"
-        if t >= umbral:
-            color = "color: red;"
-        return f"{t:.1f} °C", f"font-size: 26px; {color}"
+        activo = bool(seg.get("activo"))
+        ver = bool(seg.get("ver"))
+        self.pan_seg.set_visibilidad_temp(ver)
+        if (activo or ver) and sensor.leer_temperatura() is not None:
+            self.timer_temp.start(cfg.TIMER_TEMP_MS)
+        else:
+            self.timer_temp.stop()
+        self._comprobar_temp()
 
     def _comprobar_temp(self):
         t = sensor.leer_temperatura()
-        self._mostrar_temp(t)
+        self.pan_seg.actualizar_temp(t, self.seguridad.get("umbral", 85))
         seg = self.seguridad
         if not seg.get("activo") or t is None:
             return
@@ -364,22 +171,6 @@ class Ventana(QMainWindow):
                 self._abrir_aviso(t)
         elif self._aviso_abierto is not None:
             self._aviso_abierto._continuar()
-
-    def _mostrar_temp(self, t):
-        if not hasattr(self, "lbl_temp"):
-            return
-        texto, estilo = self._temperatura_texto(t)
-        self.lbl_temp.setStyleSheet(estilo)
-        self.lbl_temp.setText(texto)
-        if t is None:
-            self.lbl_estado_temp.setText("No hay sensor de temperatura disponible.")
-        elif t >= float(self.seguridad.get("umbral", 85)):
-            self.lbl_estado_temp.setText(
-                "⚠ SOBRECALENTAMIENTO: se abrirá el aviso de apagado.")
-        elif t >= float(self.seguridad.get("umbral", 85)) - 10:
-            self.lbl_estado_temp.setText("Temperatura alta: vigila.")
-        else:
-            self.lbl_estado_temp.setText("Temperatura normal.")
 
     def _abrir_aviso(self, t):
         aviso = AvisoTemperatura(t, self.seguridad.get("segundos", 5), self)
@@ -404,11 +195,13 @@ class Ventana(QMainWindow):
         self.estado.setText("🔥 Apagado por sobrecalentamiento. Hasta luego.")
         QTimer.singleShot(1200, QApplication.instance().quit)
 
-    # ---------- Proyectos ----------
+    def _guardar_seguridad(self, seg):
+        self.seguridad = seg
+        guardar(self.proyectos, self.tema, seg)
+        self._iniciar_vigilancia()
+        self.estado.setText("Ajustes de seguridad guardados")
 
-    def _aplicar_tema(self, nombre):
-        if nombre in TEMAS:
-            QApplication.instance().setStyleSheet(TEMAS[nombre])
+    # ---------- Proyectos ----------
 
     def _cambiar_tema(self, nombre):
         self.tema = nombre
@@ -440,30 +233,39 @@ class Ventana(QMainWindow):
         p = self._proyecto_actual()
         if not p:
             self.estado.setText("Sin proyecto")
+            self.pan_plan.clear()
+            self.pan_git.cargar(None)
+            self.pan_logs.panel_loop.clear()
+            self.pan_logs.panel_gate.clear()
             return
         nombre, ruta = p
         self._nombre_activo = nombre
+        self._log_tam = 0
         self.estado.setText(f"Proyecto: {nombre} — {ruta}")
-        self._cargar_plan()
-        self._cargar_git()
-        self.txt_gate.clear()
-        self.txt_loop.clear()
+        self.pan_plan.cargar(ruta)
+        self.pan_git.cargar(ruta)
+        self.pan_logs.panel_gate.clear()
+        self.pan_logs.panel_loop.clear()
         self._tail_log()
 
         faltan = plantillas.faltan(ruta)
         if faltan:
             plantillas.instalar(ruta)
-            self.txt_loop.appendPlainText(
+            self.pan_logs.panel_loop.appendPlainText(
                 f"[auto-provision] Plantillas instaladas: {', '.join(faltan)}")
 
         desactualizados = plantillas._desactualizados(ruta)
         if desactualizados:
             plantillas.actualizar(ruta)
-            self.txt_loop.appendPlainText(
-                f"[auto-update] Plantillas actualizadas: {', '.join(desactualizados)}")
+            self.pan_logs.panel_loop.appendPlainText(
+                f"[auto-update] Plantillas actualizadas: "
+                f"{', '.join(desactualizados)}")
 
-        self.b_iniciar.setEnabled(True)
-        self.b_gate.setEnabled(True)
+        self.pan_ejec.b_gate.setEnabled(
+            os.path.exists(os.path.join(ruta, "gate.sh")))
+        if not self.loop or self.loop.state() != QProcess.Running:
+            self.pan_ejec.b_iniciar.setEnabled(True)
+        self._aplicar_sel_modelos()
 
     def _agregar_proyecto(self):
         ruta = QFileDialog.getExistingDirectory(
@@ -487,10 +289,12 @@ class Ventana(QMainWindow):
 
     def _quitar_proyecto(self):
         nombre = self.cmb.currentText()
-        if not nombre:
-            return
         p = self._proyecto_actual()
-        if not p:
+        if not nombre or not p:
+            return
+        if self.loop and self.loop.state() == QProcess.Running:
+            QMessageBox.warning(self, "Autopiloto en ejecución",
+                                "Detén el loop antes de quitar un proyecto.")
             return
         _, ruta = p
         resp = QMessageBox.question(
@@ -513,165 +317,114 @@ class Ventana(QMainWindow):
                     "Eliminado de la lista y borrados:\n  · "
                     + "\n  · ".join(eliminados))
 
-    # ---------- Plan ----------
-
-    def _cargar_plan(self):
-        p = self._proyecto_actual()
-        if not p:
-            return
-        ruta = os.path.join(p[1], "plan.md")
-        if not os.path.exists(ruta):
-            self.editor_plan.setPlainText("# PLAN\n\n- [ ] tu primera tarea — criterio: ...\n")
-            self.lbl_conteo.setText("plan.md no existe aún")
-            return
-        with open(ruta, "r", encoding="utf-8") as f:
-            self.editor_plan.setPlainText(f.read())
-        self._actualizar_conteo()
-
-    def _actualizar_conteo(self):
-        pend, hecho, bloqueada = 0, 0, 0
-        for l in self.editor_plan.toPlainText().splitlines():
-            if l.startswith("- [ ]"):
-                pend += 1
-            elif l.startswith("- [x]"):
-                hecho += 1
-            elif l.startswith("- [B]"):
-                bloqueada += 1
-        self.lbl_conteo.setText(
-            f"Pendientes: {pend}   ·   Hechas: {hecho}   ·   Bloqueadas: {bloqueada}")
-
-    def _guardar_plan(self):
-        p = self._proyecto_actual()
-        if not p:
-            return
-        ruta = os.path.join(p[1], "plan.md")
-        with open(ruta, "w", encoding="utf-8") as f:
-            f.write(self.editor_plan.toPlainText())
-        self._actualizar_conteo()
-        self.estado.setText(f"plan.md guardado ({ruta})")
-
-    # ---------- Loop ----------
+    # ---------- Modelos ----------
 
     def _aplicar_sel_modelos(self):
-        sel_tarea = self._sel_modelos.get("tarea")
-        sel_revisor = self._sel_modelos.get("revisor")
-        self.cmb_agente.setCurrentText(
-            sel_tarea if sel_tarea else modelos.sugerido(self._modelos))
-        self.cmb_revisor.setCurrentText(
-            sel_revisor if sel_revisor else modelos.sugerido(self._modelos))
+        sug = modelos.sugerido(self._modelos)
+        self.pan_ejec.aplicar_modelos({
+            "tarea": self._sel_modelos.get("tarea") or sug,
+            "revisor": self._sel_modelos.get("revisor") or sug,
+        })
 
     def _guardar_sel_modelos(self, *_):
-        self._sel_modelos = {
-            "tarea": self.cmb_agente.currentText(),
-            "revisor": self.cmb_revisor.currentText(),
-        }
+        self._sel_modelos = self.pan_ejec.modelos_seleccion()
         guardar(self.proyectos, self.tema,
                 seguridad=self.seguridad, modelos=self._sel_modelos)
 
     def _refrescar_modelos(self):
-        nuevos = modelos.lista_modelos()
-        if not nuevos:
-            nuevos = [modelos.MODELO_SUGERIDO]
-        actual_agente = self.cmb_agente.currentText()
-        actual_revisor = self.cmb_revisor.currentText()
+        modelos.invalidar_cache()
+        nuevos = modelos.lista_modelos() or [cfg.MODELO_SUGERIDO]
         self._modelos = nuevos
-        self.cmb_agente.blockSignals(True)
-        self.cmb_revisor.blockSignals(True)
-        self.cmb_agente.addItems(nuevos)
-        self.cmb_revisor.addItems(nuevos)
-        self.cmb_agente.setCurrentText(actual_agente)
-        self.cmb_revisor.setCurrentText(actual_revisor)
-        self.cmb_agente.blockSignals(False)
-        self.cmb_revisor.blockSignals(False)
-        self.lbl_modelos.setText(
-            f"{len(modelos.nombres_proveedores())} proveedores"
-            " con sus modelos")
+        for sel in (self.pan_ejec.cmb_agente, self.pan_ejec.cmb_revisor):
+            sel.activar_catalogo_global()
+        self.pan_ejec.agregar_catalogo(nuevos)
+        self.pan_ejec.info_modelos(
+            len(nuevos), len(modelos.nombres_proveedores()))
+        self._aplicar_sel_modelos()
         self.estado.setText("Modelos refrescados")
         self._guardar_sel_modelos()
 
+    # ---------- Internet ----------
+
     def _comprobar_net(self):
-        ok = net.hay_internet()
-        if hasattr(self, "lbl_net"):
-            self.lbl_net.setText(
-                ("🟢 Internet: OK" if ok else "🔴 Internet: SIN CONEXIÓN — "
-                 "los modelos IA no responderán; el loop no arrancará")
-            )
-        self._net_ok = ok
-        return ok
+        net.verificar_async()
+        self.pan_ejec.nota_net(net.ultimo_estado())
+
+    # ---------- Loop ----------
 
     def _iniciar_loop(self):
         p = self._proyecto_actual()
         if not p:
             return
-        if not self._comprobar_net():
+        estado_net = net.ultimo_estado()
+        if estado_net is None:
+            estado_net = net.hay_internet()
+        if not estado_net:
             QMessageBox.warning(
                 self, "Sin internet",
                 "No hay conexión a internet.\n\nLos modelos IA de opencode "
                 "no pueden responder y el loop se detendrá al arrancar. "
                 "Conecta la red e inténtalo de nuevo.")
             return
-        _, ruta = p
+        ruta = p[1]
+        conf = self.pan_ejec.config()
         args = []
-        hasta = self.txt_hasta.text().strip()
-        if hasta:
-            args += ["--hasta", hasta]
-        padre = self.txt_padre.text().strip()
-        if padre:
-            args += ["--padre", padre]
-        if self.chk_push.isChecked():
+        if conf["hasta"]:
+            args += ["--hasta", conf["hasta"]]
+        if conf["padre"]:
+            args += ["--padre", conf["padre"]]
+        if conf["push"]:
             args.append("--push")
-        try:
-            iter_v = int(self.txt_iter.text().strip() or "40")
-        except ValueError:
-            iter_v = 40
+
         env = list(QProcess.systemEnvironment())
-        env.append(f"MAX_ITER={iter_v}")
+        env.append(f"MAX_ITER={conf['iteraciones']}")
         env.append("AGENTE_TAREA=opencode")
-        env.append(f"MODELO_TAREA={self.cmb_agente.currentText()}")
+        # Solo pasa --model si la selección es provider/model completo;
+        # si es solo proveedor, deja que opencode use su config.
+        modelo_tarea = conf['agente'] if "/" in conf['agente'] else ""
+        modelo_revisor = conf['revisor'] if "/" in conf['revisor'] else ""
+        env.append(f"MODELO_TAREA={modelo_tarea}")
         env.append("AGENTE_REVISOR=opencode")
-        env.append(f"MODELO_REVISOR={self.cmb_revisor.currentText()}")
+        env.append(f"MODELO_REVISOR={modelo_revisor}")
+        env.append(f"REVISION_DUAL={'1' if conf['dual'] else '0'}")
+        env.append(f"VOZ={'1' if conf['voz'] else '0'}")
+        env.append(f"MAX_COSTO={conf['costo_max']}")
+        env.append(f"COSTO_POR_ITER={conf['costo_iter']}")
+        env.append(f"REVISION_MANUAL={'1' if conf['revision_manual'] else '0'}")
 
-        def _fl(texto, defv, tipo=float):
-            try:
-                return tipo(texto.strip() or defv)
-            except ValueError:
-                return defv
-
-        env.append(f"REVISION_DUAL={'1' if self.chk_dual.isChecked() else '0'}")
-        env.append(f"VOZ={'1' if self.chk_voz.isChecked() else '0'}")
-        env.append(f"MAX_COSTO={_fl(self.txt_costo_max.text(), 0)}")
-        env.append(f"COSTO_POR_ITER={_fl(self.txt_costo_iter.text(), 0.50)}")
-        self.txt_loop.clear()
-        self.txt_loop.appendPlainText(
+        panel = self.pan_ejec.panel_loop
+        panel.clear()
+        panel.appendPlainText(
             f"> bash autopiloto.sh {' '.join(args)}  "
-            f"(modelo tarea={self.cmb_agente.currentText()}, "
-            f"modelo revisor={self.cmb_revisor.currentText()}, "
-            f"dual={self.chk_dual.isChecked()}, "
-            f"costo={env[-2].split('=')[1]}, iter={iter_v})")
-        self.loop = Proceso(self.txt_loop, on_fin=self._loop_fin)
+            f"(modelo tarea={conf['agente']}, modelo revisor={conf['revisor']}, "
+            f"dual={conf['dual']}, "
+            f"costo/iter={conf['costo_iter']} USD, iter={conf['iteraciones']})")
+        self.loop = Proceso(panel, on_fin=self._loop_fin)
         self.loop.setWorkingDirectory(ruta)
         self.loop.setEnvironment(env)
         self.loop.start("bash", ["autopiloto.sh"] + args)
-        self.b_iniciar.setEnabled(False)
-        self.b_detener.setEnabled(True)
-        self.b_gate.setEnabled(False)
+        self.pan_ejec.b_iniciar.setEnabled(False)
+        self.pan_ejec.b_detener.setEnabled(True)
+        self.pan_ejec.b_gate.setEnabled(False)
         self.cmb.setEnabled(False)
-        self.timer.start(1000)
+        self.timer.start(cfg.TIMER_TAIL_MS)
 
     def _loop_fin(self):
-        self.b_iniciar.setEnabled(True)
-        self.b_detener.setEnabled(False)
+        self.pan_ejec.b_iniciar.setEnabled(True)
+        self.pan_ejec.b_detener.setEnabled(False)
         p = self._proyecto_actual()
         if p:
-            self.b_gate.setEnabled(os.path.exists(os.path.join(p[1], "gate.sh")))
+            self.pan_ejec.b_gate.setEnabled(
+                os.path.exists(os.path.join(p[1], "gate.sh")))
         self.cmb.setEnabled(True)
         self.timer.stop()
-        self._cargar_plan()
-        self._cargar_git()
+        if p:
+            self.pan_plan.cargar(p[1])
+            self.pan_git.cargar(p[1])
 
     def _detener_loop(self):
         if self.loop and self.loop.state() == QProcess.Running:
-            self.txt_loop.appendPlainText("[manual] deteniendo el loop…")
+            self.pan_logs.panel_loop.appendPlainText("[manual] deteniendo el loop…")
             self.loop.terminate()
             if not self.loop.waitForFinished(5000):
                 self.loop.kill()
@@ -681,9 +434,90 @@ class Ventana(QMainWindow):
         if not p:
             return
         log = os.path.join(p[1], "progreso.log")
-        if os.path.exists(log):
-            with open(log, "r", encoding="utf-8", errors="replace") as f:
-                self.txt_loop.setPlainText(f.read()[-4000:])
+        try:
+            tam = os.path.getsize(log)
+        except OSError:
+            return
+        if tam == self._log_tam:
+            return  # sin cambios: no releer ni repintar
+        self._log_tam = tam
+        inicio = max(0, tam - cfg.TAIL_LOG_BYTES)
+        try:
+            with open(log, "rb") as f:
+                f.seek(inicio)
+                datos = f.read().decode("utf-8", "replace")
+        except OSError:
+            return
+        if inicio > 0 and "\n" in datos:
+            datos = datos[datos.index("\n") + 1:]  # descarta línea cortada
+        self.pan_logs.panel_loop.setPlainText(datos)
+
+        # Detectar tarea bloqueada y notificar
+        if "tarea bloqueada" in datos.lower() and not self._ultima_bloqueada:
+            self._ultima_bloqueada = True
+            self._notificar_tarea_bloqueada(datos)
+        elif "tarea bloqueada" not in datos.lower():
+            self._ultima_bloqueada = False
+
+    def _notificar_tarea_bloqueada(self, log_texto):
+        # Extraer nombre de la tarea del log
+        m = re.search(r"tarea bloqueada[:\s]+([^\n]+)", log_texto, re.IGNORECASE)
+        tarea = m.group(1).strip() if m else "desconocida"
+        self.estado.setText(f"⚠ Tarea bloqueada: {tarea}")
+        # Sonido de alerta
+        try:
+            import subprocess
+            subprocess.run(["notify-send", "Autopiloto", f"Tarea bloqueada: {tarea}"], timeout=2)
+        except Exception:
+            pass
+        # Beep
+        try:
+            sys.stdout.write('\a')
+            sys.stdout.flush()
+        except Exception:
+            pass
+
+    def _comprobar_revision_pendiente(self):
+        """Detecta si autopiloto.sh está esperando revisión manual."""
+        if not self.loop or self.loop.state() != QProcess.Running:
+            self._revision_pendiente = False
+            return
+        if not self.pan_ejec.revision_manual_activa():
+            return
+        p = self._proyecto_actual()
+        if not p:
+            return
+        ruta = p[1]
+        dir_revision = os.path.join(ruta, ".autopiloto_review")
+        archivo_esperando = os.path.join(dir_revision, "waiting")
+        archivo_diff = os.path.join(dir_revision, "diff.txt")
+        archivo_tarea = os.path.join(dir_revision, "tarea.txt")
+
+        if os.path.exists(archivo_esperando) and not self._revision_pendiente:
+            # Leer tarea y diff
+            tarea = ""
+            try:
+                with open(archivo_tarea, "r", encoding="utf-8") as f:
+                    tarea = f.read().strip()
+            except OSError:
+                pass
+            self._revision_pendiente = True
+            self.pan_ejec.panel_revision.mostrar_revision(ruta, tarea, archivo_diff, os.path.join(dir_revision, "decision"))
+            self.pan_ejec.panel_loop.appendPlainText(f"\n[GUI] ⏸ Revisión manual requerida para: {tarea}")
+
+        elif not os.path.exists(archivo_esperando) and self._revision_pendiente:
+            # La revisión ya no está pendiente (se resolvió)
+            self._revision_pendiente = False
+            self.pan_ejec.panel_revision.ocultar()
+
+    def _revision_aprobada(self):
+        self._revision_pendiente = False
+        self.estado.setText("✓ Diff aprobado, continuando loop…")
+
+    def _revision_rechazada(self, motivo):
+        self._revision_pendiente = False
+        self.estado.setText(f"✗ Diff rechazado: {motivo[:60]}…")
+        self.pan_ejec.panel_loop.appendPlainText(f"[GUI] Rechazado: {motivo}")
 
     # ---------- Gate ----------
 
@@ -692,40 +526,17 @@ class Ventana(QMainWindow):
         if not p:
             return
         _, ruta = p
-        self.txt_gate.clear()
-        self.txt_gate.appendPlainText("> bash gate.sh")
-        self.gate = Proceso(self.txt_gate)
+        panel = self.pan_logs.panel_gate
+        panel.clear()
+        panel.appendPlainText("> bash gate.sh")
+        self.gate = Proceso(panel)
         self.gate.setWorkingDirectory(ruta)
         self.gate.start("bash", ["gate.sh"])
-
-    # ---------- Git ----------
-
-    def _cargar_git(self):
-        p = self._proyecto_actual()
-        if not p:
-            self.txt_git.clear()
-            return
-        _, ruta = p
-
-        def run(cmd):
-            try:
-                out = subprocess.run(cmd, cwd=ruta, capture_output=True,
-                                     text=True, timeout=20)
-                return out.stdout.strip()
-            except Exception:
-                return ""
-
-        rama = run(["git", "branch", "--show-current"])
-        self.lbl_rama.setText(f"Rama: {rama}" if rama else "Rama: —")
-        status = run(["git", "status", "--short"])
-        log = run(["git", "log", "--oneline", "-12"])
-        texto = "── status ──\n" + (status or "(limpio)\n")
-        texto += "\n── últimos commits ──\n" + (log or "(sin commits)")
-        self.txt_git.setPlainText(texto)
 
 
 def main():
     app = QApplication(sys.argv)
+    inicializar_temas()
     icono = os.path.join(os.path.dirname(__file__), "icono.svg")
     if os.path.exists(icono):
         app.setWindowIcon(QIcon(icono))

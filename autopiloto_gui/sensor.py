@@ -4,9 +4,22 @@ import glob
 import re
 import shutil
 import subprocess
+import time
+
+from . import configuracion as cfg
 
 LIMITE_SUPERIOR = 150
 LIMITE_INFERIOR = 5
+
+# La GUI llama a leer_temperatura() cada segundo; cacheamos el resultado
+# unos segundos para no lanzar `sensors` en cada tick.
+_CACHE_SEG = 2
+_cache = (0.0, None)
+
+
+def _cachear(valor):
+    global _cache
+    _cache = (time.monotonic(), valor)
 
 
 def _zonas_termicas():
@@ -28,7 +41,7 @@ def _sensors():
         return []
     try:
         out = subprocess.run(["sensors", "-u"], capture_output=True,
-                             text=True, timeout=5)
+                             text=True, timeout=cfg.TIMEOUT_SENSORES)
     except (OSError, subprocess.TimeoutExpired):
         return []
     valores = []
@@ -44,7 +57,9 @@ def _sensors():
 
 def leer_temperatura():
     """Devuelve la temperatura máxima (en °C) o None si no se puede leer."""
+    momento, valor = _cache
+    if time.monotonic() - momento < _CACHE_SEG:
+        return valor
     todas = _zonas_termicas() + _sensors()
-    if not todas:
-        return None
-    return max(todas)
+    _cachear(max(todas) if todas else None)
+    return _cache[1]

@@ -1,6 +1,6 @@
-"""Helpers de procesos: captura de salida en vivo para los scripts."""
+"""Helpers de procesos: captura de salida en vivo y trabajos en segundo plano."""
 
-from PySide6.QtCore import QProcess
+from PySide6.QtCore import QProcess, QThread, Signal
 from PySide6.QtWidgets import QPlainTextEdit
 
 
@@ -10,6 +10,26 @@ class PanelTarea(QPlainTextEdit):
         self.setReadOnly(True)
         self.setMaximumBlockCount(5000)
         self.setPlaceholderText("…")
+
+
+class Trabajo(QThread):
+    """Ejecuta una función sin bloqueo; devuelve su resultado por señal.
+
+    El resultado se emite en el hilo de la UI, así el `slot` puede tocar
+    widgets sin peligro. Emite None si la función lanza una excepción.
+    """
+
+    listo = Signal(object)
+
+    def __init__(self, fn, parent=None):
+        super().__init__(parent)
+        self._fn = fn
+
+    def run(self):
+        try:
+            self.listo.emit(self._fn())
+        except Exception:
+            self.listo.emit(None)
 
 
 class Proceso(QProcess):

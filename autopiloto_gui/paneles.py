@@ -1,0 +1,926 @@
+"""Widgets de las pestañas del panel y el aviso de sobrecalentamiento.
+
+Cada clase construye su UI y expone señales/métodos; la ventana (app.py) solo
+orquesta: conecta señales, gestiona procesos y actualiza estado.
+"""
+
+import os
+import re
+import subprocess
+import sys
+
+from PySide6.QtCore import QTimer, Signal, Qt
+from PySide6.QtWidgets import (
+    QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QComboBox, QPlainTextEdit, QLineEdit, QCheckBox, QGridLayout, QGroupBox,
+    QSplitter, QFrame, QListWidget, QListWidgetItem, QAbstractItemView,
+    QInputDialog,
+)
+
+from . import configuracion as cfg, modelos, plan
+from .modelos import PROVEEDORES_CATALOGO
+from .proceso import PanelTarea, Trabajo
+from .selector_modelo import SelectorModelo
+
+
+def _fuente_monospace(objeto):
+    from PySide6.QtGui import QFont
+    fuente = QFont(objeto.font())
+    fuente.setFamily(cfg.FUENTE_MONO)
+    objeto.setFont(fuente)
+
+
+def _fuente_ui(objeto):
+    from PySide6.QtGui import QFont
+    fuente = QFont(objeto.font())
+    fuente.setFamily(cfg.FUENTE_UI)
+    objeto.setFont(fuente)
+
+
+def _numero(texto, defv, tipo=float, minimo=None):
+    """Parsea un texto numérico tolerante (ignora caracteres extraños)."""
+    try:
+        valor = tipo(re.sub(r"[^\d.-]", "", texto or "").strip() or defv)
+    except ValueError:
+        valor = defv
+    if minimo is not None:
+        valor = max(minimo, valor)
+    return valor
+
+
+class _LabelMuted(QLabel):
+    """Label con color de texto secundario."""
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setProperty("status", "muted")
+
+
+class _LabelStatus(QLabel):
+    """Label con estado semántico (success/warning/error/info)."""
+    def __init__(self, text="", status="info", parent=None):
+        super().__init__(text, parent)
+        self.setProperty("status", status)
+
+
+class _BtnPrimary(QPushButton):
+    """Botón principal (acción principal)."""
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+
+
+class _BtnGhost(QPushButton):
+    """Botón secundario (ghost)."""
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setProperty("ghost", True)
+
+
+class _BtnDanger(QPushButton):
+    """Botón destructivo (danger)."""
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setProperty("danger", True)
+
+
+class AvisoTemperatura(QDialog):
+    """Aviso de sobrecalentamiento con cuenta regresiva.
+
+    Si nadie toca los botones antes de que llegue a 0, apaga la aplicación.
+    """
+
+    def __init__(self, temp, segundos, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("⚠ PC demasiado caliente")
+        self.setModal(True)
+        self._segundos = max(1, int(segundos))
+        self._restante = self._segundos
+        self._apagar = None
+
+        v = QVBoxLayout(self)
+        v.setSpacing(16)
+        v.setContentsMargins(24, 24, 24, 24)
+
+        self.lbl_temp = QLabel(f"⚠ Temperatura crítica: <b>{temp} °C</b>")
+        self.lbl_temp.setWordWrap(True)
+        v.addWidget(self.lbl_temp)
+
+        self.lbl_conteo = QLabel(
+            f"La aplicación se apagará en <b>{self._restante}</b> s.")
+        v.addWidget(self.lbl_conteo)
+
+        h = QHBoxLayout()
+        h.setSpacing(12)
+        b_continuar = _BtnPrimary("Continuar")
+        b_continuar.clicked.connect(self._continuar)
+        b_apagar = _BtnDanger("Apagar ahora")
+        b_apagar.clicked.connect(self._apagar_ahora)
+        h.addWidget(b_continuar)
+        h.addWidget(b_apagar)
+        v.addLayout(h)
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._tick)
+        self.timer.start(1000)
+
+    def _tick(self):
+        self._restante -= 1
+        if self._restante <= 0:
+            self.timer.stop()
+            self._apagar = True
+            self.accept()
+        else:
+            self.lbl_conteo.setText(
+                f"La aplicación se apagará en <b>{self._restante}</b> s.")
+
+    def _continuar(self):
+        self.timer.stop()
+        self._apagar = False
+        self.accept()
+
+    def _apagar_ahora(self):
+        self.timer.stop()
+        self._apagar = True
+        self.accept()
+
+    @property
+    def apagar(self):
+        return self._apagar is True
+
+
+class KanbanWidget(QWidget):
+    """Vista Kanban de tareas: 3 columnas (Pendiente, Hecha, Bloqueada)."""
+
+    tarea_seleccionada = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._plan = None
+
+        h = QHBoxLayout(self)
+        h.setSpacing(8)
+        h.setContentsMargins(0, 0, 0, 0)
+
+        self.col_pend = self._crear_columna("Pendientes", "#3b82f6")
+        self.col_hecha = self._crear_columna("Hechas", "#22c55e")
+        self.col_bloq = self._crear_columna("Bloqueadas", "#ef4444")
+
+        h.addWidget(self.col_pend, 1)
+        h.addWidget(self.col_hecha, 1)
+        h.addWidget(self.col_bloq, 1)
+
+    def _crear_columna(self, titulo, color_acento):
+        frame = QFrame()
+        frame.setFrameShape(QFrame.StyledPanel)
+        frame.setProperty("class", "kanban-col")
+        frame.setStyleSheet(f"""
+            QFrame[class="kanban-col"] {{
+                background-color: transparent;
+                border-radius: 8px;
+                border: 1px solid transparent;
+            }}
+        """)
+        v = QVBoxLayout(frame)
+        v.setContentsMargins(8, 8, 8, 8)
+        v.setSpacing(8)
+
+        # Header con título + contador
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        lbl = QLabel(titulo)
+        lbl.setStyleSheet(f"color: {color_acento}; font-weight: 600; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;")
+        header.addWidget(lbl)
+        header.addStretch()
+        badge = QLabel("0")
+        badge.setProperty("class", "kanban-badge")
+        badge.setStyleSheet(f"""
+            QLabel[class="kanban-badge"] {{
+                background: {color_acento};
+                color: white;
+                font-size: 10px;
+                font-weight: 600;
+                padding: 2px 6px;
+                border-radius: 10px;
+                min-width: 18px;
+                text-align: center;
+            }}
+        """)
+        badge.setAlignment(Qt.AlignCenter)
+        header.addWidget(badge)
+        frame.header_layout = header
+        frame.badge = badge
+        v.addLayout(header)
+
+        lista = QListWidget()
+        lista.setSelectionMode(QAbstractItemView.SingleSelection)
+        lista.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        lista.setStyleSheet(f"""
+            QListWidget {{
+                background: transparent;
+                border: 1px solid {color_acento}40;
+                border-radius: 6px;
+                outline: none;
+            }}
+            QListWidget::item {{
+                background: palette(base);
+                border: 1px solid palette(mid);
+                border-radius: 4px;
+                padding: 8px 10px;
+                margin: 2px;
+                color: palette(text);
+            }}
+            QListWidget::item:selected {{
+                background: palette(highlight);
+                color: palette(highlighted-text);
+                border-color: palette(highlight);
+            }}
+            QListWidget::item:hover:!selected {{
+                background: palette(alternate-base);
+            }}
+        """)
+        lista.itemClicked.connect(lambda item: self.tarea_seleccionada.emit(item.text()))
+        v.addWidget(lista, 1)
+
+        frame.lista = lista
+        frame.color_acento = color_acento
+        return frame
+
+    def cargar(self, plan_obj):
+        self._plan = plan_obj
+        self._actualizar()
+
+    def _actualizar(self):
+        for col in (self.col_pend, self.col_hecha, self.col_bloq):
+            col.lista.clear()
+            col.badge.setText("0")
+        if not self._plan:
+            return
+        pend = hecha = bloq = 0
+        for t in self._plan.tareas:
+            item = QListWidgetItem(t["texto"])
+            item.setToolTip(f"Línea {t['linea']}")
+            # Estados visuales
+            if t["estado"] == "pendiente":
+                self.col_pend.lista.addItem(item)
+                pend += 1
+            elif t["estado"] == "hecha":
+                # Tachado visual
+                font = item.font()
+                font.setStrikeOut(True)
+                item.setFont(font)
+                item.setForeground(Qt.gray)
+                self.col_hecha.lista.addItem(item)
+                hecha += 1
+            elif t["estado"] == "bloqueada":
+                # Rojo + negrita
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+                item.setForeground(Qt.red)
+                self.col_bloq.lista.addItem(item)
+                bloq += 1
+        # Actualizar badges
+        self.col_pend.badge.setText(str(pend))
+        self.col_hecha.badge.setText(str(hecha))
+        self.col_bloq.badge.setText(str(bloq))
+
+    def clear(self):
+        for col in (self.col_pend, self.col_hecha, self.col_bloq):
+            col.lista.clear()
+            col.badge.setText("0")
+
+
+class PanelPlan(QWidget):
+    """Editor de plan.md con contador de tareas y vista Kanban."""
+
+    guardado = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._plan = None
+
+        v = QVBoxLayout(self)
+        v.setSpacing(8)
+        v.setContentsMargins(0, 0, 0, 0)
+
+        self.lbl_conteo = _LabelMuted("")
+        v.addWidget(self.lbl_conteo)
+
+        # Splitter: Kanban arriba, editor abajo
+        self.splitter = QSplitter(Qt.Vertical)
+        self.splitter.setHandleWidth(4)
+        self.splitter.setChildrenCollapsible(False)
+
+        self.kanban = KanbanWidget()
+        self.kanban.tarea_seleccionada.connect(self._en_editor_seleccionar)
+        self.splitter.addWidget(self.kanban)
+
+        self.editor = QPlainTextEdit()
+        _fuente_monospace(self.editor)
+        self.editor.textChanged.connect(self._actualizar_conteo)
+        self.splitter.addWidget(self.editor)
+        self.splitter.setSizes([200, 400])
+        v.addWidget(self.splitter, 1)
+
+        h = QHBoxLayout()
+        h.setSpacing(8)
+        b_recargar = _BtnGhost("Recargar")
+        b_recargar.clicked.connect(lambda: self.cargar())
+        b_guardar = _BtnPrimary("Guardar plan.md")
+        b_guardar.clicked.connect(self.guardar)
+        h.addStretch()
+        h.addWidget(b_recargar)
+        h.addWidget(b_guardar)
+        v.addLayout(h)
+
+    def _en_editor_seleccionar(self, texto):
+        """Scroll al editor a la línea de la tarea seleccionada en Kanban."""
+        if not self._plan:
+            return
+        for i, linea in enumerate(self.editor.toPlainText().splitlines(), 1):
+            if texto in linea:
+                cursor = self.editor.textCursor()
+                cursor.movePosition(cursor.Start)
+                for _ in range(i - 1):
+                    cursor.movePosition(cursor.Down)
+                self.editor.setTextCursor(cursor)
+                self.editor.ensureCursorVisible()
+                break
+
+    def cargar(self, ruta=None):
+        if ruta is not None:
+            self._plan = plan.Plan(ruta) if ruta else None
+        if not self._plan:
+            self.clear()
+            return
+        if not self._plan.existe():
+            self.editor.setPlainText("# PLAN\n\n- [ ] tu primera tarea — criterio: ...\n")
+            self.lbl_conteo.setText("plan.md no existe aún")
+            self.kanban.clear()
+            return
+        self.editor.setPlainText(self._plan.cargar())
+        self.kanban.cargar(self._plan)
+
+    def guardar(self):
+        if not self._plan:
+            return
+        self._plan.guardar(self.editor.toPlainText())
+        self.lbl_conteo.setText(
+            f"plan.md guardado ({self._plan.ruta})")
+        self.kanban.cargar(self._plan)
+        self.guardado.emit(self._plan.ruta)
+
+    def clear(self):
+        self.editor.clear()
+        self.lbl_conteo.setText("")
+        self.kanban.clear()
+
+    def _actualizar_conteo(self):
+        if not self._plan:
+            return
+        self._plan.texto = self.editor.toPlainText()
+        pend, hecho, bloqueada = self._plan.conteo()
+        self.lbl_conteo.setText(
+            f"Pendientes: {pend}   ·   Hechas: {hecho}   ·   "
+            f"Bloqueadas: {bloqueada}")
+        self.kanban._actualizar()
+
+
+class PanelRevision(QWidget):
+    """Panel para revisar diff antes de commitear: muestra diff, botones Aprobar/Rechazar."""
+
+    aprobado = Signal()
+    rechazado = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._ruta_proyecto = None
+        self._archivo_diff = None
+        self._archivo_senal = None
+
+        v = QVBoxLayout(self)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(8)
+
+        # Header
+        h = QHBoxLayout()
+        h.setSpacing(8)
+        self.lbl_titulo = QLabel("⏸ Revisión pendiente")
+        _fuente_ui(self.lbl_titulo)
+        self.lbl_titulo.setStyleSheet("font-weight: 600; font-size: 13px;")
+        h.addWidget(self.lbl_titulo)
+        h.addStretch()
+        self.lbl_tarea = _LabelMuted("")
+        h.addWidget(self.lbl_tarea)
+        v.addLayout(h)
+
+        # Diff viewer
+        self.txt_diff = QPlainTextEdit()
+        self.txt_diff.setReadOnly(True)
+        _fuente_monospace(self.txt_diff)
+        v.addWidget(self.txt_diff, 1)
+
+        # Botones
+        h = QHBoxLayout()
+        h.setSpacing(8)
+        self.b_aprobar = _BtnPrimary("✓ Aprobar y commitear")
+        self.b_aprobar.clicked.connect(self._emitir_aprobado)
+        self.b_rechazar = _BtnDanger("✗ Rechazar y reintentar")
+        self.b_rechazar.clicked.connect(self._pedir_motivo_rechazo)
+        h.addWidget(self.b_aprobar)
+        h.addWidget(self.b_rechazar)
+        v.addLayout(h)
+
+        self.setVisible(False)
+
+    def mostrar_revision(self, ruta_proyecto, tarea, archivo_diff, archivo_senal):
+        self._ruta_proyecto = ruta_proyecto
+        self._archivo_diff = archivo_diff
+        self._archivo_senal = archivo_senal
+        self.lbl_tarea.setText(f"Tarea: {tarea}")
+        try:
+            with open(archivo_diff, "r", encoding="utf-8") as f:
+                self.txt_diff.setPlainText(f.read())
+        except OSError:
+            self.txt_diff.setPlainText("(no se pudo leer el diff)")
+        self.setVisible(True)
+
+    def ocultar(self):
+        self.setVisible(False)
+        self._archivo_diff = None
+        self._archivo_senal = None
+
+    def _emitir_aprobado(self):
+        if self._archivo_senal:
+            try:
+                with open(self._archivo_senal, "w") as f:
+                    f.write("APPROVE\n")
+            except OSError:
+                pass
+        self.aprobado.emit()
+        self.ocultar()
+
+    def _pedir_motivo_rechazo(self):
+        motivo, ok = QInputDialog.getMultiLineText(
+            self, "Motivo del rechazo",
+            "Explica qué debe corregir el agente (se inyectará en el siguiente intento):")
+        if ok and motivo.strip():
+            if self._archivo_senal:
+                try:
+                    with open(self._archivo_senal, "w") as f:
+                        f.write(f"REJECT\n{motivo.strip()}\n")
+                except OSError:
+                    pass
+            self.rechazado.emit(motivo.strip())
+            self.ocultar()
+
+
+class PanelEjecucion(QWidget):
+    """Opciones de lanzamiento, control del loop y salida en vivo."""
+
+    iniciar = Signal()
+    detener = Signal()
+    gate = Signal()
+    modelos_modificados = Signal()
+    refrescar_modelos = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        v = QVBoxLayout(self)
+        v.setSpacing(8)
+        v.setContentsMargins(0, 0, 0, 0)
+
+        # ===== ZONA 1: OPCIONES DE LANZAMIENTO =====
+        grupo = QGroupBox("Opciones de lanzamiento")
+        g = QGridLayout(grupo)
+        g.setSpacing(8)
+        g.setHorizontalSpacing(12)
+        g.setVerticalSpacing(8)
+        g.setContentsMargins(12, 12, 12, 12)
+
+        def add_field(row, label_text, widget, placeholder=""):
+            lbl = QLabel(label_text)
+            _fuente_ui(lbl)
+            g.addWidget(lbl, row, 0)
+            if placeholder:
+                widget.setPlaceholderText(placeholder)
+            g.addWidget(widget, row, 1)
+
+        add_field(0, "Hasta (HH:MM, vacío = sin límite):",
+                  self._crear_lineedit(cfg.LAUNCH_DEFECTO["hasta"], "22:00"))
+        self.txt_hasta = g.itemAtPosition(0, 1).widget()
+
+        add_field(1, "Máx iteraciones:",
+                  self._crear_lineedit(str(cfg.LAUNCH_DEFECTO["iteraciones"])))
+        self.txt_iter = g.itemAtPosition(1, 1).widget()
+
+        add_field(2, "Padre (rama base):",
+                  self._crear_lineedit(cfg.LAUNCH_DEFECTO["padre"]))
+        self.txt_padre = g.itemAtPosition(2, 1).widget()
+
+        add_field(3, "Modelo (agente de tarea):",
+                  SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
+        self.cmb_agente = g.itemAtPosition(3, 1).widget()
+        self.cmb_agente.currentTextChanged.connect(self.modelos_modificados)
+
+        add_field(4, "Modelo (agente revisor del diff):",
+                  SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
+        self.cmb_revisor = g.itemAtPosition(4, 1).widget()
+        self.cmb_revisor.currentTextChanged.connect(self.modelos_modificados)
+
+        b_modelos = _BtnGhost("↻ Refrescar modelos")
+        b_modelos.clicked.connect(self.refrescar_modelos)
+        g.addWidget(b_modelos, 5, 0, 1, 2)
+
+        self.lbl_net = _LabelStatus("", "info")
+        g.addWidget(self.lbl_net, 6, 0, 1, 2)
+
+        self.lbl_modelos = _LabelMuted("")
+        g.addWidget(self.lbl_modelos, 7, 0, 1, 2)
+
+        self.chk_dual = QCheckBox(
+            "Gate dual: el revisor exige VERDICT: PASS antes del commit")
+        self.chk_dual.setChecked(cfg.LAUNCH_DEFECTO["dual"])
+        g.addWidget(self.chk_dual, 8, 0, 1, 2)
+
+        self.chk_voz = QCheckBox(
+            "Alertas de voz al bloquear/terminar (notify-send/spd-say)")
+        self.chk_voz.setChecked(cfg.LAUNCH_DEFECTO["voz"])
+        g.addWidget(self.chk_voz, 9, 0, 1, 2)
+
+        add_field(10, "Presupuesto máx (USD, 0 = sin límite):",
+                  self._crear_lineedit(str(cfg.LAUNCH_DEFECTO["costo_max"])))
+        self.txt_costo_max = g.itemAtPosition(10, 1).widget()
+
+        add_field(11, "Costo estimado por tarea (USD):",
+                  self._crear_lineedit(str(cfg.LAUNCH_DEFECTO["costo_iter"])))
+        self.txt_costo_iter = g.itemAtPosition(11, 1).widget()
+
+        self.chk_push = QCheckBox("--push al final")
+        self.chk_push.setChecked(cfg.LAUNCH_DEFECTO["push"])
+        g.addWidget(self.chk_push, 12, 0, 1, 2)
+
+        self.chk_revision_manual = QCheckBox(
+            "Revisar diff manualmente antes de cada commit (pausa el loop)")
+        self.chk_revision_manual.setChecked(False)
+        g.addWidget(self.chk_revision_manual, 13, 0, 1, 2)
+
+        v.addWidget(grupo)
+
+        # ===== BOTONES DE CONTROL =====
+        h_ctrl = QHBoxLayout()
+        h_ctrl.setSpacing(8)
+        self.b_iniciar = _BtnPrimary("▶ Iniciar loop")
+        self.b_iniciar.clicked.connect(self.iniciar)
+        self.b_detener = _BtnDanger("■ Detener")
+        self.b_detener.clicked.connect(self.detener)
+        self.b_detener.setEnabled(False)
+        self.b_gate = _BtnGhost("Ejecutar gate.sh")
+        self.b_gate.clicked.connect(self.gate)
+        h_ctrl.addWidget(self.b_iniciar)
+        h_ctrl.addWidget(self.b_detener)
+        h_ctrl.addWidget(self.b_gate)
+        h_ctrl.addStretch()
+        v.addLayout(h_ctrl)
+
+        # Panel de revisión de diff (oculto por defecto)
+        self.panel_revision = PanelRevision()
+        self.panel_revision.setVisible(False)
+        v.addWidget(self.panel_revision)
+
+    def _crear_lineedit(self, texto, placeholder=""):
+        le = QLineEdit(texto)
+        le.setPlaceholderText(placeholder)
+        _fuente_ui(le)
+        return le
+
+    # ---------- API para la ventana ----------
+
+    def config(self):
+        return {
+            "hasta": self.txt_hasta.text().strip(),
+            "padre": self.txt_padre.text().strip(),
+            "push": self.chk_push.isChecked(),
+            "iteraciones": int(_numero(self.txt_iter.text(),
+                                        cfg.LAUNCH_DEFECTO["iteraciones"],
+                                        int, minimo=1)),
+            "agente": self.cmb_agente.currentText(),
+            "revisor": self.cmb_revisor.currentText(),
+            "dual": self.chk_dual.isChecked(),
+            "voz": self.chk_voz.isChecked(),
+            "revision_manual": self.chk_revision_manual.isChecked(),
+            "costo_max": _numero(self.txt_costo_max.text(),
+                                 cfg.LAUNCH_DEFECTO["costo_max"], float),
+            "costo_iter": _numero(self.txt_costo_iter.text(),
+                                  cfg.LAUNCH_DEFECTO["costo_iter"], float),
+        }
+
+    def nota_net(self, ok):
+        if ok is None:
+            self.lbl_net.setText("Internet: ?")
+            self.lbl_net.setProperty("status", "info")
+        elif ok:
+            self.lbl_net.setText("🟢 Internet: OK")
+            self.lbl_net.setProperty("status", "success")
+        else:
+            self.lbl_net.setText(
+                "🔴 Internet: SIN CONEXIÓN — los modelos IA no responderán; "
+                "el loop no arrancará")
+            self.lbl_net.setProperty("status", "error")
+        self.lbl_net.style().unpolish(self.lbl_net)
+        self.lbl_net.style().polish(self.lbl_net)
+
+    def info_modelos(self, nmodelos, nprov):
+        self.lbl_modelos.setText(
+            f"{nmodelos} modelos · {nprov} proveedores de opencode cargados")
+        # Auto-hide después de 3 segundos
+        QTimer.singleShot(3000, lambda: self.lbl_modelos.clear())
+
+    def aplicar_modelos(self, seleccion):
+        self.cmb_agente.setCurrentText(seleccion.get("tarea") or "")
+        self.cmb_revisor.setCurrentText(seleccion.get("revisor") or "")
+
+    def modelos_seleccion(self):
+        return {
+            "tarea": self.cmb_agente.currentText(),
+            "revisor": self.cmb_revisor.currentText(),
+        }
+
+    def agregar_catalogo(self, etiquetas):
+        self.cmb_agente.addItems(etiquetas)
+        self.cmb_revisor.addItems(etiquetas)
+
+    def establecer_running(self, corriendo):
+        self.b_iniciar.setEnabled(not corriendo)
+        self.b_detener.setEnabled(corriendo)
+
+    def revision_manual_activa(self):
+        return self.chk_revision_manual.isChecked()
+
+
+class PanelGit(QWidget):
+    """Rama, git status y últimos commits del proyecto.
+
+    Los comandos git se ejecutan en un hilo de fondo (Trabajo) para no
+    congelar la UI en repositorios grandes.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._ruta = None
+        self._worker = None
+
+        v = QVBoxLayout(self)
+        v.setSpacing(8)
+        v.setContentsMargins(0, 0, 0, 0)
+
+        h = QHBoxLayout()
+        h.setSpacing(8)
+        self.lbl_rama = QLabel("")
+        _fuente_ui(self.lbl_rama)
+        self.lbl_rama.setStyleSheet("font-weight: 500;")
+        b_ref = _BtnGhost("Refrescar")
+        b_ref.clicked.connect(lambda: self.cargar())
+        h.addWidget(self.lbl_rama)
+        h.addStretch()
+        h.addWidget(b_ref)
+        v.addLayout(h)
+
+        self.txt_git = QPlainTextEdit()
+        self.txt_git.setReadOnly(True)
+        _fuente_monospace(self.txt_git)
+        v.addWidget(self.txt_git, 1)
+
+    def _consulta_git(self):
+        ruta = self._ruta
+        if not ruta:
+            return None
+
+        def run(cmd):
+            try:
+                out = subprocess.run(cmd, cwd=ruta, capture_output=True,
+                                     text=True, timeout=cfg.TIMEOUT_GIT)
+                return out.stdout.strip()
+            except Exception:
+                return ""
+
+        return (run(["git", "branch", "--show-current"]),
+                run(["git", "status", "--short"]),
+                run(["git", "log", "--oneline", "-12"]))
+
+    def _git_listo(self, datos):
+        self._worker = None
+        if not datos:
+            return
+        rama, status, log = datos
+        self.lbl_rama.setText(f"Rama: {rama}" if rama else "Rama: —")
+        texto = "── status ──\n" + (status or "(limpio)\n")
+        texto += "\n── últimos commits ──\n" + (log or "(sin commits)")
+        self.txt_git.setPlainText(texto)
+
+    def cargar(self, ruta=None):
+        if ruta is not None:
+            self._ruta = ruta
+        if not self._ruta:
+            self.txt_git.clear()
+            self.lbl_rama.setText("")
+            return
+        if self._worker and self._worker.isRunning():
+            return
+        self.lbl_rama.setText("Rama: cargando…")
+        self._worker = Trabajo(self._consulta_git)
+        self._worker.listo.connect(self._git_listo)
+        self._worker.start()
+
+
+class PanelSeguridad(QWidget):
+    """Protección térmica: ajustes y lectura de temperatura."""
+
+    guardar_ajustes = Signal(dict)
+
+    def __init__(self, seguridad, parent=None):
+        super().__init__(parent)
+        v = QVBoxLayout(self)
+        v.setSpacing(12)
+        v.setContentsMargins(0, 0, 0, 0)
+
+        grupo = QGroupBox("Temperatura y protección")
+        g = QGridLayout(grupo)
+        g.setSpacing(8)
+        g.setHorizontalSpacing(12)
+        g.setVerticalSpacing(8)
+        g.setContentsMargins(12, 12, 12, 12)
+
+        self.chk_activo = QCheckBox(
+            "Verificar la temperatura y apagar la app si se sobrecalienta")
+        self.chk_activo.setChecked(bool(seguridad.get("activo")))
+        g.addWidget(self.chk_activo, 0, 0, 1, 2)
+
+        self.chk_ver = QCheckBox(
+            "Mostrar la temperatura en este panel (actualiza cada segundo)")
+        self.chk_ver.setChecked(bool(seguridad.get("ver")))
+        g.addWidget(self.chk_ver, 1, 0, 1, 2)
+
+        # Helper para campo numérico con label
+        def add_num_field(row, label_text, valor, minimo=1):
+            lbl = QLabel(label_text)
+            _fuente_ui(lbl)
+            g.addWidget(lbl, row, 0)
+            le = QLineEdit(str(valor))
+            _fuente_ui(le)
+            g.addWidget(le, row, 1)
+            return le
+
+        self.txt_umbral = add_num_field(2, "Umbral de peligro (°C):",
+                                        seguridad.get("umbral", 85))
+        self.txt_segundos = add_num_field(3, "Segundos de aviso antes de apagar:",
+                                          seguridad.get("segundos", 5))
+
+        b_guardar = _BtnPrimary("Guardar ajustes")
+        b_guardar.clicked.connect(self._emitir_ajustes)
+        g.addWidget(b_guardar, 4, 0, 1, 2)
+
+        v.addWidget(grupo)
+
+        # Display de temperatura
+        self.lbl_titulo_temp = _LabelMuted("Temperatura actual:")
+        self.lbl_temp = QLabel("—")
+        self.lbl_estado_temp = _LabelMuted("")
+
+        v.addWidget(self.lbl_titulo_temp)
+        v.addWidget(self.lbl_temp)
+        v.addWidget(self.lbl_estado_temp)
+        v.addStretch()
+
+    def ajustes(self):
+        return {
+            "activo": self.chk_activo.isChecked(),
+            "ver": self.chk_ver.isChecked(),
+            "umbral": int(_numero(self.txt_umbral.text(), 85, int, 1)),
+            "segundos": int(_numero(self.txt_segundos.text(), 5, int, 1)),
+        }
+
+    def _emitir_ajustes(self):
+        self.guardar_ajustes.emit(self.ajustes())
+
+    def set_visibilidad_temp(self, ver):
+        self.lbl_titulo_temp.setVisible(ver)
+        self.lbl_temp.setVisible(ver)
+        self.lbl_estado_temp.setVisible(ver)
+
+    def actualizar_temp(self, t, umbral):
+        if t is None:
+            self.lbl_temp.setText("desconocida")
+            self.lbl_temp.setStyleSheet("font-size: 28px; font-weight: 600; color: palette(text);")
+            self.lbl_estado_temp.setText("No hay sensor de temperatura disponible.")
+            return
+        if t >= umbral:
+            color = "#ef4444"
+            estado = "⚠ SOBRECALENTAMIENTO: se abrirá el aviso de apagado."
+        elif t >= umbral - 10:
+            color = "#f59e0b"
+            estado = "Temperatura alta: vigila."
+        else:
+            color = "#22c55e"
+            estado = "Temperatura normal."
+        self.lbl_temp.setStyleSheet(f"font-size: 28px; font-weight: 600; color: {color};")
+        self.lbl_temp.setText(f"{t:.1f} °C")
+        self.lbl_estado_temp.setText(estado)
+
+
+class PanelLogs(QWidget):
+    """Pestaña dedicada a logs: Loop + Gate en splitter vertical con headers."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        v = QVBoxLayout(self)
+        v.setSpacing(8)
+        v.setContentsMargins(0, 0, 0, 0)
+
+        # Splitter vertical principal
+        self.splitter = QSplitter(Qt.Vertical)
+        self.splitter.setHandleWidth(6)
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.setStyleSheet("""
+            QSplitter::handle { background: transparent; }
+            QSplitter::handle:hover { background: palette(highlight); }
+        """)
+
+        # ---- LOOP (arriba) ----
+        self.loop_container = self._crear_panel_log(
+            "Salida del loop (progreso en vivo)",
+            "loop"
+        )
+        self.panel_loop = self.loop_container.log_widget
+        self.splitter.addWidget(self.loop_container)
+
+        # ---- GATE (abajo) ----
+        self.gate_container = self._crear_panel_log(
+            "Salida de gate.sh",
+            "gate"
+        )
+        self.panel_gate = self.gate_container.log_widget
+        self.gate_container.setMaximumHeight(300)
+        self.splitter.addWidget(self.gate_container)
+
+        # Proporción inicial 70/30
+        self.splitter.setSizes([500, 200])
+        v.addWidget(self.splitter, 1)
+
+    def _crear_panel_log(self, titulo, tipo):
+        """Crea un contenedor con header + log widget."""
+        container = QWidget()
+        container.log_widget = PanelTarea()
+        _fuente_monospace(container.log_widget)
+        container.log_widget.setLineWrapMode(QPlainTextEdit.NoWrap)
+
+        layout = QVBoxLayout(container)
+        layout.setSpacing(4)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Header
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        header.setContentsMargins(0, 0, 0, 0)
+
+        lbl = QLabel(titulo)
+        _fuente_ui(lbl)
+        lbl.setStyleSheet("font-weight: 600; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: palette(mid);")
+        header.addWidget(lbl)
+        header.addStretch()
+
+        # Botones de acción
+        b_limpiar = _BtnGhost("🗑 Limpiar")
+        b_limpiar.setToolTip("Limpiar salida")
+        b_limpiar.clicked.connect(lambda: container.log_widget.clear())
+        header.addWidget(b_limpiar)
+
+        b_copiar = _BtnGhost("📋 Copiar")
+        b_copiar.setToolTip("Copiar todo al portapapeles")
+        b_copiar.clicked.connect(lambda: (container.log_widget.selectAll(), container.log_widget.copy()))
+        header.addWidget(b_copiar)
+
+        b_maximizar = _BtnGhost("⛶")
+        b_maximizar.setToolTip("Alternar tamaño (maximizar/restaurar)")
+        b_maximizar.setFixedWidth(28)
+        b_maximizar.clicked.connect(lambda checked=False, t=tipo: self._toggle_maximizar(t))
+        header.addWidget(b_maximizar)
+
+        layout.addLayout(header)
+        layout.addWidget(container.log_widget, 1)
+
+        container.log_widget = container.log_widget
+        container.tipo = tipo
+        return container
+
+    def _toggle_maximizar(self, tipo):
+        """Alterna maximizado del panel en el splitter."""
+        if tipo == "loop":
+            if self.splitter.sizes()[0] < 100:
+                self.splitter.setSizes([500, self.splitter.sizes()[1]])
+            else:
+                self.splitter.setSizes([50, self.splitter.sizes()[1]])
+        else:
+            if self.splitter.sizes()[1] < 100:
+                self.splitter.setSizes([self.splitter.sizes()[0], 300])
+            else:
+                self.splitter.setSizes([self.splitter.sizes()[0], 50])

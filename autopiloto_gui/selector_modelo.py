@@ -4,6 +4,10 @@ Al elegir un proveedor (opencode, google, openai, anthropic...) el combo de
 modelos se rellena con la lista real de modelos de esa empresa. Todo por
 selección, sin escribir: los catálogos vienen de `opencode models` (cuando el
 proveedor tiene credenciales) o de models.dev.
+
+Diseño: mantiene un catálogo local {proveedor: [modelos]}. Las consultas en
+vivo solo ocurren la primera vez que se pide un proveedor (y el resto del
+paquete las cachea por sesión), así el refresco de la GUI es ligero.
 """
 
 from PySide6.QtCore import Signal
@@ -21,9 +25,10 @@ class SelectorModelo(QWidget):
 
     currentTextChanged = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, proveedores=None, parent=None):
         super().__init__(parent)
-        self._mapa = {}
+        self._catalogo = {}
+        self._proveedores_inicial = proveedores
 
         h = QHBoxLayout(self)
         h.setContentsMargins(0, 0, 0, 0)
@@ -35,49 +40,31 @@ class SelectorModelo(QWidget):
 
         self.cmb_proveedor.currentTextChanged.connect(self._cargar_modelos)
         self.cmb_modelo.currentTextChanged.connect(self._emitir)
-        self._cargar_proveedores()
+        self._refrescar_proveedores()
 
-    def _emitir(self, _=None):
-        self.currentTextChanged.emit(self.currentText())
+    def activar_catalogo_global(self):
+        """Usa el catálogo global detectado en vez de la lista inicial."""
+        self._proveedores_inicial = None
+        self._refrescar_proveedores()
 
-    def _cargar_proveedores(self):
-        proveedores = modelos.nombres_proveedores()
-        self.cmb_proveedor.blockSignals(True)
-        actual_prov = self.cmb_proveedor.currentText()
-        self.cmb_proveedor.clear()
-        self.cmb_proveedor.addItems(proveedores)
-        if actual_prov and self.cmb_proveedor.findText(actual_prov) >= 0:
-            self.cmb_proveedor.setCurrentText(actual_prov)
-        self.cmb_proveedor.blockSignals(False)
-        self._cargar_modelos(self.cmb_proveedor.currentText())
+    # ---------- API parecida a QComboBox ----------
 
-    def addItems(self, modelos_prov=None):
-        self._cargar_proveedores()
-        lista = [m.split("/", 1)[1] for m in (modelos_prov or []) if "/" in m]
-        self._mapa = {}
-        if lista:
-            self._mapa[self.cmb_proveedor.currentText()] = lista
-
-    def _cargar_modelos(self, prov):
-        prov = (prov or "").strip()
-        self.cmb_modelo.blockSignals(True)
-        self.cmb_modelo.clear()
-        lista = self._mapa.get(prov)
-        if lista is None:
-            lista = modelos.lista_modelos_proveedor(prov)
-            self._mapa[prov] = lista
-        if lista:
-            self.cmb_modelo.addItems(lista)
-        self.cmb_modelo.blockSignals(False)
-        self._emitir()
+    def addItems(self, etiquetas=None):
+        """Incorpora una lista 'proveedor/modelo' al catálogo local."""
+        for m in etiquetas or []:
+            if "/" in m:
+                prov, modelo = m.split("/", 1)
+                self._catalogo.setdefault(prov, [])
+                if modelo not in self._catalogo[prov]:
+                    self._catalogo[prov].append(modelo)
+        self._refrescar_proveedores()
 
     def clear(self):
+        self._catalogo = {}
         self.cmb_proveedor.blockSignals(True)
         self.cmb_modelo.blockSignals(True)
         self.cmb_proveedor.clear()
         self.cmb_modelo.clear()
-        self.blockSignals()
-        self._mapa = {}
         self.cmb_proveedor.blockSignals(False)
         self.cmb_modelo.blockSignals(False)
 
@@ -111,3 +98,40 @@ class SelectorModelo(QWidget):
                 self.cmb_modelo.setCurrentText(idm)
         self.blockSignals(False)
         self._emitir()
+
+    # ---------- Internos ----------
+
+    def _emitir(self, _=None):
+        self.currentTextChanged.emit(self.currentText())
+
+    def _refrescar_proveedores(self):
+        fuentes = set(self._catalogo)
+        if self._proveedores_inicial is not None:
+            fuentes |= set(self._proveedores_inicial)
+        else:
+            fuentes |= set(modelos.nombres_proveedores())
+        proveedores = sorted(fuentes)
+        actual = self.cmb_proveedor.currentText()
+        self.cmb_proveedor.blockSignals(True)
+        self.cmb_proveedor.clear()
+        self.cmb_proveedor.addItems(proveedores)
+        if actual and self.cmb_proveedor.findText(actual) >= 0:
+            self.cmb_proveedor.setCurrentText(actual)
+        self.cmb_proveedor.blockSignals(False)
+        self._cargar_modelos(self.cmb_proveedor.currentText())
+
+    def _cargar_modelos(self, prov):
+        prov = (prov or "").strip()
+        lista = self._catalogo.get(prov)
+        if lista is None:
+            lista = modelos.lista_modelos_proveedor(prov)
+            self._catalogo[prov] = lista
+        actual = self.cmb_modelo.currentText()
+        self.cmb_modelo.blockSignals(True)
+        self.cmb_modelo.clear()
+        self.cmb_modelo.addItems(lista)
+        if actual and self.cmb_modelo.findText(actual) >= 0:
+            self.cmb_modelo.setCurrentText(actual)
+        self.cmb_modelo.blockSignals(False)
+        if not self.signalsBlocked():
+            self._emitir()

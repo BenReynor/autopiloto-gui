@@ -1,7 +1,9 @@
 """Consulta de los modelos disponibles de opencode.
 
 La lista cambia con cada versión de opencode, así que se consulta en vivo con
-`opencode models` en lugar de mantenerla fija en el código.
+`opencode models`. Los resultados se cachean durante la sesión: la UI no debe
+lanzar subprocesos repetidos al construir los selectores. El botón de la app
+invoca `invalidar_cache()` antes de refrescar.
 
 Para proveedores sin credenciales (openai, anthropic, ...) se usa el catálogo
 de models.dev (la misma fuente que usa opencode), cacheado en disco.
@@ -14,7 +16,7 @@ import subprocess
 import time
 import urllib.request
 
-MODELO_SUGERIDO = "opencode/big-pickle"
+from . import configuracion as cfg
 
 CATALOGO_URL = "https://models.dev/api.json"
 CATALOGO_HORAS = 24 * 7
@@ -25,6 +27,16 @@ RUTAS_OPENCODE = [
     "/usr/local/bin/opencode",
     "/opt/opencode/bin/opencode",
 ]
+
+PROVEEDORES_CATALOGO = [
+    "opencode", "google", "openai", "anthropic", "xai", "groq",
+    "together", "deepseek", "azure", "bedrock", "ollama", "lmstudio",
+    "mistral", "github",
+]
+
+_modelos = None              # lista completa "provider/model" ([], no None)
+_proveedores = None          # lista de proveedores detectados
+_modelos_por_proveedor = {}  # proveedor -> lista de modelos
 
 
 def _cli_opencode():
@@ -38,31 +50,33 @@ def _cli_opencode():
     return "opencode"
 
 
-def lista_modelos():
-    """Devuelve la lista de modelos provider/model que soporta opencode."""
+def _consultar_modelos():
     try:
         out = subprocess.run([_cli_opencode(), "models"], capture_output=True,
-                             text=True, timeout=30)
+                             text=True, timeout=cfg.TIMEOUT_OPENCODE)
     except (OSError, subprocess.TimeoutExpired):
         return []
     if out.returncode != 0:
         return []
-    modelos = []
-    for linea in out.stdout.splitlines():
-        linea = linea.strip()
-        if "/" in linea and not linea.startswith(("#", "--", "Usage")):
-            modelos.append(linea)
-    return modelos
+    return [linea.strip() for linea in out.stdout.splitlines()
+            if "/" in linea
+            and not linea.startswith(("#", "--", "Usage"))]
+
+
+def lista_modelos(forzar=False):
+    """Devuelve la lista de modelos provider/model que soporta opencode."""
+    global _modelos
+    if _modelos is None or forzar:
+        _modelos = _consultar_modelos() or []
+    return _modelos
 
 
 def _ruta_catalogo():
-    ruta = os.path.join(os.path.expanduser("~/.config/autopiloto"),
-                        "models_dev.json")
-    return ruta
+    return cfg.CATALOGO_MODELOS
 
 
 def leer_catalogo():
-    """Catálogo models.dev cacheado (descarga si falta o es viejo=7 días)."""
+    """Catálogo models.dev cacheado en disco (descarga si falta o es viejo)."""
     ruta = _ruta_catalogo()
     if (os.path.exists(ruta)
             and time.time() - os.path.getmtime(ruta) < CATALOGO_HORAS * 3600):
@@ -77,7 +91,7 @@ def leer_catalogo():
             CATALOGO_URL,
             headers={"User-Agent": "autopiloto-gui/2.0"}
         )
-        with urllib.request.urlopen(req, timeout=25) as r:
+        with urllib.request.urlopen(req, timeout=cfg.TIMEOUT_CATALOGO) as r:
             datos = json.loads(r.read().decode("utf-8"))
         with open(ruta, "w", encoding="utf-8") as f:
             json.dump(datos, f, ensure_ascii=False)
@@ -92,8 +106,7 @@ def leer_catalogo():
         return {}
 
 
-def nombres_proveedores():
-    """Empresas disponibles: las de opencode más las del catálogo models.dev."""
+def _consultar_proveedores():
     detectados = sorted({m.split("/", 1)[0] for m in lista_modelos()
                          if "/" in m})
     catalogo = leer_catalogo()
@@ -103,44 +116,57 @@ def nombres_proveedores():
     return detectados
 
 
-PROVEEDORES_CATALOGO = [
-    "opencode", "google", "openai", "anthropic", "xai", "groq",
-    "together", "deepseek", "azure", "bedrock", "ollama", "lmstudio",
-    "mistral", "github",
-]
+def nombres_proveedores(forzar=False):
+    """Empresas disponibles: las de opencode más las del catálogo models.dev."""
+    global _proveedores
+    if _proveedores is None or forzar:
+        _proveedores = _consultar_proveedores()
+    return _proveedores
 
 
-def lista_modelos_proveedor(proveedor):
-    """Modelos de un proveedor: `opencode models <prov>` y si falla, models.dev."""
-    proveedor = (proveedor or "").strip()
-    if not proveedor:
-        return []
+def _consultar_proveedor(proveedor):
     try:
         out = subprocess.run([_cli_opencode(), "models", proveedor],
-                             capture_output=True, text=True, timeout=30)
+                             capture_output=True, text=True,
+                             timeout=cfg.TIMEOUT_OPENCODE)
         if out.returncode == 0:
-            modelos = []
-            for linea in out.stdout.splitlines():
-                linea = linea.strip()
-                if "/" in linea:
-                    modelos.append(linea.split("/", 1)[1])
+            modelos = [linea.strip().split("/", 1)[1] for linea in
+                       out.stdout.splitlines() if "/" in linea.strip()]
             if modelos:
                 return modelos
     except (OSError, subprocess.TimeoutExpired):
         pass
     catalogo = leer_catalogo()
     prov = catalogo.get(proveedor)
-    if isinstance(prov, dict):
-        modelos = prov.get("models")
-        if isinstance(modelos, dict):
-            return sorted(modelos)
+    if isinstance(prov, dict) and isinstance(prov.get("models"), dict):
+        return sorted(prov["models"])
     return []
+
+
+def lista_modelos_proveedor(proveedor, forzar=False):
+    """Modelos de un proveedor: `opencode models <prov>` y si falla, models.dev."""
+    proveedor = (proveedor or "").strip()
+    if not proveedor:
+        return []
+    if forzar:
+        _modelos_por_proveedor.pop(proveedor, None)
+    if proveedor not in _modelos_por_proveedor:
+        _modelos_por_proveedor[proveedor] = _consultar_proveedor(proveedor)
+    return _modelos_por_proveedor[proveedor]
+
+
+def invalidar_cache():
+    """Olvida los resultados caché; la siguiente consulta vuelve a la red."""
+    global _modelos, _proveedores
+    _modelos = None
+    _proveedores = None
+    _modelos_por_proveedor.clear()
 
 
 def sugerido(modelos):
     """Elije un modelo por defecto: el sugerido si existe, si no el primero."""
     if not modelos:
-        return MODELO_SUGERIDO
-    if MODELO_SUGERIDO in modelos:
-        return MODELO_SUGERIDO
+        return cfg.MODELO_SUGERIDO
+    if cfg.MODELO_SUGERIDO in modelos:
+        return cfg.MODELO_SUGERIDO
     return modelos[0]

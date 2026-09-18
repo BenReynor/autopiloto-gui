@@ -26,6 +26,7 @@
 #   AGENTE_REVISOR   agente revisor del diff; vacío = auto (prefiere uno distinto).
 #   MODELO_REVISOR   modelo provider/model para el revisor del diff.
 #   REVISION_DUAL    "1" activa el gate dual (def), "0" lo apaga.
+#   REVISION_MANUAL  "1" pausa antes de commit y espera aprobación GUI, "0" automático.
 #   MAX_COSTO        presupuesto en USD (0 = sin límite). Costo estimado por iteración.
 #   COSTO_POR_ITER   costo estimado USD por tarea+revisión (def 0.50).
 #   VOZ              "1" activa alertas al bloquearte/terminar (notify-send, spd-say).
@@ -49,6 +50,7 @@ MODELO_TAREA="${MODELO_TAREA:-}"
 AGENTE_REVISOR="${AGENTE_REVISOR:-}"
 MODELO_REVISOR="${MODELO_REVISOR:-}"
 REVISION_DUAL="${REVISION_DUAL:-1}"
+REVISION_MANUAL="${REVISION_MANUAL:-0}"
 VOZ="${VOZ:-0}"
 MAX_COSTO="${MAX_COSTO:-0}"
 COSTO_POR_ITER="${COSTO_POR_ITER:-0.50}"
@@ -143,10 +145,15 @@ Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERD
         echo "[autopiloto] ✔ revisor ($rev): PASS"
         grep -iE "VERDICT:" "$rev_out" | tail -1
         rm -f "$rev_out"
+        REVISOR_FEEDBACK=""
         return 0
     fi
     echo "[autopiloto] ✗ revisor ($rev): FAIL"
-    grep -iE "VERDICT:" "$rev_out" | tail -1
+    local veredicto_linea
+    veredicto_linea="$(grep -iE "VERDICT:" "$rev_out" | tail -1)"
+    echo "$veredicto_linea"
+    # Extraer feedback (todo lo que está antes del VERDICT)
+    REVISOR_FEEDBACK="$(sed -n '1,/VERDICT:/p' "$rev_out" | head -n -1 | sed '/^\s*$/d' | paste -sd ' ' -)"
     rm -f "$rev_out"
     return 1
 }
@@ -175,9 +182,54 @@ proxima_tarea() {
     return 1
 }
 
+esperar_revision_manual() {
+    # Solo si REVISION_MANUAL=1
+    [ "$REVISION_MANUAL" = "1" ] || return 0
+
+    local dir_revision="$PROYECTO/.autopiloto_review"
+    mkdir -p "$dir_revision"
+
+    # Escribir diff y tarea para la GUI
+    git -C "$PROYECTO" diff --stat > "$dir_revision/diff.txt"
+    git -C "$PROYECTO" diff >> "$dir_revision/diff.txt"
+    echo "$TAREA" > "$dir_revision/tarea.txt"
+    echo "waiting" > "$dir_revision/waiting"
+
+    echo "[autopiloto] ⏸ Esperando revisión manual en $dir_revision..."
+    logx "ESPERANDO REVISIÓN MANUAL: $TAREA"
+
+    local decision=""
+    while [ ! -f "$dir_revision/decision" ]; do
+        sleep 2
+    done
+    decision="$(cat "$dir_revision/decision")"
+    rm -f "$dir_revision/waiting" "$dir_revision/decision"
+
+    case "$decision" in
+        APPROVE*)
+            echo "[autopiloto] ✔ Diff aprobado manualmente"
+            logx "REVISIÓN MANUAL: APROBADO"
+            return 0
+            ;;
+        REJECT*)
+            local motivo="${decision#REJECT}"
+            motivo="${motivo#$'\n'}"
+            echo "[autopiloto] ✗ Diff rechazado: $motivo"
+            logx "REVISIÓN MANUAL: RECHAZADO - $motivo"
+            RECHAZO_MOTIVO="$motivo"
+            return 1
+            ;;
+        *)
+            echo "[autopiloto] ⚠ Decisión desconocida: $decision"
+            return 1
+            ;;
+    esac
+}
+
 REVISOR="$(elegir_revisor)"
 COSTO_TOTAL=0
-logx "== AUTOPILOTO INICIADO (agente=$AGENTE_TAREA, modelo=$MODELO_TAREA, revisor=${REVISOR:-ninguno}, modelo_rev=$MODELO_REVISOR, dual=$REVISION_DUAL, max_iter=$MAX_ITER, hasta=${HASTA:-sin limite}, base=$RAMA_BASE, costo_max=$MAX_COSTO) =="
+RECHAZO_MOTIVO=""
+logx "== AUTOPILOTO INICIADO (agente=$AGENTE_TAREA, modelo=$MODELO_TAREA, revisor=${REVISOR:-ninguno}, modelo_rev=$MODELO_REVISOR, dual=$REVISION_DUAL, manual=$REVISION_MANUAL, max_iter=$MAX_ITER, hasta=${HASTA:-sin limite}, base=$RAMA_BASE, costo_max=$MAX_COSTO) =="
 
 echo "[autopiloto] Agente de tarea: ${AGENTE_TAREA} ${MODELO_TAREA:+($MODELO_TAREA)}"
 echo "[autopiloto] Revisor dual:    ${REVISOR:-NINGUNO} ${MODELO_REVISOR:+($MODELO_REVISOR)} (dual=$REVISION_DUAL)"
@@ -250,6 +302,12 @@ while (( iter < MAX_ITER )); do
     logx "== Iteración $iter: $TAREA (rama $RAMA_TAREA) =="
     echo "[autopiloto] [$iter/$MAX_ITER] $TAREA -> $RAMA_TAREA"
 
+    git -C "$PROYECTO" checkout -q "$RAMA_RUN" 2>/dev/null
+    if git -C "$PROYECTO" rev-parse --verify -q "$RAMA_TAREA" >/dev/null 2>&1 \
+            && [ "$(git -C "$PROYECTO" branch --show-current)" != "$RAMA_TAREA" ]; then
+        git -C "$PROYECTO" branch -q -D "$RAMA_TAREA"
+        echo "[autopiloto] ⚠ rama huérfana $RAMA_TAREA eliminada (run anterior)"
+    fi
     git -C "$PROYECTO" checkout -q -b "$RAMA_TAREA" "$RAMA_RUN"
     BEFORE="$(mktemp)"; AFTER="$(mktemp)"; OUT="$(mktemp)"
     snapshot "$BEFORE"
@@ -278,6 +336,10 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         cat "$OUT" >> "$LOG"
         cat "$OUT"
 
+        # Snapshot del árbol tras el agente: permite revertir este intento
+        # si el revisor dual o la revisión manual lo rechazan.
+        snapshot "$AFTER"
+
         if [ "$(git -C "$PROYECTO" branch --show-current)" != "$RAMA_TAREA" ]; then
             echo "[autopiloto] ✗✗ el agente cambió de rama. Abortando: requiere revisión humana." | tee -a "$LOG"
             logx "ABORTADO: se detectó cambio de rama no autorizado"
@@ -288,14 +350,35 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         if bash "$GATE"; then
             if [ "$REVISION_DUAL" = "1" ] && [ -n "$REVISOR" ]; then
                 if revisar_diff "$REVISOR"; then
+                    # Gate dual pasó, ahora verificar revisión manual si está activada
+                    if esperar_revision_manual; then
+                        hecho=1
+                        break
+                    else
+                        # Rechazado: revertir cambios antes de reintentar
+                        revertir "$BEFORE" "$AFTER"
+                        PRE="El diff fue rechazado en revisión manual: ${RECHAZO_MOTIVO}. Corrige esto en tu siguiente intento. "
+                        logx "REVISIÓN MANUAL RECHAZADO, reintentando..."
+                    fi
+                else
+                    logx "REVISOR FAIL (intento $intento)"
+                    echo "[autopiloto] ✗ el revisor rechazó el diff (intento $intento/$MAX_REINTENTOS)"
+                    # Inyectar feedback del revisor en el siguiente intento
+                    if [ -n "$REVISOR_FEEDBACK" ]; then
+                        PRE="El revisor rechazó el diff anterior: ${REVISOR_FEEDBACK}. Corrige esto en tu siguiente intento. "
+                        logx "Feedback del revisor inyectado para siguiente intento"
+                    fi
+                fi
+            else
+                # Sin gate dual, verificar revisión manual
+                if esperar_revision_manual; then
                     hecho=1
                     break
+                else
+                    revertir "$BEFORE" "$AFTER"
+                    PRE="El diff fue rechazado en revisión manual: ${RECHAZO_MOTIVO}. Corrige esto en tu siguiente intento. "
+                    logx "REVISIÓN MANUAL RECHAZADO, reintentando..."
                 fi
-                logx "REVISOR FAIL (intento $intento)"
-                echo "[autopiloto] ✗ el revisor rechazó el diff (intento $intento/$MAX_REINTENTOS)"
-            else
-                hecho=1
-                break
             fi
         else
             logx "GATE FALLÓ tras el agente (intento $intento)"
