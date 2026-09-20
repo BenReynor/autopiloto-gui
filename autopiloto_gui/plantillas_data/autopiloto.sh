@@ -10,7 +10,7 @@
 #
 # Por cada tarea de plan.md:
 #   1. Crea la rama de la tarea y ejecuta el agente configurado (AGENTE_TAREA).
-#   2. Verifica con gate.sh (DB, migraciones, backend, endpoints, imports, tests).
+#   2. Verifica con gate.sh (checks en gate_checks/*.sh).
 #   3. GATE DUAL: si pasó el gate, un segundo agente (AGENTE_REVISOR) revisa el
 #      diff en frío y exige "VERDICT: PASS" antes de commitear.
 #   4. Si pasa todo: commitea SOLO lo de esa tarea, fusiona y marca [x].
@@ -21,15 +21,25 @@
 #   MAX_ITER=60 ./autopiloto.sh plan.md
 #
 # Variables de entorno (opcional):
-#   AGENTE_TAREA     agente que implementa (opencode | claude | codex).  def: opencode
-#   MODELO_TAREA     modelo provider/model para la tarea (opencode --model).  def: vacío (usa config)
-#   AGENTE_REVISOR   agente revisor del diff; vacío = auto (prefiere uno distinto).
-#   MODELO_REVISOR   modelo provider/model para el revisor del diff.
-#   REVISION_DUAL    "1" activa el gate dual (def), "0" lo apaga.
-#   REVISION_MANUAL  "1" pausa antes de commit y espera aprobación GUI, "0" automático.
-#   MAX_COSTO        presupuesto en USD (0 = sin límite). Costo estimado por iteración.
-#   COSTO_POR_ITER   costo estimado USD por tarea+revisión (def 0.50).
-#   VOZ              "1" activa alertas al bloquearte/terminar (notify-send, spd-say).
+#   AGENTE_TAREA      agente que implementa (opencode|codex|claude). def: auto
+#   AGENTES_PREFERIDOS orden de preferencia para auto y revisor. def: "opencode codex claude"
+#   CLI_OPENCODE      binario de opencode (def: opencode)
+#   CLI_CODEX         binario de codex (def: codex)
+#   CLI_CLAUDE        binario de claude (def: claude)
+#   MODELO_TAREA      modelo provider/model para la tarea (sólo opencode). def: vacío
+#   AGENTE_REVISOR    agente revisor del diff; vacío = auto (prefiere uno distinto).
+#   MODELO_REVISOR    modelo provider/model para el revisor del diff (sólo opencode).
+#   NAVEGADOR         "1" activa navegador automático antes de cada tarea.
+#   MODELO_NAVEGADOR  modelo provider/model para el navegador (sólo opencode).
+#   OPENCODE_AGENT_TAREA agente de opencode para la tarea (def: build)
+#   OPENCODE_AGENT_NAV   agente de opencode para navegador (def: navigate)
+#   CODEX_FLAGS       flags extra para codex exec ("" por defecto)
+#   CLAUDE_FLAGS      flags extra para claude -p ("" por defecto)
+#   REVISION_DUAL     "1" activa el gate dual (def), "0" lo apaga.
+#   REVISION_MANUAL   "1" pausa antes de commit y espera aprobación GUI, "0" automático.
+#   MAX_COSTO         presupuesto en USD (0 = sin límite). Costo estimado por iteración.
+#   COSTO_POR_ITER    costo estimado USD por tarea+revisión (def 0.50).
+#   VOZ               "1" activa alertas al bloquearte/terminar (notify-send, spd-say).
 #
 # Portátil: deduce su raíz de su propia ubicación; copia gate.sh, mapear.sh y
 # autopiloto.sh a la raíz de cualquier proyecto.
@@ -43,10 +53,13 @@ LOG="$PROYECTO/progreso.log"
 PLAN="$PROYECTO/plan.md"
 MAX_ITER="${MAX_ITER:-40}"
 TIMEOUT_POR_TAREA="${TIMEOUT_POR_TAREA:-900}"
+TIMEOUT_NAVEGADOR="${TIMEOUT_NAVEGADOR:-60}"
 MAX_REINTENTOS=2
-CLI_OPENCODE="${CLI_OPENCODE:-opencode}"
-AGENTE_TAREA="${AGENTE_TAREA:-opencode}"
+AGENTE_TAREA="${AGENTE_TAREA:-}"
+AGENTES_PREFERIDOS="${AGENTES_PREFERIDOS:-opencode codex claude}"
 MODELO_TAREA="${MODELO_TAREA:-}"
+MODELO_NAVEGADOR="${MODELO_NAVEGADOR:-opencode/big-pickle}"
+NAVEGADOR="${NAVEGADOR:-0}"
 AGENTE_REVISOR="${AGENTE_REVISOR:-}"
 MODELO_REVISOR="${MODELO_REVISOR:-}"
 REVISION_DUAL="${REVISION_DUAL:-1}"
@@ -85,8 +98,6 @@ hay_internet() {
     return 1
 }
 
-agente_disponible() { command -v "$1" >/dev/null 2>&1; }
-
 alerta() {
     [ "$VOZ" = "1" ] || return 0
     command -v notify-send >/dev/null 2>&1 && notify-send "Autopiloto" "$1" 2>/dev/null
@@ -95,10 +106,8 @@ alerta() {
 }
 
 # Verifica si la salida indica agotamiento de tokens/cuota del proveedor IA.
-# Devuelve 0 si detecta agotamiento, 1 si no.
 tokens_agotados() {
     local archivo="$1"
-    # Patrones comunes de error de cuota/tokens en proveedores principales
     grep -qiE \
         -e "insufficient_quota" \
         -e "rate_limit_exceeded" \
@@ -115,27 +124,105 @@ tokens_agotados() {
         "$archivo" >/dev/null 2>&1
 }
 
+# Detecta el primer agente disponible (opencode -> codex -> claude).
+# El orden y los binarios son configurables:
+#   AGENTES_PREFERIDOS="codex opencode"  (orden de preferencia)
+#   CLI_OPENCODE/CLI_CODEX/CLI_CLAUDE      (binario de cada agente)
+detectar_agente() {
+    local i
+    for i in ${AGENTES_PREFERIDOS:-opencode codex claude}; do
+        cli_agente "$i" >/dev/null 2>&1 && { echo "$i"; return 0; }
+    done
+    echo ""
+}
+
+# Devuelve el binario de un agente (o vacío si no está instalado).
+cli_agente() {
+    local agente="$1"
+    case "$agente" in
+        opencode) echo "${CLI_OPENCODE:-opencode}" ;;
+        codex)    echo "${CLI_CODEX:-codex}" ;;
+        claude)   echo "${CLI_CLAUDE:-claude}" ;;
+        *) echo "" ;;
+    esac
+}
+
+agente_ok() {
+    local bin
+    bin="$(cli_agente "$1")" || return 1
+    [ -n "$bin" ] && command -v "$bin" >/dev/null 2>&1
+}
+
+# Ejecuta una tarea con cualquier agente. Devuelve su exit code.
+#   $1 = agente (opencode|codex|claude)
+#   $2 = archivo salida
+#   $3 = modelo (sólo opencode; vacío = usa config)
+#   "$@" = prompt (string)
 run_agente() {
-    local agente="$1" salida="$2" modelo="${3:-}"
+    local agente="$1" salida="$2" modelo="${3:-}" bin
     shift 3
-    # Solo opencode: los otros agentes no tienen integración de modelo en la GUI.
-    if [ -n "$modelo" ]; then
-        timeout "$TIMEOUT_POR_TAREA" "$CLI_OPENCODE" run --agent build --model "$modelo" "$@" > "$salida" 2>&1
-    else
-        timeout "$TIMEOUT_POR_TAREA" "$CLI_OPENCODE" run --agent build "$@" > "$salida" 2>&1
-    fi
-    return $?
+    bin="$(cli_agente "$agente")"
+    [ -n "$bin" ] || { echo "[autopiloto] ✗ agente desconocido: $agente" | tee -a "$LOG"; return 1; }
+    case "$agente" in
+        opencode)
+            if [ -n "$modelo" ]; then
+                timeout "$TIMEOUT_POR_TAREA" "$bin" run --agent "${OPENCODE_AGENT_TAREA:-build}" --model "$modelo" "$@" > "$salida" 2>&1
+            else
+                timeout "$TIMEOUT_POR_TAREA" "$bin" run --agent "${OPENCODE_AGENT_TAREA:-build}" "$@" > "$salida" 2>&1
+            fi
+            ;;
+        codex)
+            timeout "$TIMEOUT_POR_TAREA" "$bin" exec --skip-git-repo-check "${CODEX_FLAGS:-}" "$@" > "$salida" 2>&1
+            ;;
+        claude)
+            timeout "$TIMEOUT_POR_TAREA" "$bin" -p --output-format text "${CLAUDE_FLAGS:-}" "$@" > "$salida" 2>&1
+            ;;
+        *)
+            echo "[autopiloto] ✗ agente desconocido: $agente" | tee -a "$LOG"
+            return 1
+            ;;
+    esac
+}
+
+# Navegador de contexto previo a la tarea (agnóstico de agente).
+run_navegador() {
+    local salida="$1" modelo="$2" tarea="$3" agente="${4:-$AGENTE_TAREA}" bin extra
+    local prompt="Tarea: ${tarea}
+Repo: ${PROYECTO}
+Encuentra archivos, tests y endpoints relevantes. Lista concisa (máx 30 líneas):
+ARCHIVOS: ruta/archivo.py
+TESTS: ruta/test.py::test_x
+ENDPOINTS: GET /api/...
+MODELOS: Modulo.servicio"
+    bin="$(cli_agente "$agente")"
+    [ -n "$bin" ] || return 1
+    case "$agente" in
+        opencode)
+            timeout "$TIMEOUT_NAVEGADOR" "$bin" run --agent "${OPENCODE_AGENT_NAV:-navigate}" --model "$modelo" "$prompt" > "$salida" 2>&1
+            ;;
+        codex)
+            timeout "$TIMEOUT_NAVEGADOR" "$bin" exec --skip-git-repo-check "$prompt" > "$salida" 2>&1
+            ;;
+        claude)
+            timeout "$TIMEOUT_NAVEGADOR" "$bin" -p --output-format text "$prompt" > "$salida" 2>&1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 elegir_revisor() {
     local preferido="${AGENTE_REVISOR:-}"
-    for a in "$preferido" codex claude opencode; do
+    local tarea="${AGENTE_TAREA:-}"
+    local a
+    for a in $preferido ${AGENTES_PREFERIDOS:-codex claude opencode}; do
         [ -z "$a" ] && continue
-        agente_disponible "$a" || continue
-        [ "$a" != "$AGENTE_TAREA" ] && { echo "$a"; return 0; }
+        agente_ok "$a" || continue
+        [ "$a" != "$tarea" ] && { echo "$a"; return 0; }
     done
-    [ -n "$preferido" ] && agente_disponible "$preferido" && { echo "$preferido"; return 0; }
-    agente_disponible "$AGENTE_TAREA" && { echo "$AGENTE_TAREA"; return 0; }
+    [ -n "$preferido" ] && agente_ok "$preferido" && { echo "$preferido"; return 0; }
+    agente_ok "$tarea" && { echo "$tarea"; return 0; }
     echo ""
 }
 
@@ -248,6 +335,15 @@ esperar_revision_manual() {
     esac
 }
 
+# ---- Autodetección de agente si no se especificó ----
+if [ -z "$AGENTE_TAREA" ]; then
+    AGENTE_TAREA="$(detectar_agente)"
+    if [ -z "$AGENTE_TAREA" ]; then
+        echo "[autopiloto] ✗ No se encontró ningún agente (opencode, codex, claude)." | tee -a "$LOG"
+        exit 2
+    fi
+fi
+
 REVISOR="$(elegir_revisor)"
 COSTO_TOTAL=0
 RECHAZO_MOTIVO=""
@@ -339,9 +435,24 @@ while (( iter < MAX_ITER )); do
         PRE=""
         [ "$intento" -gt 1 ] && PRE="El intento anterior no pasó la verificación: no repitas tu cambio, corrígelo. "
 
+        # --- NAVEGADOR AUTOMÁTICO (busca contexto antes de la tarea) ---
+        if [ "$NAVEGADOR" = "1" ] && agente_ok "$AGENTE_TAREA" && [ -n "$MODELO_NAVEGADOR" ]; then
+            NAV_OUT="$(mktemp)"
+            run_navegador "$NAV_OUT" "$MODELO_NAVEGADOR" "$TAREA" "$AGENTE_TAREA"
+            if [ -s "$NAV_OUT" ]; then
+                NAV_CONTEXTO="$(cat "$NAV_OUT")"
+            else
+                NAV_CONTEXTO=""
+            fi
+            rm -f "$NAV_OUT"
+        else
+            NAV_CONTEXTO=""
+        fi
+
         PROMPT="Estás en MODO AUTOPILOTO (aplica las skills autopiloto y veracidad).
 Tarea actual (solo esta): ${TAREA}
 ${PRE}Lee plan.md y progreso.log antes de tocar nada. Lee también mapeo.txt (mapa módulos→tests): localiza el/los test del código que vas a tocar y úsalos como contrato.
+${NAV_CONTEXTO}
 Ejecuta ÚNICAMENTE esta tarea.
 NO hagas commits, NO crees, cambies ni borres ramas: el script gestiona git.
 NO edites autopiloto.sh, gate.sh, mapear.sh, mapeo.txt, plan.md, progreso.log, endpoints.txt, .env ni SECURITY.md.

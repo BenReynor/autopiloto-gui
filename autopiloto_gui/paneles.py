@@ -14,13 +14,15 @@ from PySide6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QComboBox, QPlainTextEdit, QLineEdit, QCheckBox, QGridLayout, QGroupBox,
     QSplitter, QFrame, QListWidget, QListWidgetItem, QAbstractItemView,
-    QInputDialog,
+    QInputDialog, QTreeWidget, QTreeWidgetItem, QHeaderView, QMessageBox,
+    QTableWidget, QTableWidgetItem, QTabWidget,
 )
 
 from . import configuracion as cfg, modelos, plan
 from .modelos import PROVEEDORES_CATALOGO
 from .proceso import PanelTarea, Trabajo
 from .selector_modelo import SelectorModelo
+from .paneles_webhooks import PanelWebhooks
 
 
 def _fuente_monospace(objeto):
@@ -505,6 +507,19 @@ class PanelEjecucion(QWidget):
                 widget.setPlaceholderText(placeholder)
             g.addWidget(widget, row, 1)
 
+        def contenedor_agente(selector):
+            """Fila agente=combo CLI + selector de modelo en un mismo widget."""
+            h = QHBoxLayout()
+            h.setSpacing(8)
+            cmb_cli = QComboBox()
+            cmb_cli.addItems(cfg.AGENTES_DISPONIBLES)
+            cmb_cli.setCurrentText(cfg.AGENTE_DEFECTO)
+            h.addWidget(cmb_cli, 0)
+            h.addWidget(selector, 1)
+            w = QWidget()
+            w.setLayout(h)
+            return w, cmb_cli
+
         add_field(0, "Hasta (HH:MM, vacío = sin límite):",
                   self._crear_lineedit(cfg.LAUNCH_DEFECTO["hasta"], "22:00"))
         self.txt_hasta = g.itemAtPosition(0, 1).widget()
@@ -517,52 +532,67 @@ class PanelEjecucion(QWidget):
                   self._crear_lineedit(cfg.LAUNCH_DEFECTO["padre"]))
         self.txt_padre = g.itemAtPosition(2, 1).widget()
 
-        add_field(3, "Modelo (tarea):",
-                  SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
-        self.cmb_agente = g.itemAtPosition(3, 1).widget()
+        w_agente, self.cmb_agente_cli = contenedor_agente(
+            SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
+        add_field(3, "Agente + Modelo (tarea):", w_agente)
+        self.cmb_agente = g.itemAtPosition(3, 1).widget().layout().itemAt(1).widget()
         self.cmb_agente.currentTextChanged.connect(self.modelos_modificados)
+        self.cmb_agente_cli.currentTextChanged.connect(self.modelos_modificados)
 
-        add_field(4, "Modelo (revisor del diff):",
-                  SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
-        self.cmb_revisor = g.itemAtPosition(4, 1).widget()
+        w_revisor, self.cmb_revisor_cli = contenedor_agente(
+            SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
+        add_field(4, "Agente + Modelo (revisor):", w_revisor)
+        self.cmb_revisor = g.itemAtPosition(4, 1).widget().layout().itemAt(1).widget()
         self.cmb_revisor.currentTextChanged.connect(self.modelos_modificados)
+        self.cmb_revisor_cli.currentTextChanged.connect(self.modelos_modificados)
+
+        # Navigator
+        self.chk_nav = QCheckBox(
+            "🔍 Navigator automático (busca contexto antes de cada tarea)")
+        self.chk_nav.setChecked(cfg.NAVEGADOR_DEFECTO)
+        g.addWidget(self.chk_nav, 5, 0, 1, 2)
+
+        add_field(6, "Modelo (navegador):",
+                  SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
+        self.cmb_nav = g.itemAtPosition(6, 1).widget()
+        self.cmb_nav.currentTextChanged.connect(self.modelos_modificados)
 
         b_modelos = _BtnGhost("↻ Refrescar modelos")
         b_modelos.clicked.connect(self.refrescar_modelos)
-        g.addWidget(b_modelos, 5, 0, 1, 2)
+        g.addWidget(b_modelos, 7, 0, 1, 2)
 
         self.lbl_net = _LabelStatus("", "info")
-        g.addWidget(self.lbl_net, 6, 0, 1, 2)
+        g.addWidget(self.lbl_net, 8, 0, 1, 2)
 
         self.lbl_modelos = _LabelMuted("")
-        g.addWidget(self.lbl_modelos, 7, 0, 1, 2)
+        g.addWidget(self.lbl_modelos, 9, 0, 1, 2)
 
         self.chk_dual = QCheckBox(
             "Gate dual: el revisor exige VERDICT: PASS antes del commit")
         self.chk_dual.setChecked(cfg.LAUNCH_DEFECTO["dual"])
-        g.addWidget(self.chk_dual, 8, 0, 1, 2)
+        g.addWidget(self.chk_dual, 10, 0, 1, 2)
 
         self.chk_voz = QCheckBox(
             "Alertas de voz al bloquear/terminar (notify-send/spd-say)")
         self.chk_voz.setChecked(cfg.LAUNCH_DEFECTO["voz"])
-        g.addWidget(self.chk_voz, 9, 0, 1, 2)
+        g.addWidget(self.chk_voz, 11, 0, 1, 2)
 
-        add_field(10, "Presupuesto máx (USD, 0 = sin límite):",
+        add_field(12, "Presupuesto máx (USD, 0 = sin límite):",
                   self._crear_lineedit(str(cfg.LAUNCH_DEFECTO["costo_max"])))
-        self.txt_costo_max = g.itemAtPosition(10, 1).widget()
+        self.txt_costo_max = g.itemAtPosition(12, 1).widget()
 
-        add_field(11, "Costo estimado por tarea (USD):",
+        add_field(13, "Costo estimado por tarea (USD):",
                   self._crear_lineedit(str(cfg.LAUNCH_DEFECTO["costo_iter"])))
-        self.txt_costo_iter = g.itemAtPosition(11, 1).widget()
+        self.txt_costo_iter = g.itemAtPosition(13, 1).widget()
 
         self.chk_push = QCheckBox("--push al final")
         self.chk_push.setChecked(cfg.LAUNCH_DEFECTO["push"])
-        g.addWidget(self.chk_push, 12, 0, 1, 2)
+        g.addWidget(self.chk_push, 14, 0, 1, 2)
 
         self.chk_revision_manual = QCheckBox(
             "Revisar diff manualmente antes de cada commit (pausa el loop)")
         self.chk_revision_manual.setChecked(False)
-        g.addWidget(self.chk_revision_manual, 13, 0, 1, 2)
+        g.addWidget(self.chk_revision_manual, 15, 0, 1, 2)
 
         v.addWidget(grupo)
 
@@ -603,7 +633,9 @@ class PanelEjecucion(QWidget):
             "iteraciones": int(_numero(self.txt_iter.text(),
                                         cfg.LAUNCH_DEFECTO["iteraciones"],
                                         int, minimo=1)),
+            "agente_cli": self.cmb_agente_cli.currentText(),
             "agente": self.cmb_agente.currentText(),
+            "revisor_cli": self.cmb_revisor_cli.currentText(),
             "revisor": self.cmb_revisor.currentText(),
             "dual": self.chk_dual.isChecked(),
             "voz": self.chk_voz.isChecked(),
@@ -612,6 +644,8 @@ class PanelEjecucion(QWidget):
                                  cfg.LAUNCH_DEFECTO["costo_max"], float),
             "costo_iter": _numero(self.txt_costo_iter.text(),
                                   cfg.LAUNCH_DEFECTO["costo_iter"], float),
+            "nav": self.chk_nav.isChecked(),
+            "nav_modelo": self.cmb_nav.currentText() if "/" in self.cmb_nav.currentText() else "",
         }
 
     def nota_net(self, ok):
@@ -638,16 +672,32 @@ class PanelEjecucion(QWidget):
     def aplicar_modelos(self, seleccion):
         self.cmb_agente.setCurrentText(seleccion.get("tarea") or "")
         self.cmb_revisor.setCurrentText(seleccion.get("revisor") or "")
+        if seleccion.get("agente_cli"):
+            self.cmb_agente_cli.setCurrentText(seleccion["agente_cli"])
+        if seleccion.get("revisor_cli"):
+            self.cmb_revisor_cli.setCurrentText(seleccion["revisor_cli"])
 
     def modelos_seleccion(self):
         return {
             "tarea": self.cmb_agente.currentText(),
             "revisor": self.cmb_revisor.currentText(),
+            "agente_cli": self.cmb_agente_cli.currentText(),
+            "revisor_cli": self.cmb_revisor_cli.currentText(),
         }
+
+    def navegador_config(self):
+        return {
+            "activo": self.chk_nav.isChecked(),
+            "modelo": self.cmb_nav.currentText() if "/" in self.cmb_nav.currentText() else "",
+        }
+
+    def aplicar_navegador(self, modelo: str):
+        self.cmb_nav.setCurrentText(modelo)
 
     def agregar_catalogo(self, etiquetas):
         self.cmb_agente.addItems(etiquetas)
         self.cmb_revisor.addItems(etiquetas)
+        self.cmb_nav.addItems(etiquetas)
 
     def establecer_running(self, corriendo):
         self.b_iniciar.setEnabled(not corriendo)
@@ -658,11 +708,12 @@ class PanelEjecucion(QWidget):
 
 
 class PanelGit(QWidget):
-    """Rama, git status y últimos commits del proyecto.
+    """Rama, git status, últimos commits y rollback visual.
 
-    Los comandos git se ejecutan en un hilo de fondo (Trabajo) para no
-    congelar la UI en repositorios grandes.
+    Los comandos git se ejecutan en un hilo de fondo (Trabajo).
     """
+
+    revertir_commit = Signal(str)  # sha
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -685,10 +736,18 @@ class PanelGit(QWidget):
         h.addWidget(b_ref)
         v.addLayout(h)
 
-        self.txt_git = QPlainTextEdit()
-        self.txt_git.setReadOnly(True)
-        _fuente_monospace(self.txt_git)
-        v.addWidget(self.txt_git, 1)
+        # TreeWidget para commits con botón Revertir
+        self.tree = QTreeWidget()
+        self.tree.setHeaderLabels(["SHA", "Mensaje", "Autor", "Fecha", "Acción"])
+        self.tree.setColumnWidth(0, 80)
+        self.tree.setColumnWidth(1, 350)
+        self.tree.setColumnWidth(2, 120)
+        self.tree.setColumnWidth(3, 130)
+        self.tree.setColumnWidth(4, 80)
+        _fuente_monospace(self.tree)
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setSelectionBehavior(QTreeWidget.SelectRows)
+        v.addWidget(self.tree, 1)
 
     def _consulta_git(self):
         ruta = self._ruta
@@ -703,9 +762,12 @@ class PanelGit(QWidget):
             except Exception:
                 return ""
 
-        return (run(["git", "branch", "--show-current"]),
-                run(["git", "status", "--short"]),
-                run(["git", "log", "--oneline", "-12"]))
+        rama = run(["git", "branch", "--show-current"])
+        status = run(["git", "status", "--short"])
+        # Obtener commits de la rama autopiloto/* (último 30)
+        log = run(["git", "log", "--oneline", "--all", "--grep=autopiloto:", "-30", "--format=%H|%s|%an|%ad", "--date=short"])
+
+        return (rama, status, log)
 
     def _git_listo(self, datos):
         self._worker = None
@@ -713,15 +775,39 @@ class PanelGit(QWidget):
             return
         rama, status, log = datos
         self.lbl_rama.setText(f"Rama: {rama}" if rama else "Rama: —")
-        texto = "── status ──\n" + (status or "(limpio)\n")
-        texto += "\n── últimos commits ──\n" + (log or "(sin commits)")
-        self.txt_git.setPlainText(texto)
+
+        # Limpiar árbol
+        self.tree.clear()
+
+        # Parsear log y crear items con botón revertir
+        if log:
+            for linea in log.splitlines():
+                if not linea.strip():
+                    continue
+                parts = linea.split("|", 3)
+                if len(parts) < 4:
+                    continue
+                sha, msg, autor, fecha = parts
+                item = QTreeWidgetItem([sha[:8], msg, autor, fecha, ""])
+                item.setData(0, Qt.UserRole, sha)  # SHA completo en role
+                self.tree.addTopLevelItem(item)
+
+                # Botón Revertir
+                btn = QPushButton("↩ Revertir")
+                btn.setProperty("sha", sha)
+                btn.clicked.connect(lambda _, s=sha: self.revertir_commit.emit(s))
+                btn.setStyleSheet("padding: 2px 8px; font-size: 11px;")
+                self.tree.setItemWidget(item, 4, btn)
+
+        # Status en tooltip del primer item o label
+        if status:
+            self.tree.setToolTip(f"Status:\n{status}")
 
     def cargar(self, ruta=None):
         if ruta is not None:
             self._ruta = ruta
         if not self._ruta:
-            self.txt_git.clear()
+            self.tree.clear()
             self.lbl_rama.setText("")
             return
         if self._worker and self._worker.isRunning():
@@ -733,15 +819,25 @@ class PanelGit(QWidget):
 
 
 class PanelSeguridad(QWidget):
-    """Protección térmica: ajustes y lectura de temperatura."""
+    """Protección térmica y notificaciones push."""
 
     guardar_ajustes = Signal(dict)
 
-    def __init__(self, seguridad, parent=None):
+    def __init__(self, seguridad, webhooks_config, parent=None):
         super().__init__(parent)
         v = QVBoxLayout(self)
-        v.setSpacing(12)
+        v.setSpacing(8)
         v.setContentsMargins(0, 0, 0, 0)
+
+        # Tabs: Temperatura / Notificaciones
+        self.tabs = QTabWidget()
+        v.addWidget(self.tabs, 1)
+
+        # --- Tab Temperatura ---
+        tab_temp = QWidget()
+        vt = QVBoxLayout(tab_temp)
+        vt.setSpacing(12)
+        vt.setContentsMargins(0, 0, 0, 0)
 
         grupo = QGroupBox("Temperatura y protección")
         g = QGridLayout(grupo)
@@ -760,7 +856,6 @@ class PanelSeguridad(QWidget):
         self.chk_ver.setChecked(bool(seguridad.get("ver")))
         g.addWidget(self.chk_ver, 1, 0, 1, 2)
 
-        # Helper para campo numérico con label
         def add_num_field(row, label_text, valor, minimo=1):
             lbl = QLabel(label_text)
             _fuente_ui(lbl)
@@ -779,17 +874,30 @@ class PanelSeguridad(QWidget):
         b_guardar.clicked.connect(self._emitir_ajustes)
         g.addWidget(b_guardar, 4, 0, 1, 2)
 
-        v.addWidget(grupo)
+        vt.addWidget(grupo)
 
-        # Display de temperatura
         self.lbl_titulo_temp = _LabelMuted("Temperatura actual:")
         self.lbl_temp = QLabel("—")
         self.lbl_estado_temp = _LabelMuted("")
 
-        v.addWidget(self.lbl_titulo_temp)
-        v.addWidget(self.lbl_temp)
-        v.addWidget(self.lbl_estado_temp)
-        v.addStretch()
+        vt.addWidget(self.lbl_titulo_temp)
+        vt.addWidget(self.lbl_temp)
+        vt.addWidget(self.lbl_estado_temp)
+        vt.addStretch()
+
+        self.tabs.addTab(tab_temp, "🌡 Temperatura")
+
+        # --- Tab Notificaciones (Webhooks) ---
+        self.panel_webhooks = PanelWebhooks(webhooks_config)
+        self.panel_webhooks.guardado.connect(self._webhooks_guardado)
+        self.tabs.addTab(self.panel_webhooks, "🔔 Notificaciones")
+
+    def _webhooks_guardado(self, config: dict):
+        """Re-emitir señal completa con seguridad + webhooks"""
+        self.guardar_ajustes.emit({
+            "seguridad": self.ajustes(),
+            "webhooks": config,
+        })
 
     def ajustes(self):
         return {
@@ -800,7 +908,11 @@ class PanelSeguridad(QWidget):
         }
 
     def _emitir_ajustes(self):
-        self.guardar_ajustes.emit(self.ajustes())
+        # Solo seguridad; webhooks se emiten por separado
+        self.guardar_ajustes.emit({
+            "seguridad": self.ajustes(),
+            "webhooks": self.panel_webhooks.obtener_config(),
+        })
 
     def set_visibilidad_temp(self, ver):
         self.lbl_titulo_temp.setVisible(ver)

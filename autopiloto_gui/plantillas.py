@@ -7,13 +7,20 @@ import shutil
 PLANTILLA_DIR = os.path.join(os.path.dirname(__file__), "plantillas_data")
 SCRIPTS = ("autopiloto.sh", "gate.sh", "mapear.sh")
 ARCHIVOS = SCRIPTS + ("plan.md",)
+GATE_CHECKS_DIR = "gate_checks"
+GATE_CHECKS = tuple(
+    os.path.relpath(os.path.join(ruta, f), PLANTILLA_DIR)
+    for ruta, _dirs, archivos in os.walk(os.path.join(PLANTILLA_DIR, GATE_CHECKS_DIR))
+    for f in archivos
+    if f.endswith(".sh")
+)
 
 
 def quitar(ruta):
     """Borra los archivos que la app instaló. Devuelve los eliminados.
 
-    Solo toca autopiloto.sh, gate.sh, mapear.sh, plan.md y progreso.log:
-    jamás el resto del proyecto.
+    Solo toca autopiloto.sh, gate.sh, mapear.sh, plan.md, progreso.log y
+    gate_checks/: jamás el resto del proyecto.
     """
     eliminados = []
     log = os.path.join(ruta, "progreso.log")
@@ -23,17 +30,22 @@ def quitar(ruta):
         if os.path.exists(destino):
             os.remove(destino)
             eliminados.append(nombre)
+    dir_checks = os.path.join(ruta, GATE_CHECKS_DIR)
+    if os.path.isdir(dir_checks):
+        shutil.rmtree(dir_checks)
+        eliminados.append(GATE_CHECKS_DIR + "/")
     return eliminados
 
 
 def _desactualizados(ruta):
-    """Scripts .sh que difieren entre la plantilla y el proyecto.
+    """Scripts .sh y gate_checks/ que difieren entre plantilla y proyecto.
 
     plan.md NO se compara: es contenido editable del usuario (sus tareas);
     solo se crea si falta, nunca se sobreescribe.
     """
+    copias = list(SCRIPTS) + list(GATE_CHECKS)
     diff = []
-    for nombre in SCRIPTS:
+    for nombre in copias:
         src = os.path.join(PLANTILLA_DIR, nombre)
         dst = os.path.join(ruta, nombre)
         if os.path.exists(dst) and os.path.exists(src):
@@ -43,11 +55,12 @@ def _desactualizados(ruta):
 
 
 def instalar(ruta):
-    """Copia las plantillas que falten en ruta. Devuelve lista de creados."""
+    """Copia plantillas (scripts + gate_checks) que falten. Devuelve creados."""
     creados = []
-    for nombre in ARCHIVOS:
+    for nombre in list(ARCHIVOS) + list(GATE_CHECKS):
         destino = os.path.join(ruta, nombre)
         if not os.path.exists(destino):
+            os.makedirs(os.path.dirname(destino), exist_ok=True)
             shutil.copy2(os.path.join(PLANTILLA_DIR, nombre), destino)
             if nombre.endswith(".sh"):
                 os.chmod(destino, 0o755)
@@ -61,7 +74,7 @@ def instalar(ruta):
 
 
 def actualizar(ruta):
-    """Sobrescribe las plantillas que difieren. Devuelve lista de actualizados."""
+    """Sobrescribe plantillas que difieren. Devuelve lista de actualizados."""
     actualizados = []
     for nombre in _desactualizados(ruta):
         shutil.copy2(os.path.join(PLANTILLA_DIR, nombre), os.path.join(ruta, nombre))

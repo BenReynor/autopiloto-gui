@@ -38,8 +38,33 @@ LAUNCH_DEFECTO = {
     "voz": False,
 }
 
+# ----- Navigator (búsqueda de contexto antes de cada tarea) -----
+NAVEGADOR_DEFECTO = False
+MODELO_NAVEGADOR_SUGERIDO = "opencode/big-pickle"
+
+# ----- Webhooks (notificaciones push) -----
+WEBHOOK_DEFECTO = {
+    "telegram_token": "",
+    "telegram_chat_id": "",
+    "discord_webhook_url": "",
+    "whatsapp_api_url": "",
+    "whatsapp_token": "",
+    "whatsapp_phone_id": "",
+    "eventos": {
+        "inicio": True,
+        "bloqueada": True,
+        "fin": True,
+        "tokens": True,
+        "error": True,
+    },
+}
+
 # ----- Modelos -----
 MODELO_SUGERIDO = "opencode/big-pickle"
+
+# ----- Agentes CLI disponibles -----
+AGENTES_DISPONIBLES = ("opencode", "codex", "claude", "auto")
+AGENTE_DEFECTO = "auto"
 
 # ----- Timeouts (segundos) -----
 TIMEOUT_INTERNET = 3
@@ -47,9 +72,11 @@ TIMEOUT_OPENCODE = 20
 TIMEOUT_GIT = 20
 TIMEOUT_SENSORES = 5
 TIMEOUT_CATALOGO = 15
+TIMEOUT_NAVEGADOR = 60
 
 # ----- Temporizadores (ms) -----
 TIMER_TAIL_MS = 1000
 TIMER_TEMP_MS = 1000
 TIMER_NET_MS = 15000
+TIMER_METRICAS_MS = 5000
 TAIL_LOG_BYTES = 4000

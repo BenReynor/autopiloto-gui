@@ -8,6 +8,7 @@ vigilancia (temperatura e internet).
 import os
 import re
 import sys
+import time
 
 from PySide6.QtCore import QProcess, QTimer
 from PySide6.QtGui import QIcon
@@ -19,10 +20,12 @@ from PySide6.QtWidgets import (
 from . import configuracion as cfg, modelos, net, plantillas, sensor
 from .paneles import (PanelEjecucion, PanelGit, PanelPlan, PanelSeguridad,
                       AvisoTemperatura, PanelRevision, PanelLogs)
+from .paneles_metricas import PanelMetricas
 from .proceso import Proceso, Trabajo
 from .proyectos import (cargar, guardar, leer_modelos, leer_seguridad,
-                        leer_tema)
+                        leer_tema, leer_webhooks)
 from .temas import NOMBRES, obtener_temas, inicializar_temas
+from .webhooks import WebhookManager
 
 
 class Ventana(QMainWindow):
@@ -53,8 +56,13 @@ class Ventana(QMainWindow):
         self._ultima_bloqueada = False
         self.tema = leer_tema()
         self.seguridad = leer_seguridad()
+        self.webhooks_config = leer_webhooks()
         self._modelos = []
         self._sel_modelos = leer_modelos()
+        self._inicio_loop_ts = None
+
+        # Webhook manager
+        self.webhook = WebhookManager(self.webhooks_config)
 
         self._ui()
         self._aplicar_tema(self.tema)
@@ -68,6 +76,11 @@ class Ventana(QMainWindow):
         self.timer_revision = QTimer(self)
         self.timer_revision.timeout.connect(self._comprobar_revision_pendiente)
         self.timer_revision.start(1000)
+
+        # Timer para métricas
+        self.timer_metricas = QTimer(self)
+        self.timer_metricas.timeout.connect(self._actualizar_metricas)
+        self.timer_metricas.start(cfg.TIMER_METRICAS_MS)
 
     def _cargar_modelos_en_fondo(self):
         """Consulta opencode/models.dev sin bloquear el arranque."""
@@ -126,18 +139,23 @@ class Ventana(QMainWindow):
         self.pan_ejec.gate.connect(self._ejecutar_gate)
         self.pan_ejec.refrescar_modelos.connect(self._refrescar_modelos)
         self.pan_ejec.modelos_modificados.connect(self._guardar_sel_modelos)
+        # Navigator signals
+        self.pan_ejec.cmb_nav.currentTextChanged.connect(self._guardar_sel_modelos)
         # Conectar panel de revisión
         self.pan_ejec.panel_revision.aprobado.connect(self._revision_aprobada)
         self.pan_ejec.panel_revision.rechazado.connect(self._revision_rechazada)
         self.pan_git = PanelGit()
+        self.pan_git.revertir_commit.connect(self._ejecutar_revert)
         self.pan_logs = PanelLogs()
-        self.pan_seg = PanelSeguridad(self.seguridad)
+        self.pan_metricas = PanelMetricas()
+        self.pan_seg = PanelSeguridad(self.seguridad, self.webhooks_config)
         self.pan_seg.guardar_ajustes.connect(self._guardar_seguridad)
         self.tabs.addTab(self.pan_plan, "Plan")
         self.tabs.addTab(self.pan_ejec, "Ejecución")
         self.tabs.addTab(self.pan_logs, "Logs")
         self.tabs.addTab(self.pan_git, "Git")
-        self.tabs.addTab(self.pan_seg, "Seguridad")
+        self.tabs.addTab(self.pan_metricas, "📊 Métricas")
+        self.tabs.addTab(self.pan_seg, "🛡 Seguridad")
 
         self.estado = QLabel("Sin proyecto")
         root.addWidget(self.estado)
@@ -195,11 +213,19 @@ class Ventana(QMainWindow):
         self.estado.setText("🔥 Apagado por sobrecalentamiento. Hasta luego.")
         QTimer.singleShot(1200, QApplication.instance().quit)
 
-    def _guardar_seguridad(self, seg):
-        self.seguridad = seg
-        guardar(self.proyectos, self.tema, seg)
+    def _guardar_seguridad(self, datos):
+        """Recibe dict con keys: seguridad, webhooks"""
+        if isinstance(datos, dict) and "seguridad" in datos:
+            self.seguridad = datos["seguridad"]
+            self.webhooks_config = datos.get("webhooks", self.webhooks_config)
+            if hasattr(self, 'webhook'):
+                self.webhook.configurar(self.webhooks_config)
+        else:
+            # Compatibilidad: solo seguridad
+            self.seguridad = datos
+        guardar(self.proyectos, self.tema, self.seguridad, self.webhooks_config)
         self._iniciar_vigilancia()
-        self.estado.setText("Ajustes de seguridad guardados")
+        self.estado.setText("Ajustes guardados")
 
     # ---------- Proyectos ----------
 
@@ -368,6 +394,7 @@ class Ventana(QMainWindow):
             return
         ruta = p[1]
         conf = self.pan_ejec.config()
+        nav_conf = self.pan_ejec.navegador_config()
         args = []
         if conf["hasta"]:
             args += ["--hasta", conf["hasta"]]
@@ -378,12 +405,18 @@ class Ventana(QMainWindow):
 
         env = list(QProcess.systemEnvironment())
         env.append(f"MAX_ITER={conf['iteraciones']}")
+        # El agente CLI (opencode/codex/claude/auto) se pasa explícito.
+        env.append(f"AGENTE_TAREA={conf['agente_cli']}")
+        env.append(f"AGENTE_REVISOR={conf['revisor_cli']}")
         # Solo pasa --model si la selección es provider/model completo;
-        # si es solo proveedor, deja que opencode use su config.
+        # autopiloto.sh lo ignora para codex/claude.
         modelo_tarea = conf['agente'] if "/" in conf['agente'] else ""
         modelo_revisor = conf['revisor'] if "/" in conf['revisor'] else ""
+        modelo_nav = nav_conf['modelo'] if nav_conf['activo'] else ""
         env.append(f"MODELO_TAREA={modelo_tarea}")
         env.append(f"MODELO_REVISOR={modelo_revisor}")
+        env.append(f"NAVEGADOR={'1' if nav_conf['activo'] else '0'}")
+        env.append(f"MODELO_NAVEGADOR={modelo_nav}")
         env.append(f"REVISION_DUAL={'1' if conf['dual'] else '0'}")
         env.append(f"VOZ={'1' if conf['voz'] else '0'}")
         env.append(f"MAX_COSTO={conf['costo_max']}")
@@ -394,7 +427,9 @@ class Ventana(QMainWindow):
         panel.clear()
         panel.appendPlainText(
             f"> bash autopiloto.sh {' '.join(args)}  "
-            f"(modelo tarea={conf['agente']}, modelo revisor={conf['revisor']}, "
+            f"(agente={conf['agente_cli']}, modelo tarea={conf['agente']}, "
+            f"revisor={conf['revisor_cli']}, modelo revisor={conf['revisor']}, "
+            f"nav={'on' if nav_conf['activo'] else 'off'}, "
             f"dual={conf['dual']}, "
             f"costo/iter={conf['costo_iter']} USD, iter={conf['iteraciones']})")
         self.loop = Proceso(panel, on_fin=self._loop_fin)
@@ -406,6 +441,14 @@ class Ventana(QMainWindow):
         self.pan_ejec.b_gate.setEnabled(False)
         self.cmb.setEnabled(False)
         self.timer.start(cfg.TIMER_TAIL_MS)
+        self._inicio_loop_ts = time.time()
+
+        # Webhook: inicio
+        self._webhook_enviar("inicio", {
+            "proyecto": self._nombre_activo,
+            "modelo_tarea": conf['agente'],
+            "modelo_revisor": conf['revisor'],
+        })
 
     def _loop_fin(self):
         self.pan_ejec.b_iniciar.setEnabled(True)
@@ -419,6 +462,34 @@ class Ventana(QMainWindow):
         if p:
             self.pan_plan.cargar(p[1])
             self.pan_git.cargar(p[1])
+
+        # Webhook: fin
+        if self._inicio_loop_ts:
+            duracion_min = (time.time() - self._inicio_loop_ts) / 60.0
+        else:
+            duracion_min = 0.0
+        # Parsear log para resumen
+        if p:
+            log = os.path.join(p[1], "progreso.log")
+            try:
+                with open(log, "r", encoding="utf-8", errors="replace") as f:
+                    contenido = f.read()
+                hechas = contenido.count("✔ commit:") + contenido.count("✔ tarea completada")
+                bloqueadas = contenido.count("tarea bloqueada")
+                total = hechas + bloqueadas
+                # Coste del log
+                import re
+                costes = re.findall(r"Costo estimado acumulado:\s*([\d.]+)\s*USD", contenido)
+                coste = float(costes[-1]) if costes else 0.0
+            except Exception:
+                hechas = bloqueadas = total = 0
+                coste = 0.0
+            self._webhook_enviar("fin", {
+                "hechas": hechas,
+                "total": total,
+                "coste": coste,
+                "duracion_min": round(duracion_min, 1),
+            })
 
     def _detener_loop(self):
         if self.loop and self.loop.state() == QProcess.Running:
@@ -450,6 +521,12 @@ class Ventana(QMainWindow):
             datos = datos[datos.index("\n") + 1:]  # descarta línea cortada
         self.pan_logs.panel_loop.setPlainText(datos)
 
+        # Detectar eventos para webhooks
+        if "tokens agotados" in datos.lower() or "cuota agotada" in datos.lower():
+            self._webhook_enviar("tokens", {})
+        elif "error crítico" in datos.lower() or "abortado:" in datos.lower():
+            self._webhook_enviar("error", {"detalle": "Ver progreso.log"})
+
         # Detectar tarea bloqueada y notificar
         if "tarea bloqueada" in datos.lower() and not self._ultima_bloqueada:
             self._ultima_bloqueada = True
@@ -474,6 +551,9 @@ class Ventana(QMainWindow):
             sys.stdout.flush()
         except Exception:
             pass
+
+        # Webhook: bloqueada
+        self._webhook_enviar("bloqueada", {"tarea": tarea})
 
     def _comprobar_revision_pendiente(self):
         """Detecta si autopiloto.sh está esperando revisión manual."""
@@ -530,6 +610,73 @@ class Ventana(QMainWindow):
         self.gate = Proceso(panel)
         self.gate.setWorkingDirectory(ruta)
         self.gate.start("bash", ["gate.sh"])
+
+    # ---------- Webhooks ----------
+
+    def _webhook_enviar(self, evento: str, datos: dict):
+        """Envía webhook si el evento está habilitado."""
+        if hasattr(self, 'webhook') and self.webhook:
+            # Añadir proyecto si no está
+            if "proyecto" not in datos:
+                datos["proyecto"] = self._nombre_activo
+            self.webhook.enviar(evento, datos)
+
+    # ---------- Métricas ----------
+
+    def _actualizar_metricas(self):
+        p = self._proyecto_actual()
+        if p:
+            self.pan_metricas.cargar(p[1])
+
+    # ---------- Rollback (Revert commit) ----------
+
+    def _ejecutar_revert(self, sha: str):
+        p = self._proyecto_actual()
+        if not p:
+            return
+        _, ruta = p
+
+        # Confirmar
+        resp = QMessageBox.question(
+            self, "Revertir commit",
+            f"¿Revertir el commit {sha[:8]}?\n\n"
+            f"Se hará: git revert --no-commit {sha} && git commit -m 'revert: ...'\n"
+            f"Esto creará un nuevo commit que deshace los cambios.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if resp != QMessageBox.Yes:
+            return
+
+        self.estado.setText(f"Revirtiendo commit {sha[:8]}...")
+        worker = Trabajo(lambda: self._git_revert(ruta, sha))
+        worker.listo.connect(lambda ok: self._post_revert(ok, sha))
+        worker.start()
+
+    def _git_revert(self, ruta: str, sha: str) -> bool:
+        try:
+            import subprocess
+            # Revertir sin commit
+            r1 = subprocess.run(["git", "revert", "--no-commit", sha],
+                                cwd=ruta, capture_output=True, text=True, timeout=30)
+            if r1.returncode != 0:
+                return False
+            # Commit del revert
+            r2 = subprocess.run(["git", "commit", "-m", f"revert: {sha[:8]}"],
+                                cwd=ruta, capture_output=True, text=True, timeout=30)
+            return r2.returncode == 0
+        except Exception:
+            return False
+
+    def _post_revert(self, ok: bool, sha: str):
+        if ok:
+            self.estado.setText(f"✓ Commit {sha[:8]} revertido")
+            p = self._proyecto_actual()
+            if p:
+                self.pan_git.cargar(p[1])
+                self.pan_plan.cargar(p[1])
+                self._tail_log()
+        else:
+            self.estado.setText(f"✗ Error revertiendo {sha[:8]}")
+            QMessageBox.warning(self, "Error", f"No se pudo revertir el commit {sha[:8]}")
 
 
 def main():

@@ -24,14 +24,18 @@ proyectos sin tocar archivos ni terminal.
   el contenido editable de tus tareas).
 - Quitar proyecto: al eliminar un proyecto de la lista se pregunta primero y,
   si confirmas, borra solo los archivos de autopiloto del disco
-  (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `progreso.log`); el
-  resto del proyecto jamás se toca.
+  (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `progreso.log`,
+  `gate_checks/`); el resto del proyecto jamás se toca.
 - Sin internet: el loop de tareas se aborta/rebota y la GUI lo indica en
   pantalla y no arranca sin conexión (los modelos IA necesitan red).
 - Gate dual: al terminar una tarea, un segundo agente revisa el diff y debe
   emitir `VERDICT: PASS` antes de commitear. Modelos de opencode seleccionables
   por separado para tarea y revisor (lista en vivo con `opencode models`, botón
   ↻ Refrescar).
+- **Gates por plugins**: `gate.sh` ejecuta los checks en `gate_checks/*.sh`
+  (01_db, 02_migraciones, 03_backend, 04_imports, 05_tests, 99_custom). Añade
+  o quita checks libremente; `99_custom.sh` es la plantilla para tus propias
+  verificaciones (lint, mypy, build…).
 - Modelos de IA en dos niveles: el selector muestra primero el proveedor
   (`opencode`, `google`, `openai`, `anthropic`, etc.) y, al elegirlo, muestra
   los modelos de esa empresa. La lista se obtiene con `opencode models` (cuando
@@ -83,7 +87,8 @@ autopiloto_gui/
   sensor.py        lectura de temperatura de CPU (con caché)
   proceso.py       captura en vivo de procesos
   plantillas.py    instalación de scripts en un proyecto
-  plantillas/      autopiloto.sh, gate.sh, mapear.sh, plan.md (empaquetados)
+  plantillas/      autopiloto.sh (agnóstico: opencode/codex/claude),
+                   gate.sh + gate_checks/*.sh (checks plugin), mapear.sh, plan.md
   proyectos.py     registro de proyectos, tema y ajustes de seguridad
   temas.py         estilos Claro / Oscuro / Hacker
 ```

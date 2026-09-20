@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autopiloto-gui"
+version = "2.0.0"
+description = "Panel de control del autopiloto: GUI PySide6 para gestionar agentes IA sobre proyectos"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.11.0",
+    "pyqtgraph>=0.13.7",
+]
+
+[tool.setuptools.packages.find]
+include = ["autopiloto_gui*"]
+
+[tool.setuptools.package-data]
+autopiloto_gui = [
+    "plantillas_data/*.sh",
+    "plantillas_data/*.md",
+    "plantilas_data/*.svg",
+    "plantillas_data/gate_checks/*.sh",
+    "plantillas_data/gate_checks/*.md",
+    "icono.svg",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+exclude = ["autopiloto_gui/plantillas_data/**"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",          # largas; el código usa ~88 pero el label es descriptivo
+    "B008",          # args mutables en selectores Qt (patrón de PySide)
+]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+exclude = ["autopiloto_gui/plantillas_data/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
