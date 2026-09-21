@@ -583,49 +583,49 @@ class PanelEjecucion(QWidget):
         self.chk_nav = QCheckBox(
             "🔍 Navigator automático (busca contexto antes de cada tarea)")
         self.chk_nav.setChecked(cfg.NAVEGADOR_DEFECTO)
-        g.addWidget(self.chk_nav, 5, 0, 1, 2)
+        g.addWidget(self.chk_nav, 6, 0, 1, 2)
 
-        add_field(6, "Modelo (navegador):",
+        add_field(7, "Modelo (navegador):",
                   SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
-        self.cmb_nav = g.itemAtPosition(6, 1).widget()
+        self.cmb_nav = g.itemAtPosition(7, 1).widget()
         self.cmb_nav.currentTextChanged.connect(self.modelos_modificados)
 
         b_modelos = _BtnGhost("↻ Refrescar modelos")
         b_modelos.clicked.connect(self.refrescar_modelos)
-        g.addWidget(b_modelos, 7, 0, 1, 2)
+        g.addWidget(b_modelos, 8, 0, 1, 2)
 
         self.lbl_net = _LabelStatus("", "info")
-        g.addWidget(self.lbl_net, 8, 0, 1, 2)
+        g.addWidget(self.lbl_net, 9, 0, 1, 2)
 
         self.lbl_modelos = _LabelMuted("")
-        g.addWidget(self.lbl_modelos, 9, 0, 1, 2)
+        g.addWidget(self.lbl_modelos, 10, 0, 1, 2)
 
         self.chk_dual = QCheckBox(
             "Gate dual: el revisor exige VERDICT: PASS antes del commit")
         self.chk_dual.setChecked(cfg.LAUNCH_DEFECTO["dual"])
-        g.addWidget(self.chk_dual, 10, 0, 1, 2)
+        g.addWidget(self.chk_dual, 11, 0, 1, 2)
 
         self.chk_voz = QCheckBox(
             "Alertas de voz al bloquear/terminar (notify-send/spd-say)")
         self.chk_voz.setChecked(cfg.LAUNCH_DEFECTO["voz"])
-        g.addWidget(self.chk_voz, 11, 0, 1, 2)
+        g.addWidget(self.chk_voz, 12, 0, 1, 2)
 
-        add_field(12, "Presupuesto máx (USD, 0 = sin límite):",
+        add_field(13, "Presupuesto máx (USD, 0 = sin límite):",
                   self._crear_lineedit(str(cfg.LAUNCH_DEFECTO["costo_max"])))
-        self.txt_costo_max = g.itemAtPosition(12, 1).widget()
+        self.txt_costo_max = g.itemAtPosition(13, 1).widget()
 
-        add_field(13, "Costo estimado por tarea (USD):",
+        add_field(14, "Costo estimado por tarea (USD):",
                   self._crear_lineedit(str(cfg.LAUNCH_DEFECTO["costo_iter"])))
-        self.txt_costo_iter = g.itemAtPosition(13, 1).widget()
+        self.txt_costo_iter = g.itemAtPosition(14, 1).widget()
 
         self.chk_push = QCheckBox("--push al final")
         self.chk_push.setChecked(cfg.LAUNCH_DEFECTO["push"])
-        g.addWidget(self.chk_push, 14, 0, 1, 2)
+        g.addWidget(self.chk_push, 15, 0, 1, 2)
 
         self.chk_revision_manual = QCheckBox(
             "Revisar diff manualmente antes de cada commit (pausa el loop)")
         self.chk_revision_manual.setChecked(False)
-        g.addWidget(self.chk_revision_manual, 15, 0, 1, 2)
+        g.addWidget(self.chk_revision_manual, 16, 0, 1, 2)
 
         v.addWidget(grupo)
 
@@ -1088,14 +1088,25 @@ class PanelLogs(QWidget):
         return container
 
     def _toggle_maximizar(self, tipo):
-        """Alterna maximizado del panel en el splitter."""
-        if tipo == "loop":
-            if self.splitter.sizes()[0] < 100:
-                self.splitter.setSizes([500, self.splitter.sizes()[1]])
-            else:
-                self.splitter.setSizes([50, self.splitter.sizes()[1]])
+        """Alterna minimizar/expandir del panel: oculta o restaura en el splitter.
+
+        No basta con setSizes(): el splitter no encoge un panel por debajo de su
+        tamaño mínimo. Para minimizar de verdad se oculta el widget (queda a 0)
+        y al expandir se restaura el reparto anterior.
+        """
+        idx = 0 if tipo == "loop" else 1
+        w = self.splitter.widget(idx)
+        if w.isVisible():
+            self._tam_prev = list(self.splitter.sizes())
+            w.hide()
+            return
+        w.show()
+        prev = getattr(self, "_tam_prev", None)
+        if prev and sum(prev) > 0:
+            self.splitter.setSizes(prev)
         else:
-            if self.splitter.sizes()[1] < 100:
-                self.splitter.setSizes([self.splitter.sizes()[0], 300])
+            total = sum(self.splitter.sizes())
+            if idx == 0:
+                self.splitter.setSizes([int(total * 0.7), int(total * 0.3)])
             else:
-                self.splitter.setSizes([self.splitter.sizes()[0], 50])
+                self.splitter.setSizes([int(total * 0.3), int(total * 0.7)])
