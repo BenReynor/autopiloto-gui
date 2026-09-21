@@ -11,7 +11,7 @@ import sys
 
 from PySide6.QtCore import QTimer, Signal, Qt
 from PySide6.QtWidgets import (
-    QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QSizePolicy, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QComboBox, QPlainTextEdit, QLineEdit, QCheckBox, QGridLayout, QGroupBox,
     QSplitter, QFrame, QListWidget, QListWidgetItem, QAbstractItemView,
     QInputDialog, QTreeWidget, QTreeWidgetItem, QHeaderView, QMessageBox,
@@ -514,9 +514,11 @@ class PanelEjecucion(QWidget):
             cmb_cli = QComboBox()
             cmb_cli.addItems(cfg.AGENTES_DISPONIBLES)
             cmb_cli.setCurrentText(cfg.AGENTE_DEFECTO)
+            cmb_cli.setMinimumWidth(118)
             h.addWidget(cmb_cli, 0)
             h.addWidget(selector, 1)
             w = QWidget()
+            w.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             w.setLayout(h)
             return w, cmb_cli
 
