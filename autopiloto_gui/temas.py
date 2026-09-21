@@ -4,8 +4,6 @@ Basado en referencias de diseño desktop (Linear, Vercel, VS Code).
 Un solo acento, escala neutral coherente, foco visible, contraste WCAG AA.
 """
 
-from PySide6.QtGui import QFont, QFontDatabase
-
 # ─── FUENTES ───────────────────────────────────────────────────────
 
 # Fuentes preferidas para apps desktop (evitar Inter, Roboto, Arial)

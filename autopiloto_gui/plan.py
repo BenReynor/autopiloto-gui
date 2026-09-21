@@ -23,7 +23,7 @@ class Plan:
 
     def cargar(self):
         try:
-            with open(self.ruta, "r", encoding="utf-8") as f:
+            with open(self.ruta, encoding="utf-8") as f:
                 self.texto = f.read()
         except OSError:
             self.texto = ""

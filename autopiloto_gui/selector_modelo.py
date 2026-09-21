@@ -11,7 +11,7 @@ paquete las cachea por sesión), así el refresco de la GUI es ligero.
 """
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget, QComboBox
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
 
 from . import modelos
 

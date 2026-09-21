@@ -12,7 +12,7 @@ from . import configuracion as cfg
 
 def _leer_archivo():
     try:
-        with open(cfg.REGISTRO, "r", encoding="utf-8") as f:
+        with open(cfg.REGISTRO, encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
@@ -38,13 +38,20 @@ def leer_modelos():
     return _leer_archivo().get("modelos", {})
 
 
-def guardar(proyectos, tema=None, seguridad=None, modelos=None):
+def leer_webhooks():
+    """Configuración global de webhooks (Telegram, Discord, WhatsApp)."""
+    return _leer_archivo().get("webhooks", {})
+
+
+def guardar(proyectos, tema=None, seguridad=None, webhooks=None, modelos=None):
     datos = _leer_archivo()
     datos["proyectos"] = proyectos
     if tema:
         datos["tema"] = tema
     if seguridad is not None:
         datos["seguridad"] = seguridad
+    if webhooks is not None:
+        datos["webhooks"] = webhooks
     if modelos is not None:
         datos["modelos"] = modelos
     os.makedirs(cfg.CONFIG_DIR, exist_ok=True)

@@ -13,18 +13,40 @@ import time
 from PySide6.QtCore import QProcess, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QComboBox, QTabWidget, QFileDialog, QMessageBox,
+    QApplication,
+    QComboBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
-from . import configuracion as cfg, modelos, net, plantillas, sensor
-from .paneles import (PanelEjecucion, PanelGit, PanelPlan, PanelSeguridad,
-                      AvisoTemperatura, PanelRevision, PanelLogs)
+from . import configuracion as cfg
+from . import modelos, net, plantillas, sensor
+from .paneles import (
+    AvisoTemperatura,
+    PanelEjecucion,
+    PanelGit,
+    PanelLogs,
+    PanelPlan,
+    PanelSeguridad,
+)
 from .paneles_metricas import PanelMetricas
 from .proceso import Proceso, Trabajo
-from .proyectos import (cargar, guardar, leer_modelos, leer_seguridad,
-                        leer_tema, leer_webhooks)
-from .temas import NOMBRES, obtener_temas, inicializar_temas
+from .proyectos import (
+    cargar,
+    guardar,
+    leer_modelos,
+    leer_seguridad,
+    leer_tema,
+    leer_webhooks,
+)
+from .temas import NOMBRES, inicializar_temas, obtener_temas
 from .webhooks import WebhookManager
 
 
@@ -270,6 +292,7 @@ class Ventana(QMainWindow):
         self.estado.setText(f"Proyecto: {nombre} — {ruta}")
         self.pan_plan.cargar(ruta)
         self.pan_git.cargar(ruta)
+        self.pan_ejec.actualizar_ramas(ruta)
         self.pan_logs.panel_gate.clear()
         self.pan_logs.panel_loop.clear()
         self._tail_log()
@@ -400,6 +423,8 @@ class Ventana(QMainWindow):
             args += ["--hasta", conf["hasta"]]
         if conf["padre"]:
             args += ["--padre", conf["padre"]]
+        if conf.get("trabajo"):
+            args += ["--trabajo", conf["trabajo"]]
         if conf["push"]:
             args.append("--push")
 
@@ -472,13 +497,12 @@ class Ventana(QMainWindow):
         if p:
             log = os.path.join(p[1], "progreso.log")
             try:
-                with open(log, "r", encoding="utf-8", errors="replace") as f:
+                with open(log, encoding="utf-8", errors="replace") as f:
                     contenido = f.read()
                 hechas = contenido.count("✔ commit:") + contenido.count("✔ tarea completada")
                 bloqueadas = contenido.count("tarea bloqueada")
                 total = hechas + bloqueadas
                 # Coste del log
-                import re
                 costes = re.findall(r"Costo estimado acumulado:\s*([\d.]+)\s*USD", contenido)
                 coste = float(costes[-1]) if costes else 0.0
             except Exception:
@@ -575,7 +599,7 @@ class Ventana(QMainWindow):
             # Leer tarea y diff
             tarea = ""
             try:
-                with open(archivo_tarea, "r", encoding="utf-8") as f:
+                with open(archivo_tarea, encoding="utf-8") as f:
                     tarea = f.read().strip()
             except OSError:
                 pass

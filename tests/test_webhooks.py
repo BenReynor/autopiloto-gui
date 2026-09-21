@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Tests para webhooks.py - formateo y envío"""
 
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from autopiloto_gui.webhooks import WebhookManager
@@ -17,7 +18,7 @@ def test_formateo_plantillas():
         "eventos": {"inicio": True, "bloqueada": True, "fin": True, "tokens": True, "error": True}
     }
     wm = WebhookManager(config)
-    
+
     # Test evento inicio
     datos = {"proyecto": "mi-proyecto", "modelo_tarea": "openai/gpt-4o", "modelo_revisor": "anthropic/claude"}
     msg = wm._formatear("inicio", datos)
@@ -25,20 +26,20 @@ def test_formateo_plantillas():
     assert "openai/gpt-4o" in msg
     assert "anthropic/claude" in msg
     assert "Loop iniciado" in msg
-    
+
     # Test evento bloqueada
     datos = {"proyecto": "test", "tarea": "login fail"}
     msg = wm._formatear("bloqueada", datos)
     assert "Tarea bloqueada" in msg
     assert "login fail" in msg
-    
+
     # Test evento fin
     datos = {"proyecto": "test", "hechas": 5, "total": 8, "coste": 3.50, "duracion_min": 12.5}
     msg = wm._formatear("fin", datos)
     assert "5/8" in msg or "5" in msg and "8" in msg
     assert "3.50" in msg
     assert "12.5" in msg
-    
+
     print("✅ test_formateo_plantillas PASSED")
 
 
@@ -51,15 +52,15 @@ def test_eventos_activos():
         "eventos": {"inicio": True, "bloqueada": False}
     }
     wm = WebhookManager(config)
-    assert wm.esta_activo("inicio") == True
-    assert wm.esta_activo("bloqueada") == False
-    assert wm.esta_activo("fin") == False  # no configurado = False
-    
+    assert wm.esta_activo("inicio")
+    assert not wm.esta_activo("bloqueada")
+    assert not wm.esta_activo("fin")  # no configurado = False
+
     # Config sin credenciales
     config2 = {"eventos": {"inicio": True}}
     wm2 = WebhookManager(config2)
-    assert wm2.esta_activo("inicio") == False  # sin credenciales
-    
+    assert not wm2.esta_activo("inicio")  # sin credenciales
+
     print("✅ test_eventos_activos PASSED")
 
 
@@ -73,8 +74,8 @@ def test_whatsapp_config():
         "eventos": {"inicio": True}
     }
     wm = WebhookManager(config)
-    assert wm.esta_activo("inicio") == True
-    
+    assert wm.esta_activo("inicio")
+
     # Faltan phone_id o to
     config2 = {
         "whatsapp_api_url": "https://graph.facebook.com/v18.0/123",
@@ -82,9 +83,10 @@ def test_whatsapp_config():
         "eventos": {"inicio": True}
     }
     wm2 = WebhookManager(config2)
-    # Debería estar inactivo por faltar phone_id/to
-    # (la validación real ocurre en _enviar_whatsapp)
-    
+    # Tiene api_url y token → esta_activo es True; la validación real de
+    # phone_id/to ocurre en _enviar_whatsapp
+    assert wm2.esta_activo("inicio")
+
     print("✅ test_whatsapp_config PASSED")
 
 

@@ -8,7 +8,6 @@ plano.
 
 import socket
 import threading
-import time
 
 from . import configuracion as cfg
 

@@ -4,25 +4,41 @@ Cada clase construye su UI y expone señales/métodos; la ventana (app.py) solo
 orquesta: conecta señales, gestiona procesos y actualiza estado.
 """
 
-import os
 import re
 import subprocess
-import sys
 
-from PySide6.QtCore import QTimer, Signal, Qt
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QSizePolicy, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QPlainTextEdit, QLineEdit, QCheckBox, QGridLayout, QGroupBox,
-    QSplitter, QFrame, QListWidget, QListWidgetItem, QAbstractItemView,
-    QInputDialog, QTreeWidget, QTreeWidgetItem, QHeaderView, QMessageBox,
-    QTableWidget, QTableWidgetItem, QTabWidget,
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QPlainTextEdit,
+    QPushButton,
+    QSizePolicy,
+    QSplitter,
+    QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
-from . import configuracion as cfg, modelos, plan
+from . import configuracion as cfg
+from . import plan
 from .modelos import PROVEEDORES_CATALOGO
+from .paneles_webhooks import PanelWebhooks
 from .proceso import PanelTarea, Trabajo
 from .selector_modelo import SelectorModelo
-from .paneles_webhooks import PanelWebhooks
 
 
 def _fuente_monospace(objeto):
@@ -174,12 +190,12 @@ class KanbanWidget(QWidget):
         frame = QFrame()
         frame.setFrameShape(QFrame.StyledPanel)
         frame.setProperty("class", "kanban-col")
-        frame.setStyleSheet(f"""
-            QFrame[class="kanban-col"] {{
+        frame.setStyleSheet("""
+            QFrame[class="kanban-col"] {
                 background-color: transparent;
                 border-radius: 8px;
                 border: 1px solid transparent;
-            }}
+            }
         """)
         v = QVBoxLayout(frame)
         v.setContentsMargins(8, 8, 8, 8)
@@ -440,7 +456,7 @@ class PanelRevision(QWidget):
         self._archivo_senal = archivo_senal
         self.lbl_tarea.setText(f"Tarea: {tarea}")
         try:
-            with open(archivo_diff, "r", encoding="utf-8") as f:
+            with open(archivo_diff, encoding="utf-8") as f:
                 self.txt_diff.setPlainText(f.read())
         except OSError:
             self.txt_diff.setPlainText("(no se pudo leer el diff)")
@@ -530,9 +546,13 @@ class PanelEjecucion(QWidget):
                   self._crear_lineedit(str(cfg.LAUNCH_DEFECTO["iteraciones"])))
         self.txt_iter = g.itemAtPosition(1, 1).widget()
 
-        add_field(2, "Padre (rama base):",
-                  self._crear_lineedit(cfg.LAUNCH_DEFECTO["padre"]))
-        self.txt_padre = g.itemAtPosition(2, 1).widget()
+        self.cmb_padre = QComboBox()
+        self.cmb_padre.setEditable(True)
+        self.cmb_padre.setInsertPolicy(QComboBox.NoInsert)
+        self.cmb_padre.setPlaceholderText(cfg.LAUNCH_DEFECTO["padre"] or "rama base")
+        add_field(2, "Padre (rama base):", self.cmb_padre)
+        self.cmb_padre.setCurrentText(cfg.LAUNCH_DEFECTO["padre"])
+        self.cmb_padre.currentTextChanged.connect(self.modelos_modificados)
 
         w_agente, self.cmb_agente_cli = contenedor_agente(
             SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
@@ -547,6 +567,17 @@ class PanelEjecucion(QWidget):
         self.cmb_revisor = g.itemAtPosition(4, 1).widget().layout().itemAt(1).widget()
         self.cmb_revisor.currentTextChanged.connect(self.modelos_modificados)
         self.cmb_revisor_cli.currentTextChanged.connect(self.modelos_modificados)
+
+        # Proyecto a trabajar (rama destino del trabajo; editable: permite
+        # escribir una rama aún inexistente, NoInsert).
+        self.cmb_trabajo = QComboBox()
+        self.cmb_trabajo.setEditable(True)
+        self.cmb_trabajo.setInsertPolicy(QComboBox.NoInsert)
+        self.cmb_trabajo.setPlaceholderText(
+            cfg.LAUNCH_DEFECTO["padre"] or "rama del trabajo")
+        add_field(5, "Proyecto a trabajar (rama):", self.cmb_trabajo)
+        self.cmb_trabajo.setCurrentText(cfg.LAUNCH_DEFECTO["trabajo"])
+        self.cmb_trabajo.currentTextChanged.connect(self.modelos_modificados)
 
         # Navigator
         self.chk_nav = QCheckBox(
@@ -625,12 +656,42 @@ class PanelEjecucion(QWidget):
         _fuente_ui(le)
         return le
 
+    def actualizar_ramas(self, ruta):
+        """Rellena los combos 'Padre' y 'Proyecto a trabajar' con las ramas
+        reales del repo (git).
+
+        Conserva la selección actual; permite igualmente escribir una rama
+        que aún no exista (NoInsert). Ante cualquier fallo de git deja los
+        combos como estaban.
+        """
+        if not ruta:
+            return
+        for cmb in (self.cmb_padre, self.cmb_trabajo):
+            actual = cmb.currentText()
+            ramas = []
+            try:
+                out = subprocess.run(
+                    ["git", "-C", ruta, "for-each-ref",
+                     "--format=%(refname:short)", "refs/heads"],
+                    capture_output=True, text=True, timeout=6)
+                if out.returncode == 0:
+                    ramas = [r for r in out.stdout.splitlines() if r.strip()]
+            except (OSError, subprocess.SubprocessError):
+                ramas = []
+            cmb.blockSignals(True)
+            cmb.clear()
+            cmb.addItems(ramas)
+            if actual:
+                cmb.setCurrentText(actual)
+            cmb.blockSignals(False)
+
     # ---------- API para la ventana ----------
 
     def config(self):
         return {
             "hasta": self.txt_hasta.text().strip(),
-            "padre": self.txt_padre.text().strip(),
+            "padre": self.cmb_padre.currentText().strip(),
+            "trabajo": self.cmb_trabajo.currentText().strip(),
             "push": self.chk_push.isChecked(),
             "iteraciones": int(_numero(self.txt_iter.text(),
                                         cfg.LAUNCH_DEFECTO["iteraciones"],

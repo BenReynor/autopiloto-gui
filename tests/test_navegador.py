@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Tests para navegador.py - navigator automático"""
 
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from autopiloto_gui.navegador import _cli_opencode
@@ -20,11 +21,11 @@ def test_cli_opencode():
 def test_buscar_contexto_sync():
     """Test wrapper síncrono (requiere opencode instalado)"""
     from autopiloto_gui.navegador import buscar_contexto_sync
-    
+
     # Test con proyecto actual
     ruta = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     tarea = "test: arreglar login"
-    
+
     try:
         # Usar modelo por defecto
         resultado = buscar_contexto_sync(ruta, tarea)

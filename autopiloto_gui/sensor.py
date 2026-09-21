@@ -26,7 +26,7 @@ def _zonas_termicas():
     valores = []
     for path in glob.glob("/sys/class/thermal/thermal_zone*/temp"):
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 raw = int(f.read().strip())
         except (ValueError, OSError):
             continue

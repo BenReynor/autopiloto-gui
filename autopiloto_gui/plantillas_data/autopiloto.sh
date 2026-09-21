@@ -77,6 +77,7 @@ while [[ $# -gt 0 ]]; do
         --hasta) HASTA="${2:-}"; shift 2 ;;
         --push) PUSH="1"; shift ;;
         --padre) RAMA_BASE="${2:-}"; shift 2 ;;
+        --trabajo) RAMA_TRABAJO="${2:-}"; shift 2 ;;
         -h|--help) sed -n '1,22p' "$0"; exit 0 ;;
         *) PLAN="$1"; shift ;;
     esac
@@ -85,8 +86,9 @@ done
 
 FECHA="$(date +%Y-%m-%d)"
 RAMA_RUN="autopiloto/$FECHA"
+RAMA_TRABAJO="${RAMA_TRABAJO:-}"
 
-logx() { echo "[$(date '+%F %H:%M')] $*" >> "$LOG"; }
+logx() { echo "[$(date '+%F %H:%M:%S')] $*" >> "$LOG"; }
 hora_limite() { [[ -n "$HASTA" && "$(date +%H:%M)" > "$HASTA" ]]; }
 
 hay_internet() {
@@ -387,6 +389,32 @@ else
 fi
 logx "Rama base: $RAMA_RUN"
 
+# --- Rama de trabajo (--trabajo): dónde se hace el trabajo real ---
+#   · si coincide con la rama principal (master/main) → se trabaja ahí mismo
+#   · si no existe → se crea desde la rama base (padre)
+#   · si existe (local u origin) → se usa tal cual
+#   · si la borran a mitad del run → se vuelve a la rama base para terminar
+if [[ -n "${RAMA_TRABAJO:-}" && "$RAMA_TRABAJO" != "$RAMA_RUN" ]]; then
+    if [[ "$RAMA_TRABAJO" == "master" || "$RAMA_TRABAJO" == "main" ]]; then
+        git -C "$PROYECTO" checkout -q "$RAMA_TRABAJO" 2>/dev/null \
+            || git -C "$PROYECTO" checkout -q -b "$RAMA_TRABAJO" "$RAMA_RUN"
+        echo "[autopiloto] Trabajando en la rama principal $RAMA_TRABAJO (sin rama paralela)"
+    elif git -C "$PROYECTO" rev-parse --verify -q "$RAMA_TRABAJO" >/dev/null 2>&1; then
+        git -C "$PROYECTO" checkout -q "$RAMA_TRABAJO"
+        echo "[autopiloto] Trabajando en la rama existente $RAMA_TRABAJO"
+    elif git -C "$PROYECTO" rev-parse --verify -q "origin/$RAMA_TRABAJO" >/dev/null 2>&1; then
+        git -C "$PROYECTO" checkout -q -b "$RAMA_TRABAJO" "origin/$RAMA_TRABAJO"
+        echo "[autopiloto] Trabajando en $RAMA_TRABAJO (seguimiento de origin/$RAMA_TRABAJO)"
+    else
+        git -C "$PROYECTO" checkout -q -b "$RAMA_TRABAJO" "$RAMA_RUN"
+        echo "[autopiloto] Creada la rama de trabajo $RAMA_TRABAJO (desde $RAMA_RUN)"
+    fi
+    logx "Rama de trabajo: $RAMA_TRABAJO"
+else
+    RAMA_TRABAJO="$RAMA_RUN"
+    logx "Rama de trabajo (default): $RAMA_TRABAJO"
+fi
+
 iter=0
 while (( iter < MAX_ITER )); do
     if hora_limite; then
@@ -567,10 +595,28 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
     rm -f "$BEFORE" "$AFTER" "$OUT"
 done
 
+# --- Integrar el trabajo en la rama destino (--trabajo distinta de la run) ---
+# El loop commitea en RAMA_RUN (rama base del run); si se pidió trabajar en
+# otra rama, se deja todo el run integrado allí al terminar.
+if [ -n "${RAMA_TRABAJO:-}" ] && [ "$RAMA_TRABAJO" != "$RAMA_RUN" ]; then
+    echo "[autopiloto] Integrando $RAMA_RUN -> $RAMA_TRABAJO"
+    if git -C "$PROYECTO" checkout -q "$RAMA_TRABAJO" && \
+       git -C "$PROYECTO" merge -q --no-ff "$RAMA_RUN" -m "autopiloto: integrar $RAMA_RUN" 2>/dev/null; then
+        logx "integrado $RAMA_RUN -> $RAMA_TRABAJO"
+    else
+        echo "[autopiloto] ⚠ no se pudo integrar en $RAMA_TRABAJO; el trabajo queda en $RAMA_RUN" | tee -a "$LOG"
+    fi
+fi
+
 if [ -n "$PUSH" ]; then
-    git -C "$PROYECTO" push -u origin "$RAMA_RUN" && logx "push: origin/$RAMA_RUN"
-    echo "[autopiloto] push OK: origin/$RAMA_RUN"
-    echo "[autopiloto] abre el PR de $RAMA_RUN -> $RAMA_BASE"
+    PUSH_RAMA="${RAMA_TRABAJO:-$RAMA_RUN}"
+    git -C "$PROYECTO" push -u origin "$PUSH_RAMA" && logx "push: origin/$PUSH_RAMA"
+    echo "[autopiloto] push OK: origin/$PUSH_RAMA"
+    if [ "$PUSH_RAMA" != "$RAMA_RUN" ]; then
+        echo "[autopiloto] abre el PR de $PUSH_RAMA -> $RAMA_BASE"
+    else
+        echo "[autopiloto] abre el PR de $RAMA_RUN -> $RAMA_BASE"
+    fi
 fi
 
 echo ""

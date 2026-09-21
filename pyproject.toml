@@ -19,10 +19,10 @@ include = ["autopiloto_gui*"]
 autopiloto_gui = [
     "plantillas_data/*.sh",
     "plantillas_data/*.md",
-    "plantilas_data/*.svg",
     "plantillas_data/gate_checks/*.sh",
     "plantillas_data/gate_checks/*.md",
     "icono.svg",
+    "acceso.sh",
 ]
 
 [tool.ruff]

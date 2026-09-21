@@ -31,6 +31,7 @@ LAUNCH_DEFECTO = {
     "hasta": "22:00",
     "iteraciones": 40,
     "padre": "master",
+    "trabajo": "",
     "costo_max": 0,
     "costo_iter": 0.50,
     "dual": True,
