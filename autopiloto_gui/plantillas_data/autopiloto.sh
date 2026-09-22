@@ -2,8 +2,12 @@
 # autopiloto.sh — Bucle autónomo para agentes IA, con git por ramas.
 #
 # Workflow de ramas (por tarea):
-#   autopiloto/<fecha>                  <- rama base del run (hija de RAMA_BASE)
-#   └── autopiloto/<fecha>/t<N>         <- una rama por tarea
+#   autopiloto/<fecha>                          <- rama base del run (hija de RAMA_BASE)
+#   └── autopiloto/tareas/<fecha>/t<N>          <- una rama por tarea (git no
+#                                                  permite ramas bajo el nombre
+#                                                  autopiloto/<fecha>, que ya
+#                                                  existe como ref, así que se
+#                                                  agrupan en autopiloto/tareas/)
 #        · gate OK + revisor PASS -> merge (--ff-only) a la base y se borra
 #        · gate KO o revisor FAIL -> reintento; si agota, se borra sin tocar la base
 #   master nunca recibe commits del loop.
@@ -444,7 +448,7 @@ while (( iter < MAX_ITER )); do
     fi
 
     iter=$((iter + 1))
-    RAMA_TAREA="autopiloto/$FECHA/t$iter"
+    RAMA_TAREA="autopiloto/tareas/$FECHA/t$iter"
     logx "== Iteración $iter: $TAREA (rama $RAMA_TAREA) =="
     echo "[autopiloto] [$iter/$MAX_ITER] $TAREA -> $RAMA_TAREA"
 

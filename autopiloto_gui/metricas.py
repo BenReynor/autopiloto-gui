@@ -11,14 +11,15 @@ from typing import Any
 # Formato timestamp en log: [YYYY-MM-DD HH:MM:SS]
 TIMESTAMP_RE = r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]"
 
-# Formato real del script: [TS] == Iteración N: TAREA (rama autopiloto/FECHA/tN) ==
+# Formato real del script: [TS] == Iteración N: TAREA (rama autopiloto/.../tN) ==
+# La rama puede ser autopiloto/FECHA/tN (legado) o autopiloto/tareas/FECHA/tN.
 LINEA_ITER_NUEVO = re.compile(
     TIMESTAMP_RE
-    + r" == Iteración (\d+): (.+?) \(rama autopiloto/\d{4}-\d{2}-\d{2}/t(\d+)\) =="
+    + r" == Iteración (\d+): (.+?) \(rama autopiloto/(?:tareas/)?\d{4}-\d{2}-\d{2}/t(\d+)\) =="
 )
-# Formato alternativo tolerado: [TS] [N/MAX] TAREA -> autopiloto/FECHA/tN
+# Formato alternativo tolerado: [TS] [N/MAX] TAREA -> autopiloto/.../tN
 LINEA_ITER_LEGACY = re.compile(
-    TIMESTAMP_RE + r" \[(\d+)/(\d+)\] (.+?) -> autopiloto/\d{4}-\d{2}-\d{2}/t(\d+)"
+    TIMESTAMP_RE + r" \[(\d+)/(\d+)\] (.+?) -> autopiloto/(?:tareas/)?\d{4}-\d{2}-\d{2}/t(\d+)"
 )
 # Líneas de cierre de iteración tras el timestamp (commit / completada / BLOQUEADA)
 LINEA_ESTADO = re.compile(TIMESTAMP_RE + r"\s*(?:✔|✗)?\s*(.+)")
