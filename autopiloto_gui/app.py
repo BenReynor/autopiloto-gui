@@ -10,7 +10,7 @@ import re
 import sys
 import time
 
-from PySide6.QtCore import QProcess, QTimer
+from PySide6.QtCore import QProcess, QSettings, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -55,6 +55,12 @@ class Ventana(QMainWindow):
         super().__init__()
         self.setWindowTitle("Autopiloto — panel de control")
         self.resize(cfg.ANCHO, cfg.ALTO)
+        self.setMinimumSize(cfg.ANCHO_MIN, cfg.ALTO_MIN)
+        # Recupera el tamaño y estado (maximizado/restaurado) de la última sesión
+        self._settings = QSettings("autopiloto-gui", "panel")
+        geo = self._settings.value("ventana/geometria")
+        if geo:
+            self.restoreGeometry(geo)
 
         self.proyectos = cargar()
         if not self.proyectos:
@@ -689,6 +695,11 @@ class Ventana(QMainWindow):
             return r2.returncode == 0
         except Exception:
             return False
+
+    def closeEvent(self, event):
+        """Guarda tamaño/posición/estado de la ventana para la próxima sesión."""
+        self._settings.setValue("ventana/geometria", self.saveGeometry())
+        super().closeEvent(event)
 
     def _post_revert(self, ok: bool, sha: str):
         if ok:

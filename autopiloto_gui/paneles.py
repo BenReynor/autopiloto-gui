@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSplitter,
     QTabWidget,
@@ -503,7 +504,22 @@ class PanelEjecucion(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        v = QVBoxLayout(self)
+
+        # Scroll interno: las opciones se reajustan (y se pueden desplazar) si
+        # la ventana es baja; con altura suficiente ocupan todo el ancho.
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        contenido = QWidget()
+        contenido.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        scroll.setWidget(contenido)
+
+        raiz = QVBoxLayout(self)
+        raiz.setContentsMargins(0, 0, 0, 0)
+        raiz.addWidget(scroll)
+
+        v = QVBoxLayout(contenido)
         v.setSpacing(8)
         v.setContentsMargins(0, 0, 0, 0)
 

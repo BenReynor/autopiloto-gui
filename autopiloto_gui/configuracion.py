@@ -12,8 +12,13 @@ REGISTRO = os.path.join(CONFIG_DIR, "proyectos.json")
 CATALOGO_MODELOS = os.path.join(CONFIG_DIR, "models_dev.json")
 
 # ----- Ventana -----
-ANCHO = 1080
-ALTO = 720
+# Tamaño inicial y mínimo: con menos de ANCHO_MIN x ALTO_MIN los paneles
+# quedan ilegibles; el layout se reajusta entre esos límites (los paneles
+# internos usan splitters/scroll y crecen con la ventana).
+ANCHO = 1180
+ALTO = 780
+ANCHO_MIN = 960
+ALTO_MIN = 600
 TEMA_DEFECTO = "Oscuro"
 FUENTE_MONO = "JetBrains Mono"
 FUENTE_UI = "Outfit"
