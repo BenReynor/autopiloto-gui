@@ -727,6 +727,37 @@ class PanelEjecucion(QWidget):
             "nav_modelo": self.cmb_nav.currentText() if "/" in self.cmb_nav.currentText() else "",
         }
 
+    def aplicar_config(self, conf):
+        """Rellena los widgets con la configuración guardada del proyecto.
+
+        Bloquea las señales para no disparar guardados durante la carga.
+        """
+        c = dict(cfg.LAUNCH_DEFECTO)
+        c.update(conf or {})
+        previo = self.signalsBlocked()
+        self.blockSignals(True)
+        self.txt_hasta.setText(c.get("hasta") or "")
+        self.txt_iter.setText(str(c["iteraciones"]))
+        self.cmb_padre.setCurrentText(c.get("padre") or "")
+        self.cmb_trabajo.setCurrentText(c.get("trabajo") or "")
+        self.cmb_agente_cli.setCurrentText(
+            c.get("agente_cli") or cfg.AGENTE_DEFECTO)
+        self.cmb_agente.setCurrentText(c.get("agente") or "")
+        self.cmb_revisor_cli.setCurrentText(
+            c.get("revisor_cli") or cfg.AGENTE_DEFECTO)
+        self.cmb_revisor.setCurrentText(c.get("revisor") or "")
+        self.cmb_nav.setCurrentText(c.get("nav_modelo") or "")
+        self.chk_nav.setChecked(bool(c.get("nav")))
+        self.chk_dual.setChecked(bool(c.get("dual")))
+        self.chk_voz.setChecked(bool(c.get("voz")))
+        self.chk_push.setChecked(bool(c.get("push")))
+        self.chk_revision_manual.setChecked(bool(c.get("revision_manual")))
+        self.txt_costo_max.setText(
+            str(c.get("costo_max", cfg.LAUNCH_DEFECTO["costo_max"])))
+        self.txt_costo_iter.setText(
+            str(c.get("costo_iter", cfg.LAUNCH_DEFECTO["costo_iter"])))
+        self.blockSignals(previo)
+
     def nota_net(self, ok):
         if ok is None:
             self.lbl_net.setText("Internet: ?")
@@ -985,6 +1016,17 @@ class PanelSeguridad(QWidget):
             "umbral": int(_numero(self.txt_umbral.text(), 85, int, 1)),
             "segundos": int(_numero(self.txt_segundos.text(), 5, int, 1)),
         }
+
+    def aplicar_config(self, seguridad, webhooks=None):
+        """Rellena los controles con la configuración del proyecto activo."""
+        seguridad = seguridad or {}
+        self.chk_activo.setChecked(bool(seguridad.get("activo")))
+        self.chk_ver.setChecked(bool(seguridad.get("ver")))
+        self.txt_umbral.setText(str(seguridad.get("umbral", 85)))
+        self.txt_segundos.setText(str(seguridad.get("segundos", 5)))
+        self.set_visibilidad_temp(bool(seguridad.get("ver")))
+        if webhooks is not None:
+            self.panel_webhooks.aplicar_config(webhooks)
 
     def _emitir_ajustes(self):
         # Solo seguridad; webhooks se emiten por separado

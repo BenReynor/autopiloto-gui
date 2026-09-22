@@ -218,5 +218,23 @@ class PanelWebhooks(QWidget):
         self.guardado.emit(self.config)
         QMessageBox.information(self, "Webhooks", "Configuración guardada ✓")
 
+    def aplicar_config(self, config):
+        """Rellena los campos con la configuración del proyecto activo."""
+        self.config = dict(config or {})
+        self.webhook.configurar(self.config)
+        self.tg_token.setText(self.config.get("telegram_token", ""))
+        self.tg_chat.setText(self.config.get("telegram_chat_id", ""))
+        self.dc_url.setText(self.config.get("discord_webhook_url", ""))
+        self.wa_api.setText(self.config.get("whatsapp_api_url", ""))
+        self.wa_token.setText(self.config.get("whatsapp_token", ""))
+        self.wa_phone.setText(self.config.get("whatsapp_phone_id", ""))
+        self.wa_to.setText(self.config.get("whatsapp_to", ""))
+        self.tg_activo.setChecked(bool(self.config.get("telegram_token")))
+        self.dc_activo.setChecked(bool(self.config.get("discord_webhook_url")))
+        self.wa_activo.setChecked(bool(self.config.get("whatsapp_token")))
+        eventos = self.config.get("eventos", {})
+        for key, chk in self.chk_eventos.items():
+            chk.setChecked(eventos.get(key, True))
+
     def obtener_config(self) -> dict:
         return self.config

@@ -41,6 +41,8 @@ from .proceso import Proceso, Trabajo
 from .proyectos import (
     cargar,
     guardar,
+    guardar_config_proyecto,
+    leer_config_proyecto,
     leer_modelos,
     leer_seguridad,
     leer_tema,
@@ -87,6 +89,7 @@ class Ventana(QMainWindow):
         self.webhooks_config = leer_webhooks()
         self._modelos = []
         self._sel_modelos = leer_modelos()
+        self._lanzamiento = dict(cfg.LAUNCH_DEFECTO)
         self._inicio_loop_ts = None
 
         # Webhook manager
@@ -256,14 +259,56 @@ class Ventana(QMainWindow):
             # Compatibilidad: solo seguridad
             self.seguridad = datos
         guardar(self.proyectos, self.tema, self.seguridad, self.webhooks_config)
+        self._guardar_config_proyecto()
         self._iniciar_vigilancia()
         self.estado.setText("Ajustes guardados")
 
     # ---------- Proyectos ----------
 
+    def _cargar_config_proyecto(self, nombre):
+        """Carga tema/seguridad/webhooks/modelos/lanzamiento del proyecto.
+
+        Los valores globales actúan como base y lo guardado en
+        proyectos[nombre]["config"] gana a esa base.
+        """
+        local = leer_config_proyecto(nombre)
+        self.tema = local.get("tema") or leer_tema()
+        seg = leer_seguridad()
+        seg.update(local.get("seguridad") or {})
+        self.seguridad = seg
+        wb = leer_webhooks()
+        wb.update(local.get("webhooks") or {})
+        self.webhooks_config = wb
+        mod = leer_modelos()
+        mod.update(local.get("modelos") or {})
+        self._sel_modelos = mod
+        lanz = dict(cfg.LAUNCH_DEFECTO)
+        lanz.update(local.get("lanzamiento") or {})
+        self._lanzamiento = lanz
+        self.webhook.configurar(self.webhooks_config)
+
+    def _guardar_config_proyecto(self):
+        """Persiste la config del proyecto activo (tema, modelos, lanzamiento,
+        seguridad y webhooks)."""
+        if not self._nombre_activo:
+            return
+        conf = {
+            "tema": self.tema,
+            "modelos": self._sel_modelos,
+            "lanzamiento": self._lanzamiento,
+            "seguridad": self.seguridad,
+            "webhooks": self.webhooks_config,
+        }
+        guardar_config_proyecto(self.proyectos, self._nombre_activo, conf)
+
+    def _capturar_lanzamiento(self):
+        """Guarda el estado actual de los widgets de lanzamiento."""
+        self._lanzamiento = self.pan_ejec.config()
+
     def _cambiar_tema(self, nombre):
         self.tema = nombre
         guardar(self.proyectos, nombre)
+        self._guardar_config_proyecto()
         self._aplicar_tema(nombre)
 
     def _proyecto_actual(self):
@@ -283,6 +328,9 @@ class Ventana(QMainWindow):
             QMessageBox.warning(self, "Autopiloto en ejecución",
                                 "Detén el loop antes de cambiar de proyecto.")
             return
+        # Persiste la config del proyecto saliente antes de cambiar
+        self._capturar_lanzamiento()
+        self._guardar_config_proyecto()
         self._nombre_activo = n
         self._settings.setValue("proyecto/activo", n)
         guardar(self.proyectos, self.tema)
@@ -300,10 +348,18 @@ class Ventana(QMainWindow):
         nombre, ruta = p
         self._nombre_activo = nombre
         self._log_tam = 0
+        self._cargar_config_proyecto(nombre)
+        self.cmb_tema.blockSignals(True)
+        self.cmb_tema.setCurrentText(self.tema)
+        self.cmb_tema.blockSignals(False)
+        self._aplicar_tema(self.tema)
+        self.pan_seg.aplicar_config(self.seguridad, self.webhooks_config)
+        self._iniciar_vigilancia()
         self.estado.setText(f"Proyecto: {nombre} — {ruta}")
         self.pan_plan.cargar(ruta)
         self.pan_git.cargar(ruta)
         self.pan_ejec.actualizar_ramas(ruta)
+        self.pan_ejec.aplicar_config(self._lanzamiento)
         self.pan_logs.panel_gate.clear()
         self.pan_logs.panel_loop.clear()
         self._tail_log()
@@ -388,6 +444,7 @@ class Ventana(QMainWindow):
 
     def _guardar_sel_modelos(self, *_):
         self._sel_modelos = self.pan_ejec.modelos_seleccion()
+        self._guardar_config_proyecto()
         guardar(self.proyectos, self.tema,
                 seguridad=self.seguridad, modelos=self._sel_modelos)
 
@@ -427,7 +484,9 @@ class Ventana(QMainWindow):
                 "Conecta la red e inténtalo de nuevo.")
             return
         ruta = p[1]
-        conf = self.pan_ejec.config()
+        self._capturar_lanzamiento()
+        self._guardar_config_proyecto()
+        conf = self._lanzamiento
         nav_conf = self.pan_ejec.navegador_config()
         args = []
         if conf["hasta"]:
@@ -702,7 +761,10 @@ class Ventana(QMainWindow):
             return False
 
     def closeEvent(self, event):
-        """Guarda tamaño/posición/estado de la ventana para la próxima sesión."""
+        """Guarda tamaño/posición/estado y la config del proyecto activo."""
+        if hasattr(self, "pan_ejec"):
+            self._capturar_lanzamiento()
+            self._guardar_config_proyecto()
         self._settings.setValue("ventana/geometria", self.saveGeometry())
         super().closeEvent(event)
 

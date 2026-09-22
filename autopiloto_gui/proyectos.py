@@ -43,6 +43,27 @@ def leer_webhooks():
     return _leer_archivo().get("webhooks", {})
 
 
+def leer_config_proyecto(nombre):
+    """Configuración guardada para un proyecto concreto (sin fusionar).
+
+    Los valores globales (tema/seguridad/webhooks/modelos) actúan como
+    base; lo que haya dentro de proyectos[nombre]["config"] gana a esa base.
+    """
+    proy = cargar().get(nombre)
+    return proy.get("config", {}) if proy else {}
+
+
+def guardar_config_proyecto(proyectos, nombre, config):
+    """Persiste la configuración específica del proyecto junto a su registro."""
+    datos = _leer_archivo()
+    datos["proyectos"] = proyectos
+    proyectos.setdefault(nombre, {})
+    proyectos[nombre]["config"] = config
+    os.makedirs(cfg.CONFIG_DIR, exist_ok=True)
+    with open(cfg.REGISTRO, "w", encoding="utf-8") as f:
+        json.dump(datos, f, indent=2, ensure_ascii=False)
+
+
 def guardar(proyectos, tema=None, seguridad=None, webhooks=None, modelos=None):
     datos = _leer_archivo()
     datos["proyectos"] = proyectos
