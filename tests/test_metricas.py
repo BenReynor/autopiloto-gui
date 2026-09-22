@@ -127,6 +127,33 @@ def test_series_temporales():
         os.unlink(log_path)
 
 
+def test_coste_con_coma_decimal():
+    """El log real (locale es_CO) escribe '0,50 USD' con coma decimal."""
+    log = """[2025-01-15 10:00:00] [1/40] Tarea 1 -> autopiloto/tareas/2025-01-15/t1
+[2025-01-15 10:02:00] ✔ commit: Tarea 1
+[2025-01-15 10:02:00] Costo estimado acumulado: 0,50 USD
+[2025-01-15 10:05:00] [2/40] Tarea 2 -> autopiloto/tareas/2025-01-15/t2
+[2025-01-15 10:07:00] ✔ commit: Tarea 2
+[2025-01-15 10:07:00] Costo estimado acumulado: 1,00 USD
+"""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
+        f.write(log)
+        log_path = f.name
+
+    try:
+        result = parsear_log(log_path)
+        # Formato nuevo de ramas tolerado: autopiloto/tareas/FECHA/tN
+        assert len(result["iteraciones"]) == 2
+        assert result["iteraciones"][0]["tarea"] == "Tarea 1"
+        assert result["iteraciones"][0]["duracion_s"] == 120
+        assert result["resumen"]["coste_total"] == 1.00
+        costes = [v for _, v in result["series"]["coste_acum"]]
+        assert costes == [0.50, 1.00]
+        print("✅ test_coste_con_coma_decimal PASSED")
+    finally:
+        os.unlink(log_path)
+
+
 if __name__ == "__main__":
     test_parsear_log_basico()
     test_parsear_log_vacio()

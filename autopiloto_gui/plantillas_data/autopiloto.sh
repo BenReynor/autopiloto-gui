@@ -288,7 +288,7 @@ revertir() {
 
 proxima_tarea() {
     local l
-    while IFS= read -r l; do
+    while IFS= read -r l || [ -n "$l" ]; do
         if [[ "$l" == "- [ ] "* ]]; then
             echo "${l#- [ ] }"
             return 0

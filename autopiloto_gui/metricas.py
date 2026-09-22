@@ -24,7 +24,7 @@ LINEA_ITER_LEGACY = re.compile(
 # Líneas de cierre de iteración tras el timestamp (commit / completada / BLOQUEADA)
 LINEA_ESTADO = re.compile(TIMESTAMP_RE + r"\s*(?:✔|✗)?\s*(.+)")
 LINEA_COSTE = re.compile(
-    TIMESTAMP_RE + r" (?:Costo estimado acumulado:|💰 Costo estimado acumulado:)\s*([\d.]+)\s*USD"
+    TIMESTAMP_RE + r" (?:Costo estimado acumulado:|💰 Costo estimado acumulado:)\s*([\d.,]+)\s*USD"
 )
 LINEA_FIN = re.compile(
     TIMESTAMP_RE + r" == AUTOPILOTO FINALIZADO"
@@ -133,7 +133,7 @@ def parsear_log(ruta_log: str) -> dict[str, Any]:
         # Coste acumulado - asignar a la última completada
         m = LINEA_COSTE.search(linea)
         if m:
-            coste_acum = float(m.group(2))
+            coste_acum = float(m.group(2).replace(",", "."))
             if ultima_completada:
                 ultima_completada["coste_usd"] = coste_acum
             elif iter_actual:
