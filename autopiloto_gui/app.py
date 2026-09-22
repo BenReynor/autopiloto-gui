@@ -138,6 +138,10 @@ class Ventana(QMainWindow):
         barra.addWidget(QLabel("Proyecto:"))
         self.cmb = QComboBox()
         self.cmb.addItems(sorted(self.proyectos))
+        # Reabre el último proyecto activo (en vez del primero alfabético)
+        prev = self._settings.value("proyecto/activo", "")
+        if prev and prev in self.proyectos:
+            self.cmb.setCurrentText(prev)
         self.cmb.currentTextChanged.connect(self._cambiar_proyecto)
         barra.addWidget(self.cmb, 1)
         b_agregar = QPushButton("Agregar…")
@@ -280,6 +284,7 @@ class Ventana(QMainWindow):
                                 "Detén el loop antes de cambiar de proyecto.")
             return
         self._nombre_activo = n
+        self._settings.setValue("proyecto/activo", n)
         guardar(self.proyectos, self.tema)
         self._cargar_proyecto()
 
