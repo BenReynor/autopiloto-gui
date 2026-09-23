@@ -26,6 +26,10 @@ LINEA_ESTADO = re.compile(TIMESTAMP_RE + r"\s*(?:✔|✗)?\s*(.+)")
 LINEA_COSTE = re.compile(
     TIMESTAMP_RE + r" (?:Costo estimado acumulado:|💰 Costo estimado acumulado:)\s*([\d.,]+)\s*USD"
 )
+# Coste exacto por iteración (log idéntico a la variable COSTO_ITER_ACTUAL del script)
+LINEA_COSTE_ITER = re.compile(
+    TIMESTAMP_RE + r" Costo iteración (\d+):\s*([\d.,]+)\s*USD"
+)
 LINEA_FIN = re.compile(
     TIMESTAMP_RE + r" == AUTOPILOTO FINALIZADO"
 )
@@ -86,6 +90,7 @@ def parsear_log(ruta_log: str) -> dict[str, Any]:
     iter_actual = None
     ultima_completada = None  # Para asignar coste después de completar
     coste_acum = 0.0
+    coste_por_iter: dict[int, float] = {}  # Coste exacto por iteración (nuevo formato)
     gate_ok = gate_fail = 0
     rev_pass = rev_fail = 0
 
@@ -130,14 +135,26 @@ def parsear_log(ruta_log: str) -> dict[str, Any]:
                 iter_actual = None
                 continue
 
-        # Coste acumulado - asignar a la última completada
+        # Coste exacto por iteración (asignar a su iteración abierta)
+        m = LINEA_COSTE_ITER.search(linea)
+        if m:
+            num = int(m.group(2))
+            costo = float(m.group(3).replace(",", "."))
+            coste_por_iter[num] = costo
+            if iter_actual and iter_actual["iter"] == num:
+                iter_actual["coste_usd"] = costo
+            continue
+
+        # Coste acumulado - asignar a la última completada (solo formato legado,
+        # cuando no hay coste exacto por iteración que lo sobreescriba)
         m = LINEA_COSTE.search(linea)
         if m:
             coste_acum = float(m.group(2).replace(",", "."))
-            if ultima_completada:
-                ultima_completada["coste_usd"] = coste_acum
-            elif iter_actual:
-                iter_actual["coste_usd"] = coste_acum
+            if not coste_por_iter:
+                if ultima_completada:
+                    ultima_completada["coste_usd"] = coste_acum
+                elif iter_actual:
+                    iter_actual["coste_usd"] = coste_acum
             continue
 
         mayus = linea.upper()
@@ -172,12 +189,22 @@ def parsear_log(ruta_log: str) -> dict[str, Any]:
     rev_series = []
 
     hechas_acum = 0
+    coste_acumulado = 0.0
+    coste_por_iter_total = 0.0
     for it in iteraciones:
         ts = it["timestamp"]
         if it["estado"] == "hecha":
             hechas_acum += 1
         tareas_hora.append((ts, hechas_acum))
-        coste_series.append((ts, it.get("coste_usd", 0.0)))
+        # Si hay coste exacto por iteración, acumular en serie; si no, usar el
+        # valor asignado (formato legado ya acumulado).
+        if it["iter"] in coste_por_iter:
+            coste_acumulado += coste_por_iter[it["iter"]]
+            coste_por_iter_total = coste_acumulado
+            serie_coste = round(coste_acumulado, 2)
+        else:
+            serie_coste = it.get("coste_usd", 0.0)
+        coste_series.append((ts, serie_coste))
         gate_val = 1 if it.get("gate") == "ok" else (0 if it.get("gate") == "fail" else None)
         rev_val = 1 if it.get("revisor") == "pass" else (0 if it.get("revisor") == "fail" else None)
         gate_series.append((ts, gate_val))
@@ -200,7 +227,7 @@ def parsear_log(ruta_log: str) -> dict[str, Any]:
             "hechas": hechas,
             "bloqueadas": bloqueadas,
             "pendientes": max(0, total - hechas - bloqueadas),
-            "coste_total": coste_acum,
+            "coste_total": coste_por_iter_total if coste_por_iter else coste_acum,
             "duracion_min": 0.0,  # Se calcula en UI si hay timestamps
         },
     }

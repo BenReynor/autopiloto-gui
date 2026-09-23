@@ -154,9 +154,45 @@ def test_coste_con_coma_decimal():
         os.unlink(log_path)
 
 
+def test_coste_por_iteracion():
+    """Coste exacto por iteración: cada tarea suma su propio coste a la serie
+    acumulada (formato log_autopiloto: 'Costo iteración N: X USD')."""
+    log = """[2025-01-15 10:00:00] == Iteración 1: Tarea A (rama autopiloto/tareas/2025-01-15/t1) ==
+[2025-01-15 10:02:00] Costo iteración 1: 1.00 USD
+[2025-01-15 10:02:00] ✔ commit: Tarea A
+[2025-01-15 10:05:00] == Iteración 2: Tarea B (rama autopiloto/tareas/2025-01-15/t2) ==
+[2025-01-15 10:07:00] Costo iteración 2: 0.50 USD
+[2025-01-15 10:07:00] ✔ commit: Tarea B
+[2025-01-15 10:10:00] == Iteración 3: Tarea C (rama autopiloto/tareas/2025-01-15/t3) ==
+[2025-01-15 10:12:00] Costo iteración 3: 0.75 USD
+[2025-01-15 10:12:00] ✗ tarea bloqueada tras 2 intentos. Marcada [B] en plan.md
+"""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
+        f.write(log)
+        log_path = f.name
+
+    try:
+        result = parsear_log(log_path)
+        iters = result["iteraciones"]
+        assert [it["iter"] for it in iters] == [1, 2, 3]
+        # Coste exacto asignado a cada iteración (el acumulado ya no pisa)
+        assert iters[0]["coste_usd"] == 1.00
+        assert iters[1]["coste_usd"] == 0.50
+        assert iters[2]["coste_usd"] == 0.75
+        # Serie acumulada por iteración
+        costes = [v for _, v in result["series"]["coste_acum"]]
+        assert costes == [1.00, 1.50, 2.25]
+        assert result["resumen"]["coste_total"] == 2.25
+        print("✅ test_coste_por_iteracion PASSED")
+    finally:
+        os.unlink(log_path)
+
+
 if __name__ == "__main__":
     test_parsear_log_basico()
     test_parsear_log_vacio()
     test_parsear_log_solo_inicio()
     test_series_temporales()
+    test_coste_con_coma_decimal()
+    test_coste_por_iteracion()
     print("\n🎉 Todos los tests de metricas.py PASARON")

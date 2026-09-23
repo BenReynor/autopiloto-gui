@@ -45,6 +45,11 @@
 #   COSTO_POR_ITER    costo estimado USD por tarea+revisión (def 0.50).
 #   VOZ               "1" activa alertas al bloquearte/terminar (notify-send, spd-say).
 #
+# Memoria del proyecto (lecciones.md):
+#   · Se inyecta al agente antes de cada tarea para no repetir errores pasados
+#     (corrección única de errores).
+#   · Cuando una tarea queda bloqueada se añade una lección automática.
+#
 # Portátil: deduce su raíz de su propia ubicación; copia gate.sh, mapear.sh y
 # autopiloto.sh a la raíz de cualquier proyecto.
 set -uo pipefail
@@ -55,6 +60,7 @@ MAPEAR="$PROYECTO/mapear.sh"
 MAPA="$PROYECTO/mapeo.txt"
 LOG="$PROYECTO/progreso.log"
 PLAN="$PROYECTO/plan.md"
+LECCIONES="$PROYECTO/lecciones.md"
 MAX_ITER="${MAX_ITER:-40}"
 TIMEOUT_POR_TAREA="${TIMEOUT_POR_TAREA:-900}"
 TIMEOUT_NAVEGADOR="${TIMEOUT_NAVEGADOR:-60}"
@@ -74,7 +80,7 @@ COSTO_POR_ITER="${COSTO_POR_ITER:-0.50}"
 RAMA_BASE="${RAMA_BASE:-master}"
 PUSH=""
 HASTA=""
-CONTROL="plan\.md|progreso\.log|gate\.sh|autopiloto\.sh|mapear\.sh|mapeo\.txt|endpoints\.txt"
+CONTROL="plan\.md|lecciones\.md|progreso\.log|gate\.sh|autopiloto\.sh|mapear\.sh|mapeo\.txt|endpoints\.txt"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -286,6 +292,15 @@ revertir() {
         done
 }
 
+# Memoria del proyecto: añade una lección a lecciones.md (corrección única de
+# errores). La usa el agente en la siguiente tarea para no repetir el fallo.
+registrar_leccion() {
+    local titulo="$1" sintoma="$2" causa="$3" prevencion="$4"
+    {   printf '\n## %s — %s\n- Síntoma: %s\n- Causa: %s\n- Prevención: %s\n' \
+            "$(date '+%Y-%m-%d %H:%M')" "$titulo" "$sintoma" "$causa" "$prevencion"
+    } >> "$LECCIONES"
+}
+
 proxima_tarea() {
     local l
     while IFS= read -r l || [ -n "$l" ]; do
@@ -448,6 +463,7 @@ while (( iter < MAX_ITER )); do
     fi
 
     iter=$((iter + 1))
+    COSTO_ITER_ACTUAL=0
     RAMA_TAREA="autopiloto/tareas/$FECHA/t$iter"
     logx "== Iteración $iter: $TAREA (rama $RAMA_TAREA) =="
     echo "[autopiloto] [$iter/$MAX_ITER] $TAREA -> $RAMA_TAREA"
@@ -466,6 +482,13 @@ while (( iter < MAX_ITER )); do
     for intento in $(seq 1 "$MAX_REINTENTOS"); do
         PRE=""
         [ "$intento" -gt 1 ] && PRE="El intento anterior no pasó la verificación: no repitas tu cambio, corrígelo. "
+        COSTO_ITER_ACTUAL="$(awk -v t="$COSTO_ITER_ACTUAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a}')"
+
+        # --- MEMORIA DEL PROYECTO (corrección única de errores) ---
+        LECCIONES_CONTEXTO=""
+        if [ -f "$LECCIONES" ] && [ -s "$LECCIONES" ]; then
+            LECCIONES_CONTEXTO="$(cat "$LECCIONES")"
+        fi
 
         # --- NAVEGADOR AUTOMÁTICO (busca contexto antes de la tarea) ---
         if [ "$NAVEGADOR" = "1" ] && agente_ok "$AGENTE_TAREA" && [ -n "$MODELO_NAVEGADOR" ]; then
@@ -484,10 +507,12 @@ while (( iter < MAX_ITER )); do
         PROMPT="Estás en MODO AUTOPILOTO (aplica las skills autopiloto y veracidad).
 Tarea actual (solo esta): ${TAREA}
 ${PRE}Lee plan.md y progreso.log antes de tocar nada. Lee también mapeo.txt (mapa módulos→tests): localiza el/los test del código que vas a tocar y úsalos como contrato.
-${NAV_CONTEXTO}
+${NAV_CONTEXTO}${LECCIONES_CONTEXTO:+MEMORIA DEL PROYECTO (lecciones aprendidas, evita repetir estos errores):
+${LECCIONES_CONTEXTO}
+}
 Ejecuta ÚNICAMENTE esta tarea.
 NO hagas commits, NO crees, cambies ni borres ramas: el script gestiona git.
-NO edites autopiloto.sh, gate.sh, mapear.sh, mapeo.txt, plan.md, progreso.log, endpoints.txt, .env ni SECURITY.md.
+NO edites autopiloto.sh, gate.sh, mapear.sh, mapeo.txt, plan.md, progreso.log, lecciones.md, endpoints.txt, .env ni SECURITY.md.
 Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corriste."
 
         run_agente "$AGENTE_TAREA" "$OUT" "$MODELO_TAREA" "$PROMPT"
@@ -522,6 +547,7 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
 
         if bash "$GATE"; then
             if [ "$REVISION_DUAL" = "1" ] && [ -n "$REVISOR" ]; then
+                COSTO_ITER_ACTUAL="$(awk -v t="$COSTO_ITER_ACTUAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a/2}')"
                 if revisar_diff "$REVISOR"; then
                     # Gate dual pasó, ahora verificar revisión manual si está activada
                     if esperar_revision_manual; then
@@ -559,6 +585,7 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         fi
     done
 
+    logx "Costo iteración ${iter}: ${COSTO_ITER_ACTUAL} USD"
     snapshot "$AFTER"
 
     if [ "$hecho" -eq 1 ]; then
@@ -590,6 +617,12 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         logx "tarea BLOQUEADA: $TAREA (rama $RAMA_TAREA descartada)"
         echo "[autopiloto] ✗ tarea bloqueada tras $MAX_REINTENTOS intentos. Marcada [B] en plan.md"
         alerta "Tarea bloqueada: $TAREA"
+        registrar_leccion \
+            "Tarea bloqueada: ${TAREA}" \
+            "El agente no cumplió el criterio tras $MAX_REINTENTOS intentos." \
+            "gate.sh/revisor fallaron en la iteración ${iter}." \
+            "Reformular la tarea en plan.md, dividirla en pasos más pequeños o revisar los criterios."
+        logx "lección registrada en lecciones.md (tarea bloqueada)"
     fi
 
     COSTO_TOTAL="$(awk -v t="$COSTO_TOTAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a}')"

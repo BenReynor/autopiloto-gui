@@ -10,6 +10,11 @@ proyectos sin tocar archivos ni terminal.
 - Editor de `plan.md` con contador de tareas (`[ ]` / `[x]` / `[B]`).
 - Lanzar / detener el loop (`autopiloto.sh`) con opciones: `--hasta`, `--padre`,
   `--trabajo`, `--push`, `MAX_ITER`.
+- **Memoria del proyecto (lecciones.md)**: pestaña 🧠 Lecciones para editar la
+  memoria que se inyecta al agente antes de cada tarea (corrección única de
+  errores). Cuando una tarea queda bloqueada `[B]`, el autopiloto añade una
+  lección automática con síntoma/causa/prevención. Auto-provisionada al abrir
+  el proyecto y recargada en vivo si cambia en disco.
 - **Rama de trabajo (`--trabajo`)**: elige en qué rama se integra el trabajo
   del run. Si la rama no existe, se crea desde la base; si existe (local u
   origin) se usa tal cual. Al terminar, todo lo producido en
@@ -17,7 +22,9 @@ proyectos sin tocar archivos ni terminal.
   esa rama (y se indica el PR a abrir a la base).
 - **Métricas del run**: pestaña con 4 gráficas en vivo (tareas por iteración,
   duración, coste acumulado, estado) + tabla resumen, leyendo `progreso.log`
-  mientras el autopiloto corre.
+  mientras el autopiloto corre. El coste por iteración se registra de forma
+  exacta (`Costo iteración N: X USD`); el total de la tabla es la suma de los
+  costes por iteración.
 - **Revisión manual de diff antes de commit** (opcional): la GUI muestra el diff,
   tú apruebas/rechazas; si rechazas, el motivo se inyecta en el siguiente intento.
 - **Feedback automático del revisor**: si el gate dual da FAIL, sus razones se
@@ -26,14 +33,15 @@ proyectos sin tocar archivos ni terminal.
 - Vista de rama, `git status` y últimos commits (en hilo de fondo, no bloquea).
 - Temas: Claro, Oscuro y Hacker (verde/negro).
 - Auto-provisión y actualización: al abrir un proyecto, instala los archivos
-  que falten (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`) y actualiza
+  que falten (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `lecciones.md`)
+  y actualiza
   automáticamente los scripts `.sh` si su versión difiere de la de la app.
   `plan.md` solo se crea si falta: nunca se sobreescribe con la plantilla (es
-  el contenido editable de tus tareas).
+  el contenido editable de tus tareas). Igual para `lecciones.md`.
 - Quitar proyecto: al eliminar un proyecto de la lista se pregunta primero y,
   si confirmas, borra solo los archivos de autopiloto del disco
-  (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `progreso.log`,
-  `gate_checks/`); el resto del proyecto jamás se toca.
+  (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `lecciones.md`,
+  `progreso.log`, `gate_checks/`); el resto del proyecto jamás se toca.
 - Sin internet: el loop de tareas se aborta/rebota y la GUI lo indica en
   pantalla y no arranca sin conexión (los modelos IA necesitan red).
 - Gate dual: al terminar una tarea, un segundo agente revisa el diff y debe

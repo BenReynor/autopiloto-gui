@@ -32,6 +32,7 @@ from .paneles import (
     AvisoTemperatura,
     PanelEjecucion,
     PanelGit,
+    PanelLecciones,
     PanelLogs,
     PanelPlan,
     PanelSeguridad,
@@ -118,8 +119,16 @@ class Ventana(QMainWindow):
         self.timer_plan.timeout.connect(self._refrescar_plan)
         self.timer_plan.start(2000)
 
+        # Recarga lecciones.md automáticamente si cambia en disco
+        self.timer_lecciones = QTimer(self)
+        self.timer_lecciones.timeout.connect(self._refrescar_lecciones)
+        self.timer_lecciones.start(2000)
+
     def _refrescar_plan(self):
         self.pan_plan._recargar_si_cambio()
+
+    def _refrescar_lecciones(self):
+        self.pan_lecciones._recargar_si_cambio()
 
     def _cargar_modelos_en_fondo(self):
         """Consulta opencode/models.dev sin bloquear el arranque."""
@@ -176,6 +185,9 @@ class Ventana(QMainWindow):
         self.pan_plan = PanelPlan()
         self.pan_plan.guardado.connect(
             lambda ruta: self.estado.setText(f"plan.md guardado ({ruta})"))
+        self.pan_lecciones = PanelLecciones()
+        self.pan_lecciones.guardado.connect(
+            lambda ruta: self.estado.setText(f"lecciones.md guardado ({ruta})"))
         self.pan_ejec = PanelEjecucion()
         self.pan_ejec.iniciar.connect(self._iniciar_loop)
         self.pan_ejec.detener.connect(self._detener_loop)
@@ -194,6 +206,7 @@ class Ventana(QMainWindow):
         self.pan_seg = PanelSeguridad(self.seguridad, self.webhooks_config)
         self.pan_seg.guardar_ajustes.connect(self._guardar_seguridad)
         self.tabs.addTab(self.pan_plan, "Plan")
+        self.tabs.addTab(self.pan_lecciones, "🧠 Lecciones")
         self.tabs.addTab(self.pan_ejec, "Ejecución")
         self.tabs.addTab(self.pan_logs, "Logs")
         self.tabs.addTab(self.pan_git, "Git")
@@ -349,6 +362,7 @@ class Ventana(QMainWindow):
         if not p:
             self.estado.setText("Sin proyecto")
             self.pan_plan.clear()
+            self.pan_lecciones.cargar(None)
             self.pan_git.cargar(None)
             self.pan_logs.panel_loop.clear()
             self.pan_logs.panel_gate.clear()
@@ -365,6 +379,7 @@ class Ventana(QMainWindow):
         self._iniciar_vigilancia()
         self.estado.setText(f"Proyecto: {nombre} — {ruta}")
         self.pan_plan.cargar(os.path.join(ruta, "plan.md"))
+        self.pan_lecciones.cargar(os.path.join(ruta, "lecciones.md"))
         self.pan_git.cargar(ruta)
         self.pan_ejec.actualizar_ramas(ruta)
         self.pan_ejec.aplicar_config(self._lanzamiento)
@@ -426,7 +441,7 @@ class Ventana(QMainWindow):
             "¿Eliminar el proyecto de la lista?\n\nTambién se borrarán sus "
             "archivos de autopiloto del disco:\n"
             "  · autopiloto.sh, gate.sh, mapear.sh\n"
-            "  · plan.md y progreso.log\n\n"
+            "  · plan.md, lecciones.md y progreso.log\n\n"
             "El resto del código del proyecto NO se toca.",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if resp != QMessageBox.Yes:
@@ -564,6 +579,7 @@ class Ventana(QMainWindow):
         self.timer.stop()
         if p:
             self.pan_plan.cargar(p[1])
+            self.pan_lecciones.cargar(os.path.join(p[1], "lecciones.md"))
             self.pan_git.cargar(p[1])
 
         # Webhook: fin
@@ -580,9 +596,13 @@ class Ventana(QMainWindow):
                 hechas = contenido.count("✔ commit:") + contenido.count("✔ tarea completada")
                 bloqueadas = contenido.count("tarea bloqueada")
                 total = hechas + bloqueadas
-                # Coste del log
-                costes = re.findall(r"Costo estimado acumulado:\s*([\d.]+)\s*USD", contenido)
-                coste = float(costes[-1]) if costes else 0.0
+                # Coste: exacto por iteración si existe, si no acumulado
+                costes_iter = re.findall(r"Costo iteración \d+:\s*([\d.]+)\s*USD", contenido)
+                if costes_iter:
+                    coste = round(sum(float(c) for c in costes_iter), 2)
+                else:
+                    costes = re.findall(r"Costo estimado acumulado:\s*([\d.]+)\s*USD", contenido)
+                    coste = float(costes[-1]) if costes else 0.0
             except Exception:
                 hechas = bloqueadas = total = 0
                 coste = 0.0

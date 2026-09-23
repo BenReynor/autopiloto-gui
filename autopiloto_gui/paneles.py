@@ -437,6 +437,132 @@ class PanelPlan(QWidget):
         self.kanban._actualizar()
 
 
+class PanelLecciones(QWidget):
+    """Memoria del proyecto (lecciones.md): editor + nueva lección + auto-recarga.
+
+    El contenido se inyecta al agente en cada tarea (corrección única de
+    errores); el autopiloto también añade lecciones al bloquear tareas.
+    """
+
+    guardado = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._ruta = None
+        self._modificado = False
+        self._huella_guardada = None
+
+        v = QVBoxLayout(self)
+        v.setSpacing(8)
+        v.setContentsMargins(0, 0, 0, 0)
+
+        h = QHBoxLayout()
+        lbl = QLabel("🧠 Memoria del proyecto")
+        _fuente_ui(lbl)
+        lbl.setStyleSheet("font-weight: 600; font-size: 13px;")
+        h.addWidget(lbl)
+        self.lbl_estado = _LabelMuted("")
+        h.addWidget(self.lbl_estado)
+        h.addStretch()
+        self.lbl_apunte = _LabelMuted(
+            "Se inyecta al agente antes de cada tarea; añade una entrada automática "
+            "al bloquear una tarea.")
+        h.addWidget(self.lbl_apunte)
+        v.addLayout(h)
+
+        self.editor = QPlainTextEdit()
+        _fuente_monospace(self.editor)
+        self.editor.textChanged.connect(self._marcar_modificado)
+        v.addWidget(self.editor, 1)
+
+        h = QHBoxLayout()
+        h.setSpacing(8)
+        b_nueva = _BtnPrimary("＋ Nueva lección")
+        b_nueva.clicked.connect(self._nueva_leccion)
+        b_recargar = _BtnGhost("Recargar")
+        b_recargar.clicked.connect(lambda: self.cargar())
+        b_guardar = _BtnGhost("Guardar lecciones.md")
+        b_guardar.clicked.connect(self.guardar)
+        h.addWidget(b_nueva)
+        h.addStretch()
+        h.addWidget(b_recargar)
+        h.addWidget(b_guardar)
+        v.addLayout(h)
+
+    def _marcar_modificado(self):
+        if self._ruta:
+            self._modificado = True
+
+    def _nueva_leccion(self):
+        """Añade una plantilla de lección al final del editor y la enfoca."""
+        from datetime import datetime
+        bloque = (
+            f"\n## {datetime.now().strftime('%Y-%m-%d %H:%M')} — Título breve de la lección\n"
+            "- Síntoma: qué falló.\n"
+            "- Causa: por qué falló.\n"
+            "- Prevención: qué hacer para no repetirlo.\n"
+        )
+        texto = self.editor.toPlainText()
+        if texto and not texto.endswith("\n"):
+            bloque = "\n" + bloque
+        self.editor.appendPlainText(bloque.strip("\n"))
+        cursor = self.editor.textCursor()
+        cursor.movePosition(cursor.End)
+        self.editor.setTextCursor(cursor)
+        self.editor.ensureCursorVisible()
+        self._modificado = True
+
+    def cargar(self, ruta=None):
+        if ruta is not None:
+            self._ruta = ruta or None
+        if not self._ruta:
+            self.editor.clear()
+            self.lbl_estado.setText("")
+            return
+        if not os.path.isfile(self._ruta):
+            self.editor.setPlainText("# Lecciones aprendidas — memoria del proyecto\n\n")
+            self.lbl_estado.setText("lecciones.md no existe aún")
+            self._modificado = False
+            self._huella_guardada = None
+            return
+        with open(self._ruta, encoding="utf-8", errors="replace") as f:
+            self.editor.setPlainText(f.read())
+        self._modificado = False
+        self._huella_guardada = self._huella()
+        self.lbl_estado.setText(self._ruta)
+
+    def _huella(self):
+        if not self._ruta:
+            return None
+        try:
+            return (os.path.getmtime(self._ruta), os.path.getsize(self._ruta))
+        except OSError:
+            return None
+
+    def _recargar_si_cambio(self):
+        """Recarga lecciones.md si cambió en disco; nunca pisa ediciones sin guardar."""
+        if not self._ruta or self._modificado:
+            return
+        huella = self._huella()
+        if huella is None or huella == self._huella_guardada:
+            return
+        with open(self._ruta, encoding="utf-8", errors="replace") as f:
+            self.editor.setPlainText(f.read())
+        self._modificado = False
+        self._huella_guardada = huella
+        self.lbl_estado.setText(f"🔄 recargado ({self._ruta})")
+
+    def guardar(self):
+        if not self._ruta:
+            return
+        with open(self._ruta, "w", encoding="utf-8") as f:
+            f.write(self.editor.toPlainText())
+        self._modificado = False
+        self._huella_guardada = self._huella()
+        self.lbl_estado.setText(f"lecciones.md guardado ({self._ruta})")
+        self.guardado.emit(self._ruta)
+
+
 class PanelRevision(QWidget):
     """Panel para revisar diff antes de commitear: muestra diff, botones Aprobar/Rechazar."""
 

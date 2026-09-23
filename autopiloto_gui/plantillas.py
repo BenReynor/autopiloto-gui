@@ -6,7 +6,7 @@ import shutil
 
 PLANTILLA_DIR = os.path.join(os.path.dirname(__file__), "plantillas_data")
 SCRIPTS = ("autopiloto.sh", "gate.sh", "mapear.sh")
-ARCHIVOS = SCRIPTS + ("plan.md",)
+ARCHIVOS = SCRIPTS + ("plan.md", "lecciones.md")
 GATE_CHECKS_DIR = "gate_checks"
 GATE_CHECKS = tuple(
     os.path.relpath(os.path.join(ruta, f), PLANTILLA_DIR)
@@ -19,8 +19,8 @@ GATE_CHECKS = tuple(
 def quitar(ruta):
     """Borra los archivos que la app instaló. Devuelve los eliminados.
 
-    Solo toca autopiloto.sh, gate.sh, mapear.sh, plan.md, progreso.log y
-    gate_checks/: jamás el resto del proyecto.
+    Solo toca autopiloto.sh, gate.sh, mapear.sh, plan.md, lecciones.md,
+    progreso.log y gate_checks/: jamás el resto del proyecto.
     """
     eliminados = []
     log = os.path.join(ruta, "progreso.log")
@@ -85,4 +85,6 @@ def actualizar(ruta):
 
 
 def faltan(ruta):
-    return [s for s in SCRIPTS if not os.path.exists(os.path.join(ruta, s))]
+    """Scripts y memoria que faltan (lecciones.md se crea si no existe)."""
+    return [s for s in SCRIPTS + ("lecciones.md",)
+            if not os.path.exists(os.path.join(ruta, s))]
