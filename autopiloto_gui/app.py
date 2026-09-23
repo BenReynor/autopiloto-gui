@@ -270,6 +270,7 @@ class Ventana(QMainWindow):
         temas = obtener_temas()
         if nombre in temas:
             QApplication.instance().setStyleSheet(temas[nombre])
+        self.pan_ejec.pipeline.set_tema(nombre)
 
     # ---------- Vigilancia térmica ----------
 
@@ -591,7 +592,7 @@ class Ventana(QMainWindow):
         env.append(f"COSTO_POR_ITER={conf['costo_iter']}")
         env.append(f"REVISION_MANUAL={'1' if conf['revision_manual'] else '0'}")
 
-        panel = self.pan_ejec.panel_loop
+        panel = self.pan_logs.panel_loop
         panel.clear()
         panel.appendPlainText(
             f"> bash autopiloto.sh {' '.join(args)}  "
@@ -765,7 +766,7 @@ class Ventana(QMainWindow):
                 pass
             self._revision_pendiente = True
             self.pan_ejec.panel_revision.mostrar_revision(ruta, tarea, archivo_diff, os.path.join(dir_revision, "decision"))
-            self.pan_ejec.panel_loop.appendPlainText(f"\n[GUI] ⏸ Revisión manual requerida para: {tarea}")
+            self.pan_logs.panel_loop.appendPlainText(f"\n[GUI] ⏸ Revisión manual requerida para: {tarea}")
 
         elif not os.path.exists(archivo_esperando) and self._revision_pendiente:
             # La revisión ya no está pendiente (se resolvió)
@@ -779,7 +780,7 @@ class Ventana(QMainWindow):
     def _revision_rechazada(self, motivo):
         self._revision_pendiente = False
         self.estado.setText(f"✗ Diff rechazado: {motivo[:60]}…")
-        self.pan_ejec.panel_loop.appendPlainText(f"[GUI] Rechazado: {motivo}")
+        self.pan_logs.panel_loop.appendPlainText(f"[GUI] Rechazado: {motivo}")
 
     # ---------- Gate ----------
 

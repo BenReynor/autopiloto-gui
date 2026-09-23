@@ -141,70 +141,154 @@ def fase_actual(log_ruta: str) -> str:
 
 
 class PipelineLoop(QWidget):
-    """Stepper del pipeline: Plan → Agente → Gate → Revisor → Commit.
+    """Flujo del pipeline pintado: nodos redondeados unidos por conectores.
 
-    Cada paso renderiza su estado (idle/active/ok/fail) vía QSS (pipeline=step).
+    Colores del tema activo (temas.colores_tema) para que vaya a juego con el
+    QSS. Con cfg.MOTION el nodo activo "respira" (halo expansivo suave).
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._pasos = {}
-        h = QHBoxLayout(self)
-        h.setSpacing(2)
-        h.setContentsMargins(0, 0, 0, 0)
-        for i, nombre in enumerate(PIPELINE_FASES):
-            if i:
-                flecha = QLabel("→")
-                flecha.setProperty("pipeline", "arrow")
-                _fuente_ui(flecha)
-                h.addWidget(flecha)
-            lbl = QLabel(nombre)
-            lbl.setProperty("pipeline", "step")
-            lbl.setProperty("state", "idle")
-            _fuente_ui(lbl)
-            h.addWidget(lbl)
-            self._pasos[nombre] = lbl
-        self.setPendiente()
-        h.addStretch(1)
+        self.setObjectName("pipeline_loop")
+        self._tema_actual = cfg.TEMA_DEFECTO
+        from .temas import colores_tema
+        self._colores = colores_tema(self._tema_actual)
+        self._estados = {nombre: "idle" for nombre in PIPELINE_FASES}
+        self._pulso = 0.0
+        self.setMinimumHeight(44)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        _fuente_ui(self)
+        self._timer_pulso = QTimer(self)
+        self._timer_pulso.setInterval(60)
+        self._timer_pulso.timeout.connect(self._tick_pulso)
+        if cfg.MOTION:
+            self._timer_pulso.start()
 
-    def _aplicar(self, nombre: str, estado: str):
-        paso = self._pasos.get(nombre)
-        if paso is None:
-            return
-        paso.setProperty("state", estado)
-        self._reestilizar(paso)
+    # ---- API pública -------------------------------------------------
 
-    @staticmethod
-    def _reestilizar(widget):
-        widget.style().unpolish(widget)
-        widget.style().polish(widget)
+    def set_tema(self, nombre: str):
+        from .temas import colores_tema
+        self._tema_actual = nombre
+        self._colores = colores_tema(nombre)
+        self.update()
 
     def setPendiente(self):
         for nombre in PIPELINE_FASES:
-            self._aplicar(nombre, "idle")
+            self._estados[nombre] = "idle"
+        self.update()
 
     def setFase(self, fase: str):
-        """Ilumina la fase actual como 'active'; las anteriores 'ok'."""
-        if not fase or fase not in self._pasos:
+        """Marca la fase actual como 'active', las anteriores 'ok'."""
+        if not fase or fase not in self._estados:
             self.setPendiente()
             return
-        visto = False
+        alcanzada = False
         for nombre in PIPELINE_FASES:
             if nombre == fase:
-                self._aplicar(nombre, "active")
-                visto = True
-            elif not visto:
-                self._aplicar(nombre, "idle")
+                self._estados[nombre] = "active"
+                alcanzada = True
+            elif alcanzada:
+                self._estados[nombre] = "idle"
             else:
-                self._aplicar(nombre, "idle")
+                self._estados[nombre] = "ok"
+        self.update()
 
     def setOk(self):
         for nombre in PIPELINE_FASES:
-            self._aplicar(nombre, "ok")
+            self._estados[nombre] = "ok"
+        self.update()
 
     def setFail(self):
         for nombre in PIPELINE_FASES:
-            self._aplicar(nombre, "fail")
+            self._estados[nombre] = "fail"
+        self.update()
+
+    # ---- Animación / pintado -----------------------------------------
+
+    def _tick_pulso(self):
+        self._pulso = (self._pulso + 0.05) % 1.0
+        self.update()
+
+    def paintEvent(self, evento):
+        from PySide6.QtCore import QPointF, QRectF
+        from PySide6.QtGui import QColor, QFont, QPainter, QPen
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        c = self._colores
+        w, h = self.width(), self.height()
+
+        margen = 14.0
+        separacion = 28.0
+        n = len(PIPELINE_FASES)
+        pill_w = max(54.0, min(88.0, (w - 2 * margen - (n - 1) * separacion) / n))
+        pill_h = 30.0
+        cy = h / 2.0
+
+        def centro(i):
+            return margen + i * (pill_w + separacion) + pill_w / 2.0
+
+        # Conectores (línea + nodo pequeño en el punto medio)
+        p.setPen(QPen(c["border"], 2.0))
+        for i in range(1, n):
+            x0 = centro(i - 1) + pill_w / 2.0 + 3.0
+            x1 = centro(i) - pill_w / 2.0 - 3.0
+            if x1 <= x0:
+                continue
+            previo = self._estados[PIPELINE_FASES[i - 1]]
+            if previo == "ok":
+                color_linea = c["success"]
+            elif previo == "active":
+                color_linea = c["accent"]
+            else:
+                color_linea = c["border"]
+            p.setPen(QPen(color_linea, 2.0))
+            p.setBrush(color_linea)
+            p.drawLine(QPointF(x0, cy), QPointF(x1, cy))
+            p.setPen(QPen(c["bg_panel"], 1.0))
+            p.drawEllipse(QPointF((x0 + x1) / 2.0, cy), 4.0, 4.0)
+
+        # Nodos
+        for i, nombre in enumerate(PIPELINE_FASES):
+            estado = self._estados[nombre]
+            cx = centro(i)
+            rect = QRectF(cx - pill_w / 2.0, cy - pill_h / 2.0, pill_w, pill_h)
+
+            if estado == "active" and cfg.MOTION:
+                g = 9.0 * self._pulso
+                halo = QColor(c["accent"])
+                halo.setAlphaF(max(0.0, 0.30 * (1.0 - self._pulso)))
+                p.setPen(Qt.NoPen)
+                p.setBrush(halo)
+                p.drawRoundedRect(rect.adjusted(-g, -g, g, g),
+                                  pill_h / 2.0 + g, pill_h / 2.0 + g)
+
+            if estado == "active":
+                p.setPen(QPen(c["accent_claro"], 1.5))
+                p.setBrush(c["accent"])
+                color_tx = c["text_inverse"]
+            elif estado == "ok":
+                relleno = QColor(c["success"])
+                relleno.setAlphaF(0.14)
+                p.setPen(QPen(c["success"], 1.2))
+                p.setBrush(relleno)
+                color_tx = c["success"]
+            elif estado == "fail":
+                relleno = QColor(c["error"])
+                relleno.setAlphaF(0.14)
+                p.setPen(QPen(c["error"], 1.2))
+                p.setBrush(relleno)
+                color_tx = c["error"]
+            else:
+                p.setPen(QPen(c["border"], 1.0))
+                p.setBrush(c["bg_sunken"])
+                color_tx = c["text_tertiary"]
+            p.drawRoundedRect(rect, pill_h / 2.0, pill_h / 2.0)
+
+            fuente = QFont(self.font())
+            fuente.setBold(estado == "active")
+            p.setFont(fuente)
+            p.setPen(color_tx)
+            p.drawText(rect, Qt.AlignCenter, nombre)
 
 
 class LoopPill(QLabel):

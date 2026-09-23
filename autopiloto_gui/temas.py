@@ -4,6 +4,8 @@ Basado en referencias de diseño desktop (Linear, Vercel, VS Code).
 Un solo acento, escala neutral coherente, foco visible, contraste WCAG AA.
 """
 
+import re
+
 # ─── FUENTES ───────────────────────────────────────────────────────
 
 # Fuentes preferidas para apps desktop (evitar Inter, Roboto, Arial)
@@ -255,6 +257,8 @@ def _qss_variables(tema: str) -> dict:
     # Temas especiales hardcoded
     if tema == "Hacker":
         return _build_hacker_theme()
+    if tema == "Cyberpunk":
+        return _build_cyberpunk_theme()
 
     # Parsear tema: "Neutral/Accent [Claro|Oscuro]"
     # Ejemplos: "Slate/Blue Oscuro", "Zinc/Teal Claro", "Stone/Amber Oscuro"
@@ -262,7 +266,8 @@ def _qss_variables(tema: str) -> dict:
     if len(parts) >= 2:
         neutral_accent = parts[0].split("/")
         if len(neutral_accent) == 2:
-            neutral_name, accent_name = neutral_accent
+            neutral_name = neutral_accent[0].lower()
+            accent_name = neutral_accent[1].lower()
             is_dark = "Oscuro" in tema
             if neutral_name in NEUTRALS and accent_name in ACCENTS:
                 return _build_theme(neutral_name, accent_name, is_dark)
@@ -417,6 +422,29 @@ def _build_hacker_theme():
         "shadow_sm": SHADOW_SM, "shadow_md": SHADOW_MD, "shadow_lg": SHADOW_LG, "shadow_xl": SHADOW_XL,
         "btn_text_primary": "#04080a", "btn_text_hover": "#04080a", "btn_text_disabled": "#2e7a52",
         "btn_bg_hover": "#33ff99", "btn_bg_active": "#00cc5f", "btn_bg_disabled": "#0a1a0e", "btn_border_disabled": "#0a1a0e",
+    }
+
+
+def _build_cyberpunk_theme():
+    """Tema Cyberpunk (neón morado/fucsia sobre grafito)."""
+    return {
+        "bg_app":       "#0b0612", "bg_panel":     "#150a24", "bg_elevated":  "#1f0f35",
+        "bg_sunken":    "rgba(0,0,0,0.35)", "bg_overlay": "rgba(0,0,0,0.65)",
+        "text_primary":   "#f3ecff", "text_secondary": "#c4b0e8", "text_tertiary":  "#8a6fb0",
+        "text_disabled":  "#4c3a66", "text_inverse":   "#0b0612",
+        "border_subtle":  "rgba(224,164,255,0.07)", "border_default": "rgba(205,130,255,0.18)",
+        "border_strong":  "rgba(224,170,255,0.32)", "border_focus":   "#d946ef",
+        "action_primary":       "#d946ef", "action_primary_hover": "#e879f9", "action_primary_active": "#a21caf",
+        "action_primary_text":  "#0b0612", "action_secondary":     "#1f0f35", "action_secondary_hover": "#311a55",
+        "surface_hover":     "rgba(217,70,239,0.10)", "surface_selected":  "rgba(217,70,239,0.20)",
+        "surface_active":    "rgba(217,70,239,0.28)",
+        "status_success": "#22c55e", "status_warning": "#f59e0b", "status_error": "#fb7185", "status_info": "#818cf8",
+        "accent_rgb": "217, 70, 239", "accent_rgb_claro": "232, 121, 249",
+        "status_success_rgb": "34, 197, 94", "status_error_rgb": "251, 113, 133",
+        "status_warning_rgb": "245, 158, 11",
+        "shadow_sm": SHADOW_SM, "shadow_md": SHADOW_MD, "shadow_lg": SHADOW_LG, "shadow_xl": SHADOW_XL,
+        "btn_text_primary": "#0b0612", "btn_text_hover": "#0b0612", "btn_text_disabled": "#6d4f9f",
+        "btn_bg_hover": "#e879f9", "btn_bg_active": "#a21caf", "btn_bg_disabled": "#2a1740", "btn_border_disabled": "#2a1740",
     }
 
 
@@ -801,36 +829,6 @@ QLabel#pill_loop[running="true"] {{
     border-color: {accent_rgb_claro};
     color: {status_warning};
 }}
-
-/* ─── STEPPER DEL PIPELINE (cabina) ─── */
-QLabel[pipeline="step"] {{
-    background-color: {bg_sunken};
-    color: {text_tertiary};
-    border: 1px solid {border_subtle};
-    border-radius: {RADIUS_MD};
-    padding: {SPACE_1} {SPACE_3};
-    font-size: {TEXT_XS};
-    font-weight: 600;
-}}
-QLabel[pipeline="step"][state="active"] {{
-    background-color: rgba({accent_rgb}, 0.18);
-    border-color: {border_focus};
-    color: {status_warning};
-}}
-QLabel[pipeline="step"][state="ok"] {{
-    background-color: rgba({status_success_rgb}, 0.12);
-    border-color: {status_success};
-    color: {status_success};
-}}
-QLabel[pipeline="step"][state="fail"] {{
-    background-color: rgba({status_error_rgb}, 0.12);
-    border-color: {status_error};
-    color: {status_error};
-}}
-QLabel[pipeline="arrow"] {{
-    color: {text_tertiary};
-    background: transparent;
-}}
 """
 
 
@@ -848,7 +846,6 @@ def _qss(c: dict) -> str:
         LS_HEADING=LS_HEADING,
         TEXT_MD=TEXT_MD,
         TEXT_SM=TEXT_SM,
-        TEXT_XS=TEXT_XS,
         SPACE_1=SPACE_1,
         SPACE_2=SPACE_2,
         SPACE_3=SPACE_3,
@@ -863,17 +860,53 @@ def _qss(c: dict) -> str:
     )
 
 
-# Temas disponibles - combinaciones Neutral/Accent + Claro/Oscuro + Hacker
-NEUTRALES_DISPONIBLES = ["Slate", "Zinc", "Gray", "Stone"]
-ACENTOS_DISPONIBLES = ["Blue", "Teal", "Emerald", "Green", "Amber", "Orange", "Red", "Rose", "Violet", "Purple", "Indigo", "Sky", "Cyan"]
-MODOS = ["Claro", "Oscuro"]
-
-# Generar todas las combinaciones base
-NOMBRES = [f"{n}/{a} {m}" for n in NEUTRALES_DISPONIBLES for a in ACENTOS_DISPONIBLES for m in MODOS]
-
-# Añadir temas legacy y especial
-NOMBRES += ["Claro", "Oscuro", "Hacker"]
+# Temas disponibles - lista curada (visualmente muy distintos entre sí)
+NOMBRES = [
+    "Oscuro",                    # slate/blue oscuro (legacy)
+    "Claro",                     # slate/blue claro (legacy)
+    "Hacker",                    # verde terminal
+    "Cyberpunk",                 # neón morado/fucsia sobre grafito
+    "Zinc/Amber Oscuro",         # cabina ámbar (por defecto)
+    "Gray/Red Oscuro",           # rojo
+    "Stone/Emerald Claro",       # verde claro cálido
+    "Zinc/Sky Claro",            # azul claro
+    "Slate/Teal Oscuro",         # teal profundo
+]
 _TEMAS_CACHE = {}
+
+
+def colores_tema(tema: str) -> dict:
+    """Colores del tema como QColor para pintado manual (p. ej. el stepper).
+
+    Reutiliza los mismos tokens que el QSS para que nada se desincronice.
+    """
+    from PySide6.QtGui import QColor
+    c = _qss_variables(tema)
+
+    def _qcolor(v):
+        v = v.strip()
+        if v.startswith("rgba"):
+            nums = re.findall(r"[\d.]+", v)
+            if len(nums) == 4:
+                return QColor(int(float(nums[0])), int(float(nums[1])),
+                              int(float(nums[2])), int(float(nums[3]) * 255))
+        return QColor(v)
+
+    accent = QColor(c["action_primary"])
+    return {
+        "bg_panel":     _qcolor(c["bg_panel"]),
+        "bg_sunken":    _qcolor(c["bg_sunken"]),
+        "text_primary": QColor(c["text_primary"]),
+        "text_secondary": QColor(c["text_secondary"]),
+        "text_tertiary":  QColor(c["text_tertiary"]),
+        "text_inverse":   QColor(c["action_primary_text"]),
+        "border":       _qcolor(c["border_default"]),
+        "accent":       accent,
+        "accent_claro": accent.lighter(130),
+        "success":      QColor(c["status_success"]),
+        "error":        QColor(c["status_error"]),
+        "warning":      QColor(c["status_warning"]),
+    }
 
 
 def inicializar_temas():
