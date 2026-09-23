@@ -356,7 +356,7 @@ class Ventana(QMainWindow):
         self.pan_seg.aplicar_config(self.seguridad, self.webhooks_config)
         self._iniciar_vigilancia()
         self.estado.setText(f"Proyecto: {nombre} — {ruta}")
-        self.pan_plan.cargar(ruta)
+        self.pan_plan.cargar(os.path.join(ruta, "plan.md"))
         self.pan_git.cargar(ruta)
         self.pan_ejec.actualizar_ramas(ruta)
         self.pan_ejec.aplicar_config(self._lanzamiento)
