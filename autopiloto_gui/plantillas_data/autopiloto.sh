@@ -545,6 +545,7 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
             exit 3
         fi
 
+        logx "GATE: ejecutando gate.sh (intento $intento)"
         if bash "$GATE"; then
             if [ "$REVISION_DUAL" = "1" ] && [ -n "$REVISOR" ]; then
                 COSTO_ITER_ACTUAL="$(awk -v t="$COSTO_ITER_ACTUAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a/2}')"

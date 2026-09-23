@@ -19,9 +19,15 @@ ANCHO = 1180
 ALTO = 780
 ANCHO_MIN = 960
 ALTO_MIN = 600
-TEMA_DEFECTO = "Oscuro"
+TEMA_DEFECTO = "Zinc/Amber Oscuro"
 FUENTE_MONO = "JetBrains Mono"
 FUENTE_UI = "Outfit"
+
+# ----- Cabina (navegación y movimiento) -----
+# Sidebar vertical de navegación (ancho en px). Oscuro por defecto del tema.
+SIDEBAR_ANCHO = 220
+# Movimiento UI: píldora/lotes con animación sutil. False = estático (reduced motion).
+MOTION = True
 
 # ----- Seguridad térmica -----
 SEGURIDAD_DEFECTO = {

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from . import configuracion as cfg
 from .metricas import parsear_log
 from .paneles import _BtnGhost, _fuente_monospace, _fuente_ui, _LabelMuted
+from .temas import ACCENTO_CABINA, DATOS_ERROR, DATOS_EXITO
 
 
 class PanelMetricas(QWidget):
@@ -56,9 +57,9 @@ class PanelMetricas(QWidget):
         kpi = QHBoxLayout()
         kpi.setSpacing(12)
         self.kpi_total = self._crear_kpi("Total", "0")
-        self.kpi_hechas = self._crear_kpi("Hechas", "0", "#22c55e")
-        self.kpi_bloqueadas = self._crear_kpi("Bloqueadas", "0", "#ef4444")
-        self.kpi_coste = self._crear_kpi("Coste USD", "$0.00", "#3b82f6")
+        self.kpi_hechas = self._crear_kpi("Hechas", "0", DATOS_EXITO)
+        self.kpi_bloqueadas = self._crear_kpi("Bloqueadas", "0", DATOS_ERROR)
+        self.kpi_coste = self._crear_kpi("Coste USD", "$0.00", ACCENTO_CABINA)
         kpi.addWidget(self.kpi_total)
         kpi.addWidget(self.kpi_hechas)
         kpi.addWidget(self.kpi_bloqueadas)
@@ -78,26 +79,26 @@ class PanelMetricas(QWidget):
 
         # 1. Tareas/hora (línea temporal)
         self.plot_tareas = self._crear_plot("Tareas completadas / iteración")
-        self.curve_tareas = self.plot_tareas.plot(pen=mkPen("#22c55e", width=2), symbol='o', symbolSize=6, symbolBrush=mkBrush("#22c55e"))
+        self.curve_tareas = self.plot_tareas.plot(pen=mkPen(DATOS_EXITO, width=2), symbol='o', symbolSize=6, symbolBrush=mkBrush(DATOS_EXITO))
         g.addWidget(self.plot_tareas, 0, 0)
 
-        # 2. Coste acumulado
+        # 2. Coste acumulado (ámbar, acento de cabina)
         self.plot_coste = self._crear_plot("Coste acumulado (USD)")
-        self.curve_coste = self.plot_coste.plot(pen=mkPen("#3b82f6", width=2), symbol='o', symbolSize=6, symbolBrush=mkBrush("#3b82f6"))
+        self.curve_coste = self.plot_coste.plot(pen=mkPen(ACCENTO_CABINA, width=2), symbol='o', symbolSize=6, symbolBrush=mkBrush(ACCENTO_CABINA))
         g.addWidget(self.plot_coste, 0, 1)
 
         # 3. Gate: OK vs FAIL (barras apiladas)
         self.plot_gate = self._crear_plot("Gate: OK / FAIL")
-        self.bar_gate_ok = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush("#22c55e"))
-        self.bar_gate_fail = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush("#ef4444"))
+        self.bar_gate_ok = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush(DATOS_EXITO))
+        self.bar_gate_fail = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush(DATOS_ERROR))
         self.plot_gate.addItem(self.bar_gate_ok)
         self.plot_gate.addItem(self.bar_gate_fail)
         g.addWidget(self.plot_gate, 1, 0)
 
         # 4. Revisor: PASS vs FAIL
         self.plot_rev = self._crear_plot("Revisor: PASS / FAIL")
-        self.bar_rev_pass = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush("#22c55e"))
-        self.bar_rev_fail = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush("#ef4444"))
+        self.bar_rev_pass = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush(DATOS_EXITO))
+        self.bar_rev_fail = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush(DATOS_ERROR))
         self.plot_rev.addItem(self.bar_rev_pass)
         self.plot_rev.addItem(self.bar_rev_fail)
         g.addWidget(self.plot_rev, 1, 1)

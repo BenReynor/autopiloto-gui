@@ -8,13 +8,14 @@ import os
 import re
 import subprocess
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QPropertyAnimation, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -100,6 +101,156 @@ class _BtnDanger(QPushButton):
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
         self.setProperty("danger", True)
+
+
+# ─── CABINA: pipeline, píldora y detección de fase ────────────────
+
+# Orden canónico de las fases del loop (mirror de autopiloto.sh)
+PIPELINE_FASES = ["Plan", "Agente", "Gate", "Revisor", "Commit"]
+
+
+def fase_actual(log_ruta: str) -> str:
+    """Deduce la fase actual del loop desde progreso.log (últimas ~40 líneas).
+
+    El programa decide la fase: revisor/gate/commit se detectan por marcadores
+    que ya emite autopiloto.sh. Devuelve una de PIPELINE_FASES o "" si no corre.
+    """
+    if not log_ruta or not os.path.isfile(log_ruta):
+        return ""
+    try:
+        with open(log_ruta, encoding="utf-8", errors="replace") as f:
+            lineas = f.readlines()[-40:]
+    except OSError:
+        return ""
+    texto = "\n".join(lineas)
+    if re.search(r"AUTOPILOTO FINALIZADO|ABORTADO|tarea BLOQUEADA", texto):
+        return ""
+    if re.search(r"ESPERANDO REVISIÓN MANUAL|REVISIÓN MANUAL", texto):
+        return "Revisor"
+    if re.search(r"revisor.*(PASS|FAIL)|VERDICT:", texto):
+        return "Revisor"
+    if re.search(r"GATE|gate\.sh|gate_checks", texto):
+        return "Gate"
+    if re.search(r"commit en|commit:", texto):
+        return "Commit"
+    if re.search(r"== Iteración", texto):
+        return "Agente"
+    if re.search(r"AUTOPILOTO INICIADO|-- Iteración", texto):
+        return "Agente"
+    return ""
+
+
+class PipelineLoop(QWidget):
+    """Stepper del pipeline: Plan → Agente → Gate → Revisor → Commit.
+
+    Cada paso renderiza su estado (idle/active/ok/fail) vía QSS (pipeline=step).
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._pasos = {}
+        h = QHBoxLayout(self)
+        h.setSpacing(2)
+        h.setContentsMargins(0, 0, 0, 0)
+        for i, nombre in enumerate(PIPELINE_FASES):
+            if i:
+                flecha = QLabel("→")
+                flecha.setProperty("pipeline", "arrow")
+                _fuente_ui(flecha)
+                h.addWidget(flecha)
+            lbl = QLabel(nombre)
+            lbl.setProperty("pipeline", "step")
+            lbl.setProperty("state", "idle")
+            _fuente_ui(lbl)
+            h.addWidget(lbl)
+            self._pasos[nombre] = lbl
+        self.setPendiente()
+        h.addStretch(1)
+
+    def _aplicar(self, nombre: str, estado: str):
+        paso = self._pasos.get(nombre)
+        if paso is None:
+            return
+        paso.setProperty("state", estado)
+        self._reestilizar(paso)
+
+    @staticmethod
+    def _reestilizar(widget):
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+
+    def setPendiente(self):
+        for nombre in PIPELINE_FASES:
+            self._aplicar(nombre, "idle")
+
+    def setFase(self, fase: str):
+        """Ilumina la fase actual como 'active'; las anteriores 'ok'."""
+        if not fase or fase not in self._pasos:
+            self.setPendiente()
+            return
+        visto = False
+        for nombre in PIPELINE_FASES:
+            if nombre == fase:
+                self._aplicar(nombre, "active")
+                visto = True
+            elif not visto:
+                self._aplicar(nombre, "idle")
+            else:
+                self._aplicar(nombre, "idle")
+
+    def setOk(self):
+        for nombre in PIPELINE_FASES:
+            self._aplicar(nombre, "ok")
+
+    def setFail(self):
+        for nombre in PIPELINE_FASES:
+            self._aplicar(nombre, "fail")
+
+
+class LoopPill(QLabel):
+    """Píldora de estado del loop: '● 3/40 · fase: Gate'.
+
+    Con cfg.MOTION la píldora "respira" (opacidad ámbar, QPropertyAnimation).
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("pill_loop")
+        self.setProperty("running", False)
+        self.setText("Loop detenido")
+        self._efecto = QGraphicsOpacityEffect(self)
+        self._efecto.setOpacity(1.0)
+        self.setGraphicsEffect(self._efecto)
+        self._anim = QPropertyAnimation(self._efecto, b"opacity", self)
+        self._anim.setDuration(2000)
+        self._anim.setStartValue(0.55)
+        self._anim.setEndValue(1.0)
+        self._anim.setLoopCount(-1)
+        if not cfg.MOTION:
+            self._anim.stop()
+
+    def _set_running(self, corriendo: bool):
+        self.setProperty("running", corriendo)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        if not cfg.MOTION:
+            self._efecto.setOpacity(1.0)
+            return
+        if corriendo:
+            if not self._anim.state() == QPropertyAnimation.Running:
+                self._anim.start()
+        else:
+            self._anim.stop()
+            self._efecto.setOpacity(1.0)
+
+    def setEstado(self, iter_actual: int, total: int, fase: str, corriendo: bool):
+        self._set_running(corriendo)
+        if corriendo:
+            itxt = f"{iter_actual}/{total}" if total else str(iter_actual)
+            ftext = f" · fase: {fase}" if fase else ""
+            self.setText(f"● {itxt}{ftext}")
+        else:
+            self.setText("Loop detenido")
 
 
 class AvisoTemperatura(QDialog):
@@ -681,6 +832,10 @@ class PanelEjecucion(QWidget):
         v = QVBoxLayout(contenido)
         v.setSpacing(8)
         v.setContentsMargins(0, 0, 0, 0)
+
+        # ===== CABECERA: pipeline del loop (fases iluminadas) =====
+        self.pipeline = PipelineLoop()
+        v.addWidget(self.pipeline)
 
         # ===== ZONA 1: OPCIONES DE LANZAMIENTO =====
         grupo = QGroupBox("Opciones de lanzamiento")

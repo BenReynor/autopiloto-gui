@@ -239,6 +239,14 @@ STATUS_WARNING = "#d97706"
 STATUS_ERROR = "#dc2626"
 STATUS_INFO = "#2563eb"
 
+# ─── COLORES COMPARTIDOS (cabina) ──────────────────────────────────
+# Tokens globales para paneles/plots (evita hex sueltos en los widgets).
+ACCENTO_CABINA = "#d97706"  # ámbar instrumentos
+ACCENTO_CABINA_CLARO = "#f59e0b"
+DATOS_EXITO = "#22c55e"
+DATOS_ERROR = "#ef4444"
+DATOS_INFO = "#3b82f6"
+
 # ─── GENERADOR QSS ────────────────────────────────────────────────
 
 def _qss_variables(tema: str) -> dict:
@@ -307,6 +315,12 @@ def _build_theme(neutral_name: str, accent_name: str, is_dark: bool) -> dict:
             "status_error":   STATUS_ERROR,
             "status_info":    STATUS_INFO,
 
+            "accent_rgb":         _hex_to_rgb(accent[600]),
+            "accent_rgb_claro":   _hex_to_rgb(accent[400]),
+            "status_success_rgb": _hex_to_rgb(STATUS_SUCCESS),
+            "status_error_rgb":   _hex_to_rgb(STATUS_ERROR),
+            "status_warning_rgb": _hex_to_rgb(STATUS_WARNING),
+
             "shadow_sm": SHADOW_SM,
             "shadow_md": SHADOW_MD,
             "shadow_lg": SHADOW_LG,
@@ -356,6 +370,12 @@ def _build_theme(neutral_name: str, accent_name: str, is_dark: bool) -> dict:
         "status_error":   STATUS_ERROR,
         "status_info":    STATUS_INFO,
 
+        "accent_rgb":         _hex_to_rgb(accent[600]),
+        "accent_rgb_claro":   _hex_to_rgb(accent[400]),
+        "status_success_rgb": _hex_to_rgb(STATUS_SUCCESS),
+        "status_error_rgb":   _hex_to_rgb(STATUS_ERROR),
+        "status_warning_rgb": _hex_to_rgb(STATUS_WARNING),
+
         "shadow_sm": SHADOW_SM,
         "shadow_md": SHADOW_MD,
         "shadow_lg": SHADOW_LG,
@@ -391,6 +411,9 @@ def _build_hacker_theme():
         "surface_hover":     "rgba(0,255,153,0.08)", "surface_selected":  "rgba(0,255,153,0.15)",
         "surface_active":    "rgba(0,255,153,0.20)",
         "status_success": "#00cc55", "status_warning": "#ffaa00", "status_error": "#ff4444", "status_info": "#00aaff",
+        "accent_rgb": "0, 255, 153", "accent_rgb_claro": "51, 255, 153",
+        "status_success_rgb": "0, 204, 85", "status_error_rgb": "255, 68, 68",
+        "status_warning_rgb": "255, 170, 0",
         "shadow_sm": SHADOW_SM, "shadow_md": SHADOW_MD, "shadow_lg": SHADOW_LG, "shadow_xl": SHADOW_XL,
         "btn_text_primary": "#04080a", "btn_text_hover": "#04080a", "btn_text_disabled": "#2e7a52",
         "btn_bg_hover": "#33ff99", "btn_bg_active": "#00cc5f", "btn_bg_disabled": "#0a1a0e", "btn_border_disabled": "#0a1a0e",
@@ -716,6 +739,98 @@ QLabel[status="warning"] {{ color: {status_warning}; font-weight: 500; }}
 QLabel[status="error"]   {{ color: {status_error}; font-weight: 500; }}
 QLabel[status="info"]    {{ color: {status_info}; font-weight: 500; }}
 QLabel[status="muted"]   {{ color: {text_tertiary}; }}
+
+/* ─── SIDEBAR DE NAVEGACIÓN (cabina) ─── */
+QListWidget#sidebar {{
+    background-color: {bg_panel};
+    border: none;
+    border-right: 1px solid {border_default};
+    padding: {SPACE_3} {SPACE_2};
+    outline: none;
+}}
+QListWidget#sidebar::item {{
+    color: {text_secondary};
+    padding: {SPACE_3} {SPACE_4};
+    border-radius: {RADIUS_MD};
+    margin: 1px {SPACE_1};
+    font-size: {TEXT_BASE};
+    font-weight: 500;
+}}
+QListWidget#sidebar::item:hover {{
+    background-color: {surface_hover};
+    color: {text_primary};
+    border-radius: {RADIUS_MD};
+}}
+QListWidget#sidebar::item:selected {{
+    background-color: {surface_selected};
+    color: {action_primary};
+    font-weight: 600;
+    border-radius: {RADIUS_MD};
+    border: none;
+}}
+QListWidget#sidebar::item:selected:focus {{
+    background-color: {surface_selected};
+    color: {action_primary};
+    font-weight: 600;
+    border: none;
+}}
+
+/* ─── STATUS BAR (cabina) ─── */
+QStatusBar {{
+    background-color: {bg_panel};
+    border-top: 1px solid {border_default};
+    color: {text_secondary};
+    font-size: {TEXT_SM};
+}}
+QStatusBar::item {{ border: none; }}
+QStatusBar QLabel {{ background: transparent; }}
+
+/* ─── PÍLDORA DE ESTADO DEL LOOP ─── */
+QLabel#pill_loop {{
+    background-color: {bg_sunken};
+    color: {text_secondary};
+    border: 1px solid {border_default};
+    border-radius: {RADIUS_XL};
+    padding: {SPACE_2} {SPACE_4};
+    font-size: {TEXT_SM};
+    font-weight: 600;
+    min-height: 16px;
+}}
+QLabel#pill_loop[running="true"] {{
+    background-color: rgba({accent_rgb_claro}, 0.15);
+    border-color: {accent_rgb_claro};
+    color: {status_warning};
+}}
+
+/* ─── STEPPER DEL PIPELINE (cabina) ─── */
+QLabel[pipeline="step"] {{
+    background-color: {bg_sunken};
+    color: {text_tertiary};
+    border: 1px solid {border_subtle};
+    border-radius: {RADIUS_MD};
+    padding: {SPACE_1} {SPACE_3};
+    font-size: {TEXT_XS};
+    font-weight: 600;
+}}
+QLabel[pipeline="step"][state="active"] {{
+    background-color: rgba({accent_rgb}, 0.18);
+    border-color: {border_focus};
+    color: {status_warning};
+}}
+QLabel[pipeline="step"][state="ok"] {{
+    background-color: rgba({status_success_rgb}, 0.12);
+    border-color: {status_success};
+    color: {status_success};
+}}
+QLabel[pipeline="step"][state="fail"] {{
+    background-color: rgba({status_error_rgb}, 0.12);
+    border-color: {status_error};
+    color: {status_error};
+}}
+QLabel[pipeline="arrow"] {{
+    color: {text_tertiary};
+    background: transparent;
+}}
 """
 
 
@@ -733,6 +848,8 @@ def _qss(c: dict) -> str:
         LS_HEADING=LS_HEADING,
         TEXT_MD=TEXT_MD,
         TEXT_SM=TEXT_SM,
+        TEXT_XS=TEXT_XS,
+        SPACE_1=SPACE_1,
         SPACE_2=SPACE_2,
         SPACE_3=SPACE_3,
         SPACE_4=SPACE_4,
@@ -740,6 +857,7 @@ def _qss(c: dict) -> str:
         RADIUS_SM=RADIUS_SM,
         RADIUS_MD=RADIUS_MD,
         RADIUS_LG=RADIUS_LG,
+        RADIUS_XL=RADIUS_XL,
         STATUS_ERROR=STATUS_ERROR,
         **c
     )

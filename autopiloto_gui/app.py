@@ -11,17 +11,19 @@ import sys
 import time
 
 from PySide6.QtCore import QProcess, QSettings, QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QListWidget,
     QMainWindow,
     QMessageBox,
     QPushButton,
-    QTabWidget,
+    QStackedWidget,
+    QStatusBar,
     QVBoxLayout,
     QWidget,
 )
@@ -30,12 +32,14 @@ from . import configuracion as cfg
 from . import modelos, net, plantillas, sensor
 from .paneles import (
     AvisoTemperatura,
+    LoopPill,
     PanelEjecucion,
     PanelGit,
     PanelLecciones,
     PanelLogs,
     PanelPlan,
     PanelSeguridad,
+    fase_actual,
 )
 from .paneles_metricas import PanelMetricas
 from .proceso import Proceso, Trabajo
@@ -92,6 +96,7 @@ class Ventana(QMainWindow):
         self._sel_modelos = leer_modelos()
         self._lanzamiento = dict(cfg.LAUNCH_DEFECTO)
         self._inicio_loop_ts = None
+        self._iter_actual = 0
 
         # Webhook manager
         self.webhook = WebhookManager(self.webhooks_config)
@@ -180,8 +185,20 @@ class Ventana(QMainWindow):
         barra.addWidget(self.cmb_tema)
         root.addLayout(barra)
 
-        self.tabs = QTabWidget()
-        root.addWidget(self.tabs, 1)
+        # ===== CUERPO: sidebar + contenido =====
+        cuerpo = QHBoxLayout()
+        cuerpo.setSpacing(0)
+        cuerpo.setContentsMargins(0, 0, 0, 0)
+
+        self.sidebar = QListWidget()
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setFixedWidth(cfg.SIDEBAR_ANCHO)
+        self._sidebar_items = []
+        self.stack = QStackedWidget()
+        cuerpo.addWidget(self.sidebar)
+        cuerpo.addWidget(self.stack, 1)
+        root.addLayout(cuerpo, 1)
+
         self.pan_plan = PanelPlan()
         self.pan_plan.guardado.connect(
             lambda ruta: self.estado.setText(f"plan.md guardado ({ruta})"))
@@ -205,16 +222,49 @@ class Ventana(QMainWindow):
         self.pan_metricas = PanelMetricas()
         self.pan_seg = PanelSeguridad(self.seguridad, self.webhooks_config)
         self.pan_seg.guardar_ajustes.connect(self._guardar_seguridad)
-        self.tabs.addTab(self.pan_plan, "Plan")
-        self.tabs.addTab(self.pan_lecciones, "🧠 Lecciones")
-        self.tabs.addTab(self.pan_ejec, "Ejecución")
-        self.tabs.addTab(self.pan_logs, "Logs")
-        self.tabs.addTab(self.pan_git, "Git")
-        self.tabs.addTab(self.pan_metricas, "📊 Métricas")
-        self.tabs.addTab(self.pan_seg, "🛡 Seguridad")
 
+        self._secciones = [
+            ("Plan", self.pan_plan),
+            ("🧠 Lecciones", self.pan_lecciones),
+            ("Ejecución", self.pan_ejec),
+            ("Logs", self.pan_logs),
+            ("Git", self.pan_git),
+            ("📊 Métricas", self.pan_metricas),
+            ("🛡 Seguridad", self.pan_seg),
+        ]
+        for i, (nombre, panel) in enumerate(self._secciones):
+            self.sidebar.addItem(nombre)
+            self.stack.addWidget(panel)
+            # Atajos Ctrl+1..7 por sección
+            atajo = QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self)
+            atajo.activated.connect(
+                lambda _n=i: self._cambiar_seccion(_n))
+        self.sidebar.setCurrentRow(0)
+        self.sidebar.currentRowChanged.connect(self._cambiar_seccion)
+
+        # ===== BARRA DE ESTADO =====
+        self.barra_estado = QStatusBar()
         self.estado = QLabel("Sin proyecto")
-        root.addWidget(self.estado)
+        self.barra_estado.addWidget(self.estado)
+        self.pill_loop = LoopPill()
+        self.barra_estado.addPermanentWidget(self.pill_loop)
+        self.setStatusBar(self.barra_estado)
+
+    def _cambiar_seccion(self, indice: int):
+        """Cambia la sección visible (sidebar ↔ stack, con atajos Ctrl+N)."""
+        if 0 <= indice < self.stack.count():
+            self.stack.setCurrentIndex(indice)
+            self.sidebar.setCurrentRow(indice)
+
+    def _set_fase_loop(self, iter_actual=0, total=0, corriendo=True):
+        """Actualiza stepper del pipeline y píldora de estado del loop."""
+        p = self._proyecto_actual()
+        ruta_log = os.path.join(p[1], "progreso.log") if p else ""
+        fase = fase_actual(ruta_log) if corriendo else ""
+        self.pan_ejec.pipeline.setFase(fase)
+        if not corriendo:
+            self.pan_ejec.pipeline.setPendiente()
+        self.pill_loop.setEstado(iter_actual, total, fase, corriendo)
 
     def _aplicar_tema(self, nombre):
         temas = obtener_temas()
@@ -560,6 +610,8 @@ class Ventana(QMainWindow):
         self.cmb.setEnabled(False)
         self.timer.start(cfg.TIMER_TAIL_MS)
         self._inicio_loop_ts = time.time()
+        self._iter_actual = 0
+        self._set_fase_loop(0, int(conf['iteraciones'] or 0), corriendo=True)
 
         # Webhook: inicio
         self._webhook_enviar("inicio", {
@@ -577,6 +629,7 @@ class Ventana(QMainWindow):
                 os.path.exists(os.path.join(p[1], "gate.sh")))
         self.cmb.setEnabled(True)
         self.timer.stop()
+        self._set_fase_loop(0, 0, corriendo=False)
         if p:
             self.pan_plan.cargar(p[1])
             self.pan_lecciones.cargar(os.path.join(p[1], "lecciones.md"))
@@ -655,6 +708,15 @@ class Ventana(QMainWindow):
             self._notificar_tarea_bloqueada(datos)
         elif "tarea bloqueada" not in datos.lower():
             self._ultima_bloqueada = False
+
+        # Píldora y stepper: iteración en curso + fase detectada
+        corriendo = bool(self.loop) and self.loop.state() == QProcess.Running
+        its = re.findall(r"== Iteración\s+(\d+)", datos)
+        if its:
+            self._iter_actual = max(int(x) for x in its)
+        if corriendo:
+            total = int(self._lanzamiento.get("iteraciones") or 0)
+            self._set_fase_loop(self._iter_actual, total, corriendo=True)
 
     def _notificar_tarea_bloqueada(self, log_texto):
         # Extraer nombre de la tarea del log
