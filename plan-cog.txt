@@ -1,0 +1,7 @@
+# PLAN
+
+## cog-web — sitio web inspirado en la Fundación SCP, pero de la CoG (Iglesia del Dios Roto / los hijos de la máquina)
+
+- [ ] tarea 1: crear la estructura del sitio (index.html, style.css, app.js) con tema oscuro industrial de la CoG: cabecera con un engranaje o ruleta dentada como logo, título "La CoG — Iglesia del Dios Roto", pie con advertencia de los devotos ("si tu carne te falla, la máquina te acogerá", acceso restringido a la red de datos) y un contenedor #grid donde app.js inyectará las tarjetas — criterio: existe index.html que enlaza style.css y app.js; el grid está vacío inicialmente y listo para recibir tarjetas
+- [ ] tarea 2: crear cog_data.json con al menos 5 expedientes (COG-1, COG-2, COG-3, COG-4, COG-5) con claves id, clase (Surge/Alfa/Núcleo/Dormido), descripcion, concepcion (cómo se creó/obtuvo el artefacto) y peligro (Bendecido/Herético/Neutro); app.js debe cargarlo con fetch y renderizar una tarjeta por expediente en #grid — criterio: al abrir index.html se ven 5 tarjetas; tests/test_cog_data.py valida que cada id es único y tiene las claves obligatorias (pytest pasa)
+- [ ] tarea 3: añadir la ficha de expediente (modal) y buscador: al pulsar una tarjeta se muestra el detalle completo del artefacto en un modal (incluida la advertencia "LA MÁQUINA TE VE"); el buscador filtra las tarjetas por texto (id, clase, descripcion) y tests/test_cog_data.py también valida que cog_buscar() (helper en scripts/busca.py) devuelve resultados correctos — criterio: existir modal funcional y filtro por texto; todos los tests de pytest pasan
