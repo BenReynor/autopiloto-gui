@@ -113,6 +113,14 @@ class Ventana(QMainWindow):
         self.timer_metricas.timeout.connect(self._actualizar_metricas)
         self.timer_metricas.start(cfg.TIMER_METRICAS_MS)
 
+        # Recarga plan.md automáticamente si cambia en disco (loop/externo)
+        self.timer_plan = QTimer(self)
+        self.timer_plan.timeout.connect(self._refrescar_plan)
+        self.timer_plan.start(2000)
+
+    def _refrescar_plan(self):
+        self.pan_plan._recargar_si_cambio()
+
     def _cargar_modelos_en_fondo(self):
         """Consulta opencode/models.dev sin bloquear el arranque."""
         self._worker_modelos = Trabajo(modelos.lista_modelos)

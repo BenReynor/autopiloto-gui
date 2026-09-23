@@ -4,6 +4,7 @@ Cada clase construye su UI y expone señales/métodos; la ventana (app.py) solo
 orquesta: conecta señales, gestiona procesos y actualiza estado.
 """
 
+import os
 import re
 import subprocess
 
@@ -316,6 +317,8 @@ class PanelPlan(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._plan = None
+        self._modificado = False
+        self._huella_guardada = None
 
         v = QVBoxLayout(self)
         v.setSpacing(8)
@@ -375,9 +378,36 @@ class PanelPlan(QWidget):
             self.editor.setPlainText("# PLAN\n\n- [ ] tu primera tarea — criterio: ...\n")
             self.lbl_conteo.setText("plan.md no existe aún")
             self.kanban.clear()
+            self._modificado = False
+            self._huella_guardada = None
             return
         self.editor.setPlainText(self._plan.cargar())
         self.kanban.cargar(self._plan)
+        self._modificado = False
+        self._huella_guardada = self._huella_plan()
+
+    def _huella_plan(self):
+        """(mtime, tamaño) del plan.md en disco; None si no se puede leer."""
+        if not self._plan:
+            return None
+        try:
+            return (os.path.getmtime(self._plan.ruta),
+                    os.path.getsize(self._plan.ruta))
+        except OSError:
+            return None
+
+    def _recargar_si_cambio(self):
+        """Recarga plan.md si cambió en disco; nunca pisa ediciones sin guardar."""
+        if not self._plan or self._modificado:
+            return
+        huella = self._huella_plan()
+        if huella is None or huella == self._huella_guardada:
+            return
+        self.editor.setPlainText(self._plan.cargar())
+        self.kanban.cargar(self._plan)
+        self._modificado = False
+        self._huella_guardada = huella
+        self.guardado.emit(self._plan.ruta)
 
     def guardar(self):
         if not self._plan:
@@ -386,6 +416,8 @@ class PanelPlan(QWidget):
         self.lbl_conteo.setText(
             f"plan.md guardado ({self._plan.ruta})")
         self.kanban.cargar(self._plan)
+        self._modificado = False
+        self._huella_guardada = self._huella_plan()
         self.guardado.emit(self._plan.ruta)
 
     def clear(self):
@@ -397,6 +429,7 @@ class PanelPlan(QWidget):
         if not self._plan:
             return
         self._plan.texto = self.editor.toPlainText()
+        self._modificado = True
         pend, hecho, bloqueada = self._plan.conteo()
         self.lbl_conteo.setText(
             f"Pendientes: {pend}   ·   Hechas: {hecho}   ·   "
