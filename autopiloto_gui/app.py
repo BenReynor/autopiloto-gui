@@ -51,6 +51,7 @@ from .proyectos import (
     leer_config_proyecto,
     leer_modelos,
     leer_seguridad,
+    leer_sidebar_ancho,
     leer_tema,
     leer_webhooks,
 )
@@ -101,6 +102,9 @@ class Ventana(QMainWindow):
 
         # Webhook manager
         self.webhook = WebhookManager(self.webhooks_config)
+
+        # Usar ancho de sidebar persistido (o defecto)
+        self._ancho_sidebar = leer_sidebar_ancho()
 
         self._ui()
         self._aplicar_tema(self.tema)
@@ -193,7 +197,7 @@ class Ventana(QMainWindow):
 
         self.sidebar = QListWidget()
         self.sidebar.setObjectName("sidebar")
-        self.sidebar.setFixedWidth(cfg.SIDEBAR_ANCHO)
+        self.sidebar.setFixedWidth(self._ancho_sidebar)
         self._sidebar_items = []
         self.stack = QStackedWidget()
         cuerpo.addWidget(self.sidebar)
@@ -443,11 +447,18 @@ class Ventana(QMainWindow):
         self.pan_logs.panel_loop.clear()
         self._tail_log()
 
-        faltan = plantillas.faltan(ruta)
-        if faltan:
-            plantillas.instalar(ruta)
+        # instalar() es idempotente: propaga scripts y gate_checks NUEVOS de la
+        # plantilla sin tocar lo que ya exista (plan.md, lecciones.md y
+        # checks custom nunca se sobreescriben). Se llama siempre para que un
+        # proyecto viejo reciba los checks nuevos.
+        creados = plantillas.instalar(ruta)
+        if creados:
             self.pan_logs.panel_loop.appendPlainText(
-                f"[auto-provision] Plantillas instaladas: {', '.join(faltan)}")
+                f"[auto-provision] Plantillas instaladas: {', '.join(creados)}")
+            # Si faltaba plan.md/lecciones.md, recargarlos en la UI
+            if "plan.md" in creados or "lecciones.md" in creados:
+                self.pan_plan.cargar(os.path.join(ruta, "plan.md"))
+                self.pan_lecciones.cargar(os.path.join(ruta, "lecciones.md"))
 
         desactualizados = plantillas._desactualizados(ruta)
         if desactualizados:
@@ -702,6 +713,7 @@ class Ventana(QMainWindow):
         if inicio > 0 and "\n" in datos:
             datos = datos[datos.index("\n") + 1:]  # descarta línea cortada
         self.pan_logs.panel_loop.setPlainText(datos)
+        self.pan_logs.panel_loop.ensureCursorVisible()
 
         # Detectar eventos para webhooks
         if "tokens agotados" in datos.lower() or "cuota agotada" in datos.lower():
@@ -858,11 +870,20 @@ class Ventana(QMainWindow):
             return False
 
     def closeEvent(self, event):
-        """Guarda tamaño/posición/estado y la config del proyecto activo."""
+        """Guarda tamaño/posición/estado y la config del proyecto activo. Limpia timers y procesos."""
         if hasattr(self, "pan_ejec"):
             self._capturar_lanzamiento()
             self._guardar_config_proyecto()
         self._settings.setValue("ventana/geometria", self.saveGeometry())
+        # Detener timers
+        for t in (self.timer, self.timer_temp, self.timer_net,
+                  self.timer_revision, self.timer_metricas,
+                  self.timer_plan, self.timer_lecciones):
+            t.stop()
+        # Terminar proceso loop si corre
+        if self.loop and self.loop.state() == QProcess.Running:
+            self.loop.terminate()
+            self.loop.waitForFinished(3000)
         super().closeEvent(event)
 
     def _post_revert(self, ok: bool, sha: str):
@@ -877,7 +898,6 @@ class Ventana(QMainWindow):
         else:
             self.estado.setText(f"✗ Error revertiendo {sha[:8]}")
             QMessageBox.warning(self, "Error", f"No se pudo revertir el commit {sha[:8]}")
-
 
 def main():
     app = QApplication(sys.argv)

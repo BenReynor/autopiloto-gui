@@ -38,14 +38,17 @@ def quitar(ruta):
 
 
 def _desactualizados(ruta):
-    """Scripts .sh y gate_checks/ que difieren entre plantilla y proyecto.
+    """Scripts del framework que difieren entre plantilla y proyecto.
 
-    plan.md NO se compara: es contenido editable del usuario (sus tareas);
-    solo se crea si falta, nunca se sobreescribe.
+    Solo se comparan/renuevan los SCRIPTS (autopiloto.sh, gate.sh, mapear.sh):
+    son código de soporte que debe seguir la versión de plantilla.
+
+    plan.md, lecciones.md y gate_checks/*.sh NO se comparan: son contenido del
+    usuario (sus tareas, su memoria y sus verificaciones). Se crean si faltan,
+    pero nunca se sobreescriben con la plantilla.
     """
-    copias = list(SCRIPTS) + list(GATE_CHECKS)
     diff = []
-    for nombre in copias:
+    for nombre in SCRIPTS:
         src = os.path.join(PLANTILLA_DIR, nombre)
         dst = os.path.join(ruta, nombre)
         if os.path.exists(dst) and os.path.exists(src):

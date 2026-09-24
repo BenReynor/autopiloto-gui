@@ -42,9 +42,12 @@ class Proceso(QProcess):
         self.finished.connect(self._terminado)
 
     def _leer(self):
-        data = bytes(self.readAll()).decode("utf-8", "replace").rstrip()
-        if data:
-            self.panel.appendPlainText(data)
+        data = self.readAll().data()
+        if isinstance(data, memoryview):
+            data = data.tobytes()
+        text = data.decode("utf-8", "replace").rstrip()
+        if text:
+            self.panel.appendPlainText(text)
 
     def _terminado(self, code, status):
         self.panel.appendPlainText(f"[fin] exit={code} ({status})")

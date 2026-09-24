@@ -42,7 +42,7 @@ python_version = "3.10"
 ignore_missing_imports = true
 check_untyped_defs = true
 warn_unused_ignores = true
-exclude = ["autopiloto_gui/plantillas_data/**"]
+exclude = "autopiloto_gui/plantillas_data/.*"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

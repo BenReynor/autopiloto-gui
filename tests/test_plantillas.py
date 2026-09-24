@@ -69,8 +69,63 @@ def test_quitar_borra_lecciones():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_instalar_propaga_checks_nuevos_sin_pisar_custom():
+    """Un check NUEVO de plantilla se instala; un check CUSTOM no se toca."""
+    import shutil
+    tmp = _proyecto_tmp()
+    try:
+        plantillas.instalar(tmp)
+        # El usuario crea un check propio con contenido distinto de plantilla
+        custom = os.path.join(tmp, "gate_checks", "99_custom.sh")
+        with open(custom, "w", encoding="utf-8") as f:
+            f.write("echo 'check custom'\n")
+        # Proyecto "viejo": sin el check nuevo de la plantilla
+        os.remove(os.path.join(tmp, "gate_checks", "98_criterio.sh"))
+
+        creados = plantillas.instalar(tmp)
+
+        assert "gate_checks/98_criterio.sh" in creados, "check nuevo se propaga"
+        with open(custom, encoding="utf-8") as f:
+            assert f.read() == "echo 'check custom'\n", "custom no se sobreescribe"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_actualizar_no_toca_gate_checks_custom():
+    """actualizar() solo renueva los SCRIPTS; gate_checks custom quedan intactos."""
+    import shutil
+    tmp = _proyecto_tmp()
+    try:
+        plantillas.instalar(tmp)
+
+        # Personalizar un check y forzar diferencia en autopiloto.sh
+        custom = os.path.join(tmp, "gate_checks", "99_custom.sh")
+        with open(custom, "w", encoding="utf-8") as f:
+            f.write("echo 'check custom'\n")
+        script = os.path.join(tmp, "autopiloto.sh")
+        with open(script, encoding="utf-8") as f:
+            original = f.read()
+        with open(script, "w", encoding="utf-8") as f:
+            f.write(original + "\necho 'mod'\n")
+
+        desact = plantillas._desactualizados(tmp)
+        assert "gate_checks/99_custom.sh" not in desact
+        assert "gate_checks/98_criterio.sh" not in desact
+        assert "autopiloto.sh" in desact
+
+        plantillas.actualizar(tmp)
+        with open(custom, encoding="utf-8") as f:
+            assert f.read() == "echo 'check custom'\n", "custom intacto tras actualizar"
+        with open(script, encoding="utf-8") as f:
+            assert f.read() != original + "\necho 'mod'\n", "script restaurado"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_faltan_incluye_lecciones()
     test_instalar_crea_lecciones()
     test_quitar_borra_lecciones()
+    test_instalar_propaga_checks_nuevos_sin_pisar_custom()
+    test_actualizar_no_toca_gate_checks_custom()
     print("\n🎉 Todos los tests de plantillas.py PASARON")

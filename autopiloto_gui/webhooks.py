@@ -27,10 +27,10 @@ class WebhookManager(QObject):
         "error": "💥 *Error crítico*\nProyecto: `{proyecto}`\nDetalle: `{detalle}`",
     }
 
-    def __init__(self, config: dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         super().__init__()
         self.config = config or {}
-        self._worker = None
+        self._worker: Trabajo | None = None
 
     def configurar(self, config: dict[str, Any]):
         self.config = config

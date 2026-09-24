@@ -131,7 +131,7 @@ class PanelMetricas(QWidget):
         h.addWidget(b_export)
         v.addLayout(h)
 
-    def _crear_kpi(self, titulo: str, valor: str, color: str = None) -> QWidget:
+    def _crear_kpi(self, titulo: str, valor: str, color: str | None = None) -> QWidget:
         w = QWidget()
         w.setStyleSheet("background: palette(alternate-base); border-radius: 8px;")
         v = QVBoxLayout(w)

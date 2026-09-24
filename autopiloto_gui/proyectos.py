@@ -43,6 +43,20 @@ def leer_webhooks():
     return _leer_archivo().get("webhooks", {})
 
 
+def leer_sidebar_ancho():
+    """Ancho persistido del sidebar (px)."""
+    return _leer_archivo().get("sidebar_ancho", cfg.SIDEBAR_ANCHO)
+
+
+def guardar_sidebar_ancho(ancho: int):
+    """Guarda el ancho del sidebar."""
+    datos = _leer_archivo()
+    datos["sidebar_ancho"] = ancho
+    os.makedirs(cfg.CONFIG_DIR, exist_ok=True)
+    with open(cfg.REGISTRO, "w", encoding="utf-8") as f:
+        json.dump(datos, f, indent=2, ensure_ascii=False)
+
+
 def leer_config_proyecto(nombre):
     """Configuración guardada para un proyecto concreto (sin fusionar).
 

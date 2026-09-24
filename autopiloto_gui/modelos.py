@@ -34,9 +34,9 @@ PROVEEDORES_CATALOGO = [
     "mistral", "github",
 ]
 
-_modelos = None              # lista completa "provider/model" ([], no None)
-_proveedores = None          # lista de proveedores detectados
-_modelos_por_proveedor = {}  # proveedor -> lista de modelos
+_modelos: list[str] | None = None
+_proveedores: list[str] | None = None
+_modelos_por_proveedor: dict[str, list[str]] = {}
 
 
 def _cli_opencode():

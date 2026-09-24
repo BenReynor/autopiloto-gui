@@ -28,7 +28,7 @@ FONT_UI_PRIMARY = [
 FONT_MONO = "JetBrains Mono"  # preferida para monospace
 
 # Inicialización perezosa de fuentes (requiere QApplication creado)
-_FUENTES = {"mono": None, "ui": None}
+_FUENTES: dict[str, str | None] = {"mono": None, "ui": None}
 
 
 def _inicializar_fuentes():
@@ -872,7 +872,7 @@ NOMBRES = [
     "Zinc/Sky Claro",            # azul claro
     "Slate/Teal Oscuro",         # teal profundo
 ]
-_TEMAS_CACHE = {}
+_TEMAS_CACHE: dict[str, str] = {}
 
 
 def colores_tema(tema: str) -> dict:

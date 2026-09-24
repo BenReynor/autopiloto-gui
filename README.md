@@ -1,145 +1,142 @@
-# Panel de control del autopiloto
+# Autopiloto GUI
 
-App de escritorio (PySide6) para gestionar el modo autopiloto en varios
-proyectos sin tocar archivos ni terminal.
+Panel de control gráfico (PySide6) para el sistema **autopiloto**: gestiona agentes IA (opencode, codex, claude) que iteran sobre tareas de un `plan.md`, ejecutan tests (`gate.sh`), piden revisión de código y commitean automáticamente.
 
-## Qué hace
+---
 
-- Registro de proyectos (`~/.config/autopiloto/proyectos.json`).
-- **Vista Kanban** en la pestaña Plan: columnas Pendiente/Hecha/Bloqueada con drag-visual de tareas.
-- Editor de `plan.md` con contador de tareas (`[ ]` / `[x]` / `[B]`).
-- Lanzar / detener el loop (`autopiloto.sh`) con opciones: `--hasta`, `--padre`,
-  `--trabajo`, `--push`, `MAX_ITER`.
-- **Memoria del proyecto (lecciones.md)**: pestaña 🧠 Lecciones para editar la
-  memoria que se inyecta al agente antes de cada tarea (corrección única de
-  errores). Cuando una tarea queda bloqueada `[B]`, el autopiloto añade una
-  lección automática con síntoma/causa/prevención. Auto-provisionada al abrir
-  el proyecto y recargada en vivo si cambia en disco.
-- **Rama de trabajo (`--trabajo`)**: elige en qué rama se integra el trabajo
-  del run. Si la rama no existe, se crea desde la base; si existe (local u
-  origin) se usa tal cual. Al terminar, todo lo producido en
-  `autopiloto/<fecha>` se integra en la rama elegida y, con `--push`, se sube
-  esa rama (y se indica el PR a abrir a la base).
-- **Métricas del run**: pestaña con 4 gráficas en vivo (tareas por iteración,
-  duración, coste acumulado, estado) + tabla resumen, leyendo `progreso.log`
-  mientras el autopiloto corre. El coste por iteración se registra de forma
-  exacta (`Costo iteración N: X USD`); el total de la tabla es la suma de los
-  costes por iteración.
-- **Revisión manual de diff antes de commit** (opcional): la GUI muestra el diff,
-  tú apruebas/rechazas; si rechazas, el motivo se inyecta en el siguiente intento.
-- **Feedback automático del revisor**: si el gate dual da FAIL, sus razones se
-  inyectan en el prompt del siguiente reintento.
-- Salida en vivo del loop y de `gate.sh`.
-- Vista de rama, `git status` y últimos commits (en hilo de fondo, no bloquea).
-- Temas: Claro, Oscuro y Hacker (verde/negro).
-- Auto-provisión y actualización: al abrir un proyecto, instala los archivos
-  que falten (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `lecciones.md`)
-  y actualiza
-  automáticamente los scripts `.sh` si su versión difiere de la de la app.
-  `plan.md` solo se crea si falta: nunca se sobreescribe con la plantilla (es
-  el contenido editable de tus tareas). Igual para `lecciones.md`.
-- Quitar proyecto: al eliminar un proyecto de la lista se pregunta primero y,
-  si confirmas, borra solo los archivos de autopiloto del disco
-  (`autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`, `lecciones.md`,
-  `progreso.log`, `gate_checks/`); el resto del proyecto jamás se toca.
-- Sin internet: el loop de tareas se aborta/rebota y la GUI lo indica en
-  pantalla y no arranca sin conexión (los modelos IA necesitan red).
-- Gate dual: al terminar una tarea, un segundo agente revisa el diff y debe
-  emitir `VERDICT: PASS` antes de commitear. Modelos de opencode seleccionables
-  por separado para tarea y revisor (lista en vivo con `opencode models`, botón
-  ↻ Refrescar).
-- **Gates por plugins**: `gate.sh` ejecuta los checks en `gate_checks/*.sh`
-  (01_db, 02_migraciones, 03_backend, 04_imports, 05_tests, 99_custom). Añade
-  o quita checks libremente; `99_custom.sh` es la plantilla para tus propias
-  verificaciones (lint, mypy, build…).
-- Modelos de IA en dos niveles: el selector muestra primero el proveedor
-  (`opencode`, `google`, `openai`, `anthropic`, etc.) y, al elegirlo, muestra
-  los modelos de esa empresa. La lista se obtiene con `opencode models` (cuando
-  el proveedor tiene credenciales) y, si no, del catálogo oficial de models.dev
-  (la misma fuente de opencode, cacheado 7 días). Todo por selección, sin
-  escribir; la elección se conserva entre sesiones.
-- Presupuesto estimado en USD/iteración con parada automática al agotarse.
-- **Notificación visual/sonora** cuando una tarea queda bloqueada (`[B]`).
-- **Webhooks / notificaciones push**: pestaña Notificaciones para configurar
-  Telegram, Discord y/o WhatsApp (Meta Cloud API) y recibir los eventos del
-  autopiloto al instante.
-- **Navigator automático**: antes de cada tarea, un agente navegador busca el
-  contexto relevante (archivos a tocar, tests, endpoints) y se lo inyecta al
-  agente de tarea, por modelo (configurable en la pestaña Ejecución).
-- **Protección térmica**: vigila la temperatura de la CPU y, si supera el
-  umbral, muestra el aviso dentro de la ventana con una cuenta regresiva;
-  si nadie responde, el loop se detiene y la aplicación se apaga sola.
-  Botones Continuar / Apagar ahora (pestaña Seguridad). La visualización en el
-  panel es opcional (la verificación de fondo sigue activa) y, al activarla,
-  la temperatura se actualiza cada segundo.
-
-## Requisitos e instalación
-
-Python 3.10+ con PySide6 (UI), pyqtgraph (gráficas de métricas) y opencode
-instalado para el modo autopiloto.
+## 🚀 Instalación rápida
 
 ```bash
-pip install -r requirements.txt
-```
+# Clonar
+git clone <repo>
+cd autopiloto-gui
 
-## Uso
+# Entorno virtual (recomendado)
+python3 -m venv venv
+source venv/bin/activate
 
-```bash
-# directo
+# Dependencias
+pip install -e .
+# o manual: pip install PySide6 pyqtgraph
+
+# Ejecutar
 python -m autopiloto_gui
-
-# con el lanzador (busca el intérprete con PySide6)
-bash lanzar.sh
 ```
 
-## Acceso directo (instalación automática)
+> **Python**: Requiere 3.10+. En este repo se usa el venv en `../Sistema_Pos/frontend/venv/`.
 
-`autopiloto_gui/acceso.sh` instala un acceso "inteligente" en el escritorio:
+---
+
+## 🎯 Qué hace
+
+| Función | Descripción |
+|---------|-------------|
+| **Plan** | Editor Kanban + Markdown de `plan.md` (tareas `- [ ]`, hechas `- [x]`, bloqueadas `- [B]`). |
+| **Ejecución** | Lanza el loop: agente → gate → revisor → commit. Parámetros: hora límite, iteraciones, rama base, coste máx, revisión dual/manual. |
+| **Logs** | Salida en vivo de `progreso.log` (loop) y `gate.sh`. Colapsable (⛶) con header siempre visible. Auto-scroll. |
+| **Mapa** | Visor de `mapeo.txt` (módulos → tests). Botón **Regenerar** ejecuta `bash mapear.sh`. |
+| **Métricas** | Dashboard temps-real: tareas/hora, coste acumulado (ámbar), gate OK/FAIL, revisor PASS/FAIL. Exporta CSV. |
+| **Git** | Historial de commits del proyecto, revert rápido. |
+| **Seguridad** | Límite temperatura CPU (apagado seguro), webhooks (Telegram, Discord, WhatsApp). |
+
+---
+
+## ⌨️ Atajos
+
+| Tecla | Acción |
+|-------|--------|
+| `Ctrl+1` … `Ctrl+8` | Cambiar pestaña (Plan, Lecciones, Ejecución, Logs, Mapa, Git, Métricas, Seguridad) |
+| `Ctrl+Q` | Salir |
+
+---
+
+## 🎨 Temas (9 curados)
+
+| Tema | Estilo |
+|------|--------|
+| **Oscuro / Claro** | Slate/Blue clásicos |
+| **Hacker** | Verde terminal |
+| **Cyberpunk** | Neón fucsia/morado sobre grafito |
+| **Zinc/Amber Oscuro** | Cabina ámbar (defecto) |
+| **Gray/Red Oscuro** | Rojo |
+| **Stone/Emerald Claro** | Verde cálido |
+| **Zinc/Sky Claro** | Azul |
+| **Slate/Teal Oscuro** | Teal profundo |
+
+Cambio en vivo desde el selector "Tema" en la barra superior.
+
+---
+
+## ⚙️ Configuración persistente
+
+Guarda en `~/.config/autopiloto/proyectos.json`:
+
+- Proyectos registrados (ruta + config por proyecto)
+- Tema activo
+- Seguridad térmica
+- Webhooks
+- Modelos seleccionados
+- **Ancho del sidebar** (`sidebar_ancho`)
+
+---
+
+## 🔧 Requisitos del proyecto gestionado
+
+Cada proyecto debe tener en su raíz:
+
+```
+proyecto/
+├── autopiloto.sh    # script principal (se copia del template)
+├── gate.sh          # checks (tests, lint, etc.)
+├── mapear.sh        # genera mapeo.txt
+├── plan.md          # lista de tareas
+├── lecciones.md     # memoria del proyecto
+└── progreso.log     # lo escribe el loop
+```
+
+Los scripts `autopiloto.sh`, `gate.sh`, `mapear.sh` se copian automáticamente al crear/abrir el proyecto desde la plantilla del repo (`autopiloto_gui/plantillas_data/`).
+
+---
+
+## 🐛 Desarrollo
 
 ```bash
-bash autopiloto_gui/acceso.sh
+# Tests
+QT_QPA_PLATFORM=offscreen python -m pytest tests/ -q
+
+# Lint
+python -m ruff check autopiloto_gui/
+
+# Type check (opcional)
+python -m mypy autopiloto_gui/ --ignore-missing-imports
+
+# Boot test (headless)
+QT_QPA_PLATFORM=offscreen python -c "from autopiloto_gui.app import main; main()" &
 ```
 
-Instala tres piezas: el lanzador `~/.local/bin/autopiloto` (resuelve la
-ubicación del proyecto dinámicamente y ejecuta `lanzar.sh`), el icono en
-`~/.local/share/icons/autopiloto.svg` y el acceso
-`~/Escritorio/autopiloto-gui.desktop`. Como el lanzador localiza el proyecto
-solo, puedes mover la carpeta y el acceso seguirá funcionando. Reejecuta
-`acceso.sh` cuando quieras refrescar icono o lanzador.
+---
 
-## Crear un proyecto nuevo
-
-1. Crea la carpeta vacía de tu proyecto.
-2. En el panel: **Agregar…** → selecciona esa carpeta.
-3. La app instala sola `autopiloto.sh`, `gate.sh`, `mapear.sh`, `plan.md`
-   (plantilla) y crea `progreso.log`. Las actualizaciones de estas plantillas
-   se aplican automáticamente al abrir el proyecto.
-4. Edita `plan.md` con tus tareas y pulsa **▶ Iniciar loop**.
-
-## Estructura
+## 📂 Estructura clave
 
 ```
 autopiloto_gui/
-  __main__.py       entrada
-  app.py            ventana principal (orquestación de proyectos/procesos)
-  configuracion.py  constantes centralizadas (rutas, timeouts, defaults)
-  paneles.py        widgets por pestaña: Plan, Ejecución, Git, Seguridad + aviso térmico
-  paneles_metricas.py panel de Métricas (4 gráficas pyqtgraph + tabla resumen)
-  paneles_webhooks.py panel de Notificaciones (Telegram, Discord, WhatsApp)
-  plan.py           modelo de datos de plan.md (lectura/conteo/guardado)
-  modelos.py        lista de modelos de opencode (`opencode models`, cacheado por sesión)
-  selector_modelo.py selector proveedor→modelo de dos niveles (editable)
-  navegador.py      agente navegador automático (contexto para cada tarea)
-  metricas.py       parseo de progreso.log → series temporales para gráficas
-  webhooks.py       envío asíncrono de notificaciones (QThread)
-  net.py            conectividad (verificación en segundo plano, no bloquea la UI)
-  sensor.py         lectura de temperatura de CPU (con caché)
-  proceso.py        captura en vivo de procesos
-  plantillas.py     instalación de scripts en un proyecto
-  plantillas_data/  autopiloto.sh (agnóstico: opencode/codex/claude),
-                    gate.sh + gate_checks/*.sh (checks plugin), mapear.sh, plan.md
-  proyectos.py      registro de proyectos, tema, seguridad, webhooks y modelos
-  temas.py          estilos Claro / Oscuro / Hacker
-  acceso.sh         instala el acceso directo dinámico en el escritorio
-lanzar.sh           lanzador que localiza un intérprete con PySide6
+├── app.py              # Ventana principal, orquestación, QProcess
+├── paneles.py          # 8 paneles + widgets compartidos (PipelineLoop, LoopPill, etc.)
+├── temas.py            # Sistema de diseño: 9 temas, QSS, colores_tema()
+├── paneles_metricas.py # Dashboard pyqtgraph
+├── metricas.py         # Parseo progreso.log → series
+├── plan.py             # Modelo plan.md
+├── proyectos.py        # Persistencia JSON (~/.config/autopiloto/)
+├── plantillas.py       # Scaffold proyectos
+├── plantillas_data/    # Scripts .sh template
+│   ├── autopiloto.sh
+│   ├── gate.sh
+│   └── mapear.sh
+└── tests/              # 17 tests (plan, metricas, navegador, plantillas, webhooks)
 ```
+
+---
+
+## 📝 Licencia
+
+MIT

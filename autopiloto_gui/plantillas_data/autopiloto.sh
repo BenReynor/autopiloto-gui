@@ -33,6 +33,11 @@
 #   MODELO_TAREA      modelo provider/model para la tarea (sólo opencode). def: vacío
 #   AGENTE_REVISOR    agente revisor del diff; vacío = auto (prefiere uno distinto).
 #   MODELO_REVISOR    modelo provider/model para el revisor del diff (sólo opencode).
+#   MODELO_JUEZ       modelo barato del juez de criterio (98_criterio.sh, opencode).
+#                     def: opencode/nemotron-3.5-lightning-free
+#   OPENCODE_AGENT_JUEZ agente de opencode para el juez (def: build)
+#   CRITERIO          se extrae del plan.md (línea "criterio:" bajo la tarea) y
+#                     se exporta al gate para verse en los checks.
 #   NAVEGADOR         "1" activa navegador automático antes de cada tarea.
 #   MODELO_NAVEGADOR  modelo provider/model para el navegador (sólo opencode).
 #   OPENCODE_AGENT_TAREA agente de opencode para la tarea (def: build)
@@ -72,6 +77,8 @@ MODELO_NAVEGADOR="${MODELO_NAVEGADOR:-opencode/big-pickle}"
 NAVEGADOR="${NAVEGADOR:-0}"
 AGENTE_REVISOR="${AGENTE_REVISOR:-}"
 MODELO_REVISOR="${MODELO_REVISOR:-}"
+MODELO_JUEZ="${MODELO_JUEZ:-opencode/nemotron-3.5-lightning-free}"
+JUEZ_AGENTE_JUEZ="${OPENCODE_AGENT_JUEZ:-build}"
 REVISION_DUAL="${REVISION_DUAL:-1}"
 REVISION_MANUAL="${REVISION_MANUAL:-0}"
 VOZ="${VOZ:-0}"
@@ -280,7 +287,12 @@ Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERD
 }
 
 snapshot() {
-    git -C "$PROYECTO" status --porcelain | sed 's/^...//' | sort > "$1"
+    # Excluye compilados/caches (pág. .gitignore) para que nunca entren en el
+    # diff ni se commiteen aunque el proyecto no tenga .gitignore.
+    git -C "$PROYECTO" status --porcelain \
+        | sed 's/^...//' \
+        | grep -vE '(^|/)(__pycache__|\.pytest_cache|\.mypy_cache|node_modules|\.venv|venv)/|\.pyc$|\.pyo$' \
+        | sort > "$1"
 }
 
 revertir() {
@@ -305,8 +317,38 @@ proxima_tarea() {
     local l
     while IFS= read -r l || [ -n "$l" ]; do
         if [[ "$l" == "- [ ] "* ]]; then
-            echo "${l#- [ ] }"
+            echo "${l#- \[ \] }"
             return 0
+        fi
+    done < "$PLAN"
+    return 1
+}
+
+# Devuelve el criterio de aceptación de la PRIMERA tarea pendiente (- [ ]).
+# Formato del plan.md: línea "criterio: ..." indentada bajo la tarea.
+criterio_tarea() {
+    local l en_tarea=0
+    while IFS= read -r l || [ -n "$l" ]; do
+        if [[ "$l" == "- [ ] "* ]]; then
+            # Criterio inline en la misma línea de la tarea
+            if [[ "$l" =~ criterio:[[:space:]]+(.*)$ ]]; then
+                echo "${BASH_REMATCH[1]}"
+                return 0
+            fi
+            en_tarea=1
+            continue
+        fi
+        if [[ "$l" == "- ["* ]]; then
+            [ "$en_tarea" -eq 1 ] && return 1
+            continue
+        fi
+        if [ "$en_tarea" -eq 1 ]; then
+            # Línea sin indentar corta el bloque de la tarea
+            [[ "$l" =~ ^[[:space:]] ]] || return 1
+            if [[ "$l" =~ criterio:[[:space:]]*(.*)$ ]]; then
+                echo "${BASH_REMATCH[1]}"
+                return 0
+            fi
         fi
     done < "$PLAN"
     return 1
@@ -465,8 +507,10 @@ while (( iter < MAX_ITER )); do
     iter=$((iter + 1))
     COSTO_ITER_ACTUAL=0
     RAMA_TAREA="autopiloto/tareas/$FECHA/t$iter"
-    logx "== Iteración $iter: $TAREA (rama $RAMA_TAREA) =="
+    CRITERIO="$(criterio_tarea || true)"
+    logx "== Iteración $iter: $TAREA (rama $RAMA_TAREA)${CRITERIO:+ | criterio: $CRITERIO} =="
     echo "[autopiloto] [$iter/$MAX_ITER] $TAREA -> $RAMA_TAREA"
+    [ -n "$CRITERIO" ] && echo "[autopiloto]   criterio: $CRITERIO"
 
     git -C "$PROYECTO" checkout -q "$RAMA_RUN" 2>/dev/null
     if git -C "$PROYECTO" rev-parse --verify -q "$RAMA_TAREA" >/dev/null 2>&1 \
@@ -506,7 +550,8 @@ while (( iter < MAX_ITER )); do
 
         PROMPT="Estás en MODO AUTOPILOTO (aplica las skills autopiloto y veracidad).
 Tarea actual (solo esta): ${TAREA}
-${PRE}Lee plan.md y progreso.log antes de tocar nada. Lee también mapeo.txt (mapa módulos→tests): localiza el/los test del código que vas a tocar y úsalos como contrato.
+${PRE}Criterio de aceptación que debe cumplir tu trabajo (el gate lo verificará): ${CRITERIO:-<sin criterio explícito; usa los tests/mapeo.txt como contrato>}
+Lee plan.md y progreso.log antes de tocar nada. Lee también mapeo.txt (mapa módulos→tests): localiza el/los test del código que vas a tocar y úsalos como contrato.
 ${NAV_CONTEXTO}${LECCIONES_CONTEXTO:+MEMORIA DEL PROYECTO (lecciones aprendidas, evita repetir estos errores):
 ${LECCIONES_CONTEXTO}
 }
@@ -545,8 +590,12 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
             exit 3
         fi
 
+        # CRITERIO y MODELO_JUEZ viajan al gate (los lee 98_criterio.sh)
+        export CRITERIO MODELO_JUEZ OPENCODE_AGENT_JUEZ
         logx "GATE: ejecutando gate.sh (intento $intento)"
-        if bash "$GATE"; then
+        GATE_OUT="$(mktemp)"
+        # tee: la salida del gate se ve en vivo Y se guarda para el feedback
+        if bash "$GATE" 2>&1 | tee "$GATE_OUT"; then
             if [ "$REVISION_DUAL" = "1" ] && [ -n "$REVISOR" ]; then
                 COSTO_ITER_ACTUAL="$(awk -v t="$COSTO_ITER_ACTUAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a/2}')"
                 if revisar_diff "$REVISOR"; then
@@ -583,7 +632,16 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         else
             logx "GATE FALLÓ tras el agente (intento $intento)"
             echo "[autopiloto] ✗ la tarea no pasó el gate (intento $intento/$MAX_REINTENTOS)"
+            # Capturar la salida del gate para dársela al agente en el
+            # siguiente intento (patrón "pipe_output"): que sepa QUÉ falló.
+            cat "$GATE_OUT" >> "$LOG"
+            GATE_FEEDBACK="$(grep -vE '^\[GATE\] (✓|⚠)' "$GATE_OUT" | tail -15 | tr '\n' ' ' | cut -c1-500)"
+            if [ -n "$GATE_FEEDBACK" ]; then
+                PRE="El gate falló con: ${GATE_FEEDBACK}. El detalle completo está en progreso.log. Corrige esto en tu siguiente intento. "
+                logx "Feedback del gate inyectado para siguiente intento"
+            fi
         fi
+        rm -f "$GATE_OUT"
     done
 
     logx "Costo iteración ${iter}: ${COSTO_ITER_ACTUAL} USD"
@@ -592,9 +650,11 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
     if [ "$hecho" -eq 1 ]; then
         CHANGED="$(comm -13 <(sort "$BEFORE") <(sort "$AFTER") | grep -vE "^($CONTROL)$")"
         if [ -n "$CHANGED" ]; then
-            if ( cd "$PROYECTO" && git add -- $CHANGED && git commit -q -m "autopiloto: $TAREA" ); then
-                logx "commit en $RAMA_TAREA: $TAREA"
-                echo "[autopiloto] ✔ commit: $TAREA"
+            # Subject corto (<50 chars, pág. git) + cuerpo con la tarea completa
+            SUBJETO="autopiloto: $(printf '%s' "$TAREA" | cut -c1-40)"
+            if ( cd "$PROYECTO" && git add -- $CHANGED && git commit -q -m "$SUBJETO" -m "$TAREA" ); then
+                logx "commit en $RAMA_TAREA: $SUBJETO"
+                echo "[autopiloto] ✔ commit: $SUBJETO"
             fi
         else
             logx "tarea completada sin cambios nuevos"

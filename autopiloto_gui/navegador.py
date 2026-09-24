@@ -28,7 +28,7 @@ def _cli_opencode():
     return "opencode"
 
 
-def buscar_contexto(ruta_proyecto: str, tarea: str, modelo: str, timeout: int = None) -> str:
+def buscar_contexto(ruta_proyecto: str, tarea: str, modelo: str, timeout: int | None = None) -> str:
     """
     Ejecuta opencode en modo navegación para encontrar contexto relevante.
 
@@ -97,7 +97,7 @@ def buscar_contexto(ruta_proyecto: str, tarea: str, modelo: str, timeout: int = 
     )
 
 
-def buscar_contexto_sync(ruta_proyecto: str, tarea: str, modelo: str = None) -> str:
+def buscar_contexto_sync(ruta_proyecto: str, tarea: str, modelo: str | None = None) -> str:
     """Wrapper síncrono para uso en autopiloto.sh (bash)."""
     if modelo is None:
         modelo = cfg.MODELO_NAVEGADOR_SUGERIDO
