@@ -163,6 +163,7 @@ class PipelineLoop(QWidget):
         self._timer_pulso.timeout.connect(self._tick_pulso)
         if cfg.MOTION:
             self._timer_pulso.start()
+        self.update()
 
     # ---- API pública -------------------------------------------------
 
@@ -796,6 +797,63 @@ class PanelLecciones(QWidget):
         self._huella_guardada = self._huella()
         self.lbl_estado.setText(f"lecciones.md guardado ({self._ruta})")
         self.guardado.emit(self._ruta)
+
+
+class PanelMapa(QWidget):
+    """Visor de mapeo.txt (mapa módulos → tests)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._ruta = None
+        v = QVBoxLayout(self)
+        v.setSpacing(8)
+        v.setContentsMargins(0, 0, 0, 0)
+
+        self.lbl_estado = _LabelMuted("Sin proyecto")
+        v.addWidget(self.lbl_estado)
+
+        self.editor = QPlainTextEdit()
+        self.editor.setReadOnly(True)
+        _fuente_monospace(self.editor)
+        v.addWidget(self.editor, 1)
+
+        h = QHBoxLayout()
+        h.setSpacing(8)
+        b_recargar = _BtnGhost("Recargar")
+        b_recargar.clicked.connect(lambda: self.cargar())
+        b_regenerar = _BtnPrimary("🔄 Regenerar mapeo")
+        b_regenerar.clicked.connect(self._regenerar)
+        h.addStretch()
+        h.addWidget(b_recargar)
+        h.addWidget(b_regenerar)
+        v.addLayout(h)
+
+    def cargar(self, ruta=None):
+        if ruta is not None:
+            self._ruta = ruta or None
+        if not self._ruta or not os.path.isfile(self._ruta):
+            self.editor.setPlainText("(mapeo.txt no existe — pulsa Regenerar)")
+            self.lbl_estado.setText("mapeo.txt no encontrado")
+            return
+        with open(self._ruta, encoding="utf-8", errors="replace") as f:
+            self.editor.setPlainText(f.read())
+        self.lbl_estado.setText(self._ruta)
+
+    def _regenerar(self):
+        if not self._ruta:
+            return
+        import subprocess
+        dir_proy = os.path.dirname(self._ruta)
+        mapear_sh = os.path.join(dir_proy, "mapear.sh")
+        if not os.path.isfile(mapear_sh):
+            self.lbl_estado.setText("mapear.sh no encontrado en el proyecto")
+            return
+        try:
+            subprocess.run(["bash", mapear_sh], cwd=dir_proy, check=True, capture_output=True)
+            self.cargar()
+            self.lbl_estado.setText(f"mapeo.txt regenerado ({self._ruta})")
+        except subprocess.CalledProcessError as e:
+            self.lbl_estado.setText(f"Error: {e.stderr.decode()[:120]}")
 
 
 class PanelRevision(QWidget):
@@ -1508,7 +1566,7 @@ class PanelLogs(QWidget):
         layout.setSpacing(4)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Header
+        # Header (siempre visible, solo colapsa el log_widget)
         header = QHBoxLayout()
         header.setSpacing(8)
         header.setContentsMargins(0, 0, 0, 0)
@@ -1519,7 +1577,6 @@ class PanelLogs(QWidget):
         header.addWidget(lbl)
         header.addStretch()
 
-        # Botones de acción
         b_limpiar = _BtnGhost("🗑 Limpiar")
         b_limpiar.setToolTip("Limpiar salida")
         b_limpiar.clicked.connect(lambda: container.log_widget.clear())
@@ -1531,7 +1588,7 @@ class PanelLogs(QWidget):
         header.addWidget(b_copiar)
 
         b_maximizar = _BtnGhost("⛶")
-        b_maximizar.setToolTip("Alternar tamaño (maximizar/restaurar)")
+        b_maximizar.setToolTip("Colapsar/expandir panel")
         b_maximizar.setFixedWidth(28)
         b_maximizar.clicked.connect(lambda checked=False, t=tipo: self._toggle_maximizar(t))
         header.addWidget(b_maximizar)
@@ -1544,19 +1601,15 @@ class PanelLogs(QWidget):
         return container
 
     def _toggle_maximizar(self, tipo):
-        """Alterna minimizar/expandir del panel: oculta o restaura en el splitter.
-
-        No basta con setSizes(): el splitter no encoge un panel por debajo de su
-        tamaño mínimo. Para minimizar de verdad se oculta el widget (queda a 0)
-        y al expandir se restaura el reparto anterior.
-        """
+        """Colapsa/expandir solo el log_widget, el header queda visible."""
         idx = 0 if tipo == "loop" else 1
         w = self.splitter.widget(idx)
-        if w.isVisible():
+        log = w.log_widget
+        if log.isVisible():
             self._tam_prev = list(self.splitter.sizes())
-            w.hide()
+            log.hide()
             return
-        w.show()
+        log.show()
         prev = getattr(self, "_tam_prev", None)
         if prev and sum(prev) > 0:
             self.splitter.setSizes(prev)

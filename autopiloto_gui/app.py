@@ -37,6 +37,7 @@ from .paneles import (
     PanelGit,
     PanelLecciones,
     PanelLogs,
+    PanelMapa,
     PanelPlan,
     PanelSeguridad,
     fase_actual,
@@ -219,6 +220,7 @@ class Ventana(QMainWindow):
         self.pan_git = PanelGit()
         self.pan_git.revertir_commit.connect(self._ejecutar_revert)
         self.pan_logs = PanelLogs()
+        self.pan_mapa = PanelMapa()
         self.pan_metricas = PanelMetricas()
         self.pan_seg = PanelSeguridad(self.seguridad, self.webhooks_config)
         self.pan_seg.guardar_ajustes.connect(self._guardar_seguridad)
@@ -228,6 +230,7 @@ class Ventana(QMainWindow):
             ("🧠 Lecciones", self.pan_lecciones),
             ("Ejecución", self.pan_ejec),
             ("Logs", self.pan_logs),
+            ("🗺 Mapa", self.pan_mapa),
             ("Git", self.pan_git),
             ("📊 Métricas", self.pan_metricas),
             ("🛡 Seguridad", self.pan_seg),
@@ -415,6 +418,7 @@ class Ventana(QMainWindow):
             self.pan_plan.clear()
             self.pan_lecciones.cargar(None)
             self.pan_git.cargar(None)
+            self.pan_mapa.cargar(None)
             self.pan_logs.panel_loop.clear()
             self.pan_logs.panel_gate.clear()
             return
@@ -432,6 +436,7 @@ class Ventana(QMainWindow):
         self.pan_plan.cargar(os.path.join(ruta, "plan.md"))
         self.pan_lecciones.cargar(os.path.join(ruta, "lecciones.md"))
         self.pan_git.cargar(ruta)
+        self.pan_mapa.cargar(os.path.join(ruta, "mapeo.txt"))
         self.pan_ejec.actualizar_ramas(ruta)
         self.pan_ejec.aplicar_config(self._lanzamiento)
         self.pan_logs.panel_gate.clear()
@@ -632,9 +637,10 @@ class Ventana(QMainWindow):
         self.timer.stop()
         self._set_fase_loop(0, 0, corriendo=False)
         if p:
-            self.pan_plan.cargar(p[1])
+            self.pan_plan.cargar(os.path.join(p[1], "plan.md"))
             self.pan_lecciones.cargar(os.path.join(p[1], "lecciones.md"))
             self.pan_git.cargar(p[1])
+            self.pan_mapa.cargar(os.path.join(p[1], "mapeo.txt"))
 
         # Webhook: fin
         if self._inicio_loop_ts:
@@ -865,7 +871,8 @@ class Ventana(QMainWindow):
             p = self._proyecto_actual()
             if p:
                 self.pan_git.cargar(p[1])
-                self.pan_plan.cargar(p[1])
+                self.pan_plan.cargar(os.path.join(p[1], "plan.md"))
+                self.pan_mapa.cargar(os.path.join(p[1], "mapeo.txt"))
                 self._tail_log()
         else:
             self.estado.setText(f"✗ Error revertiendo {sha[:8]}")
