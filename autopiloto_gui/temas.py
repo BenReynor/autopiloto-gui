@@ -315,6 +315,10 @@ def _build_theme(neutral_name: str, accent_name: str, is_dark: bool) -> dict:
             "surface_selected": f"rgba({_hex_to_rgb(accent[600])}, 0.15)",
             "surface_active":   f"rgba({_hex_to_rgb(accent[600])}, 0.20)",
 
+            "danger_border":    "rgba(220,38,38,0.35)",
+            "danger_hover":     "rgba(220,38,38,0.16)",
+            "danger_hover_text": "#f87171",
+
             "status_success": STATUS_SUCCESS,
             "status_warning": STATUS_WARNING,
             "status_error":   STATUS_ERROR,
@@ -366,9 +370,13 @@ def _build_theme(neutral_name: str, accent_name: str, is_dark: bool) -> dict:
         "action_secondary":     neutral[100],
         "action_secondary_hover": neutral[200],
 
-        "surface_hover":    neutral[100],
-        "surface_selected": f"rgba({_hex_to_rgb(accent[600])}, 0.08)",
-        "surface_active":   f"rgba({_hex_to_rgb(accent[600])}, 0.12)",
+"surface_hover":    neutral[100],
+            "surface_selected": f"rgba({_hex_to_rgb(accent[600])}, 0.08)",
+            "surface_active":   f"rgba({_hex_to_rgb(accent[600])}, 0.12)",
+
+            "danger_border":    ACCENTS["red"][100],
+            "danger_hover":     ACCENTS["red"][50],
+            "danger_hover_text": ACCENTS["red"][700],
 
         "status_success": STATUS_SUCCESS,
         "status_warning": STATUS_WARNING,
@@ -415,6 +423,7 @@ def _build_hacker_theme():
         "action_primary_text":  "#04080a", "action_secondary":     "#0a1a0e", "action_secondary_hover": "#1a3a2a",
         "surface_hover":     "rgba(0,255,153,0.08)", "surface_selected":  "rgba(0,255,153,0.15)",
         "surface_active":    "rgba(0,255,153,0.20)",
+        "danger_border":     "#2a7a4e", "danger_hover": "rgba(255,68,68,0.15)", "danger_hover_text": "#ff6666",
         "status_success": "#00cc55", "status_warning": "#ffaa00", "status_error": "#ff4444", "status_info": "#00aaff",
         "accent_rgb": "0, 255, 153", "accent_rgb_claro": "51, 255, 153",
         "status_success_rgb": "0, 204, 85", "status_error_rgb": "255, 68, 68",
@@ -438,6 +447,7 @@ def _build_cyberpunk_theme():
         "action_primary_text":  "#0b0612", "action_secondary":     "#1f0f35", "action_secondary_hover": "#311a55",
         "surface_hover":     "rgba(217,70,239,0.10)", "surface_selected":  "rgba(217,70,239,0.20)",
         "surface_active":    "rgba(217,70,239,0.28)",
+        "danger_border":     "rgba(251,113,133,0.35)", "danger_hover": "rgba(251,113,133,0.16)", "danger_hover_text": "#fda4af",
         "status_success": "#22c55e", "status_warning": "#f59e0b", "status_error": "#fb7185", "status_info": "#818cf8",
         "accent_rgb": "217, 70, 239", "accent_rgb_claro": "232, 121, 249",
         "status_success_rgb": "34, 197, 94", "status_error_rgb": "251, 113, 133",
@@ -548,6 +558,31 @@ QPushButton[danger="true"] {{
     color: #ffffff;
 }}
 QPushButton[danger="true"]:hover {{ background-color: #b91c1c; border-color: #b91c1c; }}
+
+/* Botón peligro sutil (destructive ghost: acciones de riesgo en tablas) */
+QPushButton[danger_ghost="true"] {{
+    background-color: transparent;
+    color: {STATUS_ERROR};
+    border: 1px solid {danger_border};
+    padding: {SPACE_1} {SPACE_4};
+}}
+QPushButton[danger_ghost="true"]:hover {{
+    background-color: {danger_hover};
+    color: {danger_hover_text};
+    border-color: {STATUS_ERROR};
+}}
+QPushButton[danger_ghost="true"]:focus {{
+    outline: none;
+    border: 2px solid {border_focus};
+}}
+
+/* Botón compacto (tablas, listas) */
+QPushButton[small="true"] {{
+    padding: {SPACE_1} {SPACE_4};
+    font-size: {TEXT_SM};
+    min-height: 22px;
+    border-radius: {RADIUS_SM};
+}}
 
 /* ─── INPUTS Y COMBOBOX ─── */
 QLineEdit, QComboBox {{

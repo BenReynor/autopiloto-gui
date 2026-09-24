@@ -103,6 +103,25 @@ class _BtnDanger(QPushButton):
         self.setProperty("danger", True)
 
 
+class _BtnDangerGhost(QPushButton):
+    """Botón destructivo sutil (borde/fuente en rojo, fondo transparente).
+
+    Para acciones de riesgo en tablas (revertir, eliminar) donde un bloque
+    sólido rojo sería demasiado pesado visualmente.
+    """
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setProperty("danger_ghost", True)
+
+
+class _BtnSmallGhost(QPushButton):
+    """Botón ghost compacto (tablas/listas), consistente con el tema."""
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setProperty("ghost", True)
+        self.setProperty("small", True)
+
+
 # ─── CABINA: pipeline, píldora y detección de fase ────────────────
 
 # Orden canónico de las fases del loop (mirror de autopiloto.sh)
@@ -1330,8 +1349,14 @@ class PanelGit(QWidget):
 
         rama = run(["git", "branch", "--show-current"])
         status = run(["git", "status", "--short"])
-        # Obtener commits de la rama autopiloto/* (último 30)
-        log = run(["git", "log", "--oneline", "--all", "--grep=autopiloto:", "-30", "--format=%H|%s|%an|%ad", "--date=short"])
+        # Commits del autopiloto (cualquier rama) + los "revert: ..." que
+        # genera el propio botón ↩ Revertir, para que el resultado de un
+        # revert sea visible en la lista (últimos 30).
+        log = run([
+            "git", "log", "--oneline", "--all",
+            "--grep=autopiloto:", "--grep=^revert:", "-30",
+            "--format=%H|%s|%an|%ad", "--date=short",
+        ])
 
         return (rama, status, log)
 
@@ -1358,11 +1383,11 @@ class PanelGit(QWidget):
                 item.setData(0, Qt.UserRole, sha)  # SHA completo en role
                 self.tree.addTopLevelItem(item)
 
-                # Botón Revertir
-                btn = QPushButton("↩ Revertir")
+                # Botón Revertir (compacto, sigue el tema activo)
+                btn = _BtnSmallGhost("↩ Revertir")
                 btn.setProperty("sha", sha)
                 btn.clicked.connect(lambda _, s=sha: self.revertir_commit.emit(s))
-                btn.setStyleSheet("padding: 2px 8px; font-size: 11px;")
+                btn.setToolTip("Crea un nuevo commit que deshace este cambio")
                 self.tree.setItemWidget(item, 4, btn)
 
         # Status en tooltip del primer item o label

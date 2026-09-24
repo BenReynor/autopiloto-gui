@@ -40,6 +40,7 @@ from .paneles import (
     PanelMapa,
     PanelPlan,
     PanelSeguridad,
+    _BtnDanger,
     fase_actual,
 )
 from .paneles_metricas import PanelMetricas
@@ -176,7 +177,7 @@ class Ventana(QMainWindow):
         barra.addWidget(self.cmb, 1)
         b_agregar = QPushButton("Agregar…")
         b_agregar.clicked.connect(self._agregar_proyecto)
-        b_quitar = QPushButton("Quitar")
+        b_quitar = _BtnDanger("Quitar")
         b_quitar.clicked.connect(self._quitar_proyecto)
         barra.addWidget(b_agregar)
         barra.addWidget(b_quitar)
@@ -394,8 +395,9 @@ class Ventana(QMainWindow):
         nombre = self.cmb.currentText()
         if not nombre:
             return None
-        info = self.proyectos.get(nombre)
-        return (nombre, info["ruta"]) if info else None
+        info = self.proyectos.get(nombre) or {}
+        ruta = info.get("ruta") or ""
+        return (nombre, ruta) if ruta else None
 
     def _cambiar_proyecto(self, n):
         if self.loop and self.loop.state() == QProcess.Running:
