@@ -1349,20 +1349,19 @@ class PanelGit(QWidget):
 
         rama = run(["git", "branch", "--show-current"])
         status = run(["git", "status", "--short"])
-        # Commits del autopiloto (cualquier rama) + los "revert: ..." que
-        # genera el propio botón ↩ Revertir, para que el resultado de un
-        # revert sea visible en la lista (últimos 30).
+        # Todos los commits del repo (últimos 30), de cualquier rama, para que
+        # se vean también los "revert: ..." que genera el botón ↩ Revertir.
         log = run([
-            "git", "log", "--oneline", "--all",
-            "--grep=autopiloto:", "--grep=^revert:", "-30",
+            "git", "log", "--oneline", "--all", "-30",
             "--format=%H|%s|%an|%ad", "--date=short",
         ])
 
         return (rama, status, log)
 
     def _git_listo(self, datos):
-        self._worker = None
         if not datos:
+            self.tree.clear()
+            self.lbl_rama.setText("")
             return
         rama, status, log = datos
         self.lbl_rama.setText(f"Rama: {rama}" if rama else "Rama: —")
@@ -1403,10 +1402,11 @@ class PanelGit(QWidget):
             return
         if self._worker and self._worker.isRunning():
             return
-        self.lbl_rama.setText("Rama: cargando…")
-        self._worker = Trabajo(self._consulta_git)
-        self._worker.listo.connect(self._git_listo)
-        self._worker.start()
+        w = Trabajo(self._consulta_git)
+        w.conectar(self._git_listo)
+        w.liberar(self, "worker")
+        w.start()
+        self._worker = w
 
 
 class PanelSeguridad(QWidget):

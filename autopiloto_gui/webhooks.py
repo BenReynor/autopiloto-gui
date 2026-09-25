@@ -54,7 +54,8 @@ class WebhookManager(QObject):
 
         # Ejecutar en hilo de fondo
         self._worker = Trabajo(lambda: self._enviar_todas(texto))
-        self._worker.listo.connect(lambda _: None)
+        self._worker.conectar(lambda _: None)
+        self._worker.liberar(self, "_worker")
         self._worker.start()
 
     def _formatear(self, evento: str, datos: dict[str, Any]) -> str:

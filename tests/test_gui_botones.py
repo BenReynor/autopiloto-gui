@@ -418,5 +418,67 @@ def test_aviso_continuar_no_apaga(app):
     assert not a.apagar
 
 
+# ─── Todos los commits (no solo autopiloto) ─────────────────────
+
+def test_git_muestra_todos_los_commits(app):
+    """El PanelGit muestra commits MANUALES además de los del autopiloto."""
+    import os
+    import tempfile
+
+    from PySide6.QtTest import QTest
+
+    from autopiloto_gui.paneles import PanelGit
+    tmp = tempfile.mkdtemp(prefix="git_todos_")
+    subprocess.run(["git", "init", "-q", "-b", "master"], cwd=tmp, check=True)
+    with open(os.path.join(tmp, "readme.md"), "w", encoding="utf-8") as f:
+        f.write("# manual\n")
+    subprocess.run(["git", "add", "-A"], cwd=tmp, check=True)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=T",
+                    "commit", "-q", "-m", "manual: commit hecho a mano"],
+                   cwd=tmp, check=True)
+    p = PanelGit()
+    p.cargar(tmp)
+    for _ in range(100):
+        app.processEvents()
+        if p._worker is None:
+            break
+        QTest.qWait(20)
+    mensajes = [p.tree.topLevelItem(i).text(1)
+                for i in range(p.tree.topLevelItemCount())]
+    assert any("manual:" in m for m in mensajes), \
+        f"el commit manual no aparece (mensajes: {mensajes})"
+
+
+# ─── Quitar proyecto huérfano (sin ruta) ───────────────────────
+
+def test_quitar_proyecto_sin_ruta(app, monkeypatch):
+    """'Quitar' debe poder eliminar un proyecto guardado sin clave 'ruta'."""
+    from PySide6.QtWidgets import QComboBox
+
+    import autopiloto_gui.app as app_mod
+
+    nombre = "proyecto_sin_ruta"
+    monkeypatch.setattr(app_mod.plantillas, "quitar", lambda *a, **k: [])
+    # Ventana mínima sin __init__ (evita timers/workers/threads de la real)
+    v = app_mod.Ventana.__new__(app_mod.Ventana)
+    v.proyectos = {nombre: {"config": {}}}
+    v.tema = "Oscuro"
+    v.cmb = QComboBox()
+    v.cmb.addItem(nombre)
+    v.cmb.setCurrentText(nombre)
+    v.loop = None
+    q_resp = {"resp": app_mod.QMessageBox.Yes}
+    monkeypatch.setattr(app_mod.QMessageBox, "question",
+                        staticmethod(lambda *a, **k: q_resp["resp"]))
+    boxes = []
+    monkeypatch.setattr(app_mod.QMessageBox, "information",
+                        staticmethod(lambda *a, **k: boxes.append(1)))
+    v._quitar_proyecto()
+    assert nombre not in v.proyectos, "el proyecto huérfano no se quitó"
+    assert nombre not in [v.cmb.itemText(i) for i in range(v.cmb.count())]
+    assert boxes, "no se informó al usuario de la eliminación"
+    v.cmb.deleteLater()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

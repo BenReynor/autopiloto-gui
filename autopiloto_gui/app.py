@@ -143,12 +143,13 @@ class Ventana(QMainWindow):
 
     def _cargar_modelos_en_fondo(self):
         """Consulta opencode/models.dev sin bloquear el arranque."""
-        self._worker_modelos = Trabajo(modelos.lista_modelos)
-        self._worker_modelos.listo.connect(self._modelos_cargados)
-        self._worker_modelos.start()
+        w = Trabajo(modelos.lista_modelos)
+        w.conectar(self._modelos_cargados)
+        w.liberar(self, "_worker_modelos")
+        w.start()
+        self._worker_modelos = w
 
     def _modelos_cargados(self, lista):
-        self._worker_modelos = None
         nuevos = lista or [cfg.MODELO_SUGERIDO]
         self._modelos = nuevos
         for sel in (self.pan_ejec.cmb_agente, self.pan_ejec.cmb_revisor):
@@ -497,26 +498,36 @@ class Ventana(QMainWindow):
 
     def _quitar_proyecto(self):
         nombre = self.cmb.currentText()
-        p = self._proyecto_actual()
-        if not nombre or not p:
+        if not nombre or nombre not in self.proyectos:
             return
         if self.loop and self.loop.state() == QProcess.Running:
             QMessageBox.warning(self, "Autopiloto en ejecución",
                                 "Detén el loop antes de quitar un proyecto.")
             return
-        _, ruta = p
-        resp = QMessageBox.question(
-            self, "Quitar proyecto",
-            "¿Eliminar el proyecto de la lista?\n\nTambién se borrarán sus "
-            "archivos de autopiloto del disco:\n"
-            "  · autopiloto.sh, gate.sh, mapear.sh\n"
-            "  · plan.md, lecciones.md y progreso.log\n\n"
-            "El resto del código del proyecto NO se toca.",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if resp != QMessageBox.Yes:
-            return
+        info = self.proyectos.get(nombre) or {}
+        ruta = info.get("ruta") or ""
+        if ruta:
+            resp = QMessageBox.question(
+                self, "Quitar proyecto",
+                "¿Eliminar el proyecto de la lista?\n\nTambién se borrarán sus "
+                "archivos de autopiloto del disco:\n"
+                "  · autopiloto.sh, gate.sh, mapear.sh\n"
+                "  · plan.md, lecciones.md y progreso.log\n\n"
+                "El resto del código del proyecto NO se toca.",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if resp != QMessageBox.Yes:
+                return
+        else:
+            # Proyecto sin ruta (config huérfana): solo se quita de la lista
+            resp = QMessageBox.question(
+                self, "Quitar proyecto",
+                "Este proyecto no tiene una ruta válida asociada "
+                "(config huérfana).\n\n¿Eliminarlo de la lista?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if resp != QMessageBox.Yes:
+                return
         if self.proyectos.pop(nombre, None) is not None:
-            eliminados = plantillas.quitar(ruta)
+            eliminados = plantillas.quitar(ruta) if ruta else []
             guardar(self.proyectos, self.tema)
             self.cmb.removeItem(self.cmb.currentIndex())
             if eliminados:
@@ -524,6 +535,10 @@ class Ventana(QMainWindow):
                     self, "Proyecto eliminado",
                     "Eliminado de la lista y borrados:\n  · "
                     + "\n  · ".join(eliminados))
+            elif not ruta:
+                QMessageBox.information(
+                    self, "Proyecto eliminado",
+                    "Eliminado de la lista.")
 
     # ---------- Modelos ----------
 
@@ -853,8 +868,10 @@ class Ventana(QMainWindow):
 
         self.estado.setText(f"Revirtiendo commit {sha[:8]}...")
         worker = Trabajo(lambda: self._git_revert(ruta, sha))
-        worker.listo.connect(lambda ok: self._post_revert(ok, sha))
+        worker.conectar(lambda ok: self._post_revert(ok, sha))
+        worker.liberar(self, "_worker_revert")
         worker.start()
+        self._worker_revert = worker
 
     def _git_revert(self, ruta: str, sha: str) -> bool:
         try:
