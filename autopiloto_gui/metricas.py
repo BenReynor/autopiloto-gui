@@ -1,8 +1,10 @@
-"""Métricas: parseo de progreso.log → series temporales para gráficas.
+"""Métricas: parseo de progreso.log + metrics.jsonl → series temporales para gráficas.
 
 Extrae de cada iteración: tarea, estado, duración, coste, gate, revisor.
+Añade métricas reales (tokens, latencia, coste real) desde metrics.jsonl.
 """
 
+import json
 import os
 import re
 from datetime import datetime
@@ -214,6 +216,13 @@ def parsear_log(ruta_log: str) -> dict[str, Any]:
     bloqueadas = sum(1 for it in iteraciones if it["estado"] == "bloqueada")
     total = len(iteraciones)
 
+    # Enriquecer con métricas reales (tokens, latencia, coste real, modelo) desde metrics.jsonl
+    iteraciones = _enriquecer_con_metricas_reales(iteraciones, os.path.dirname(ruta_log))
+
+    # Recalcular coste_total usando coste real si está disponible
+    coste_total_real = sum(it.get("costo_real_usd", 0.0) for it in iteraciones)
+    coste_total = coste_total_real if coste_total_real > 0 else (coste_por_iter_total if coste_por_iter else coste_acum)
+
     return {
         "iteraciones": iteraciones,
         "series": {
@@ -227,10 +236,70 @@ def parsear_log(ruta_log: str) -> dict[str, Any]:
             "hechas": hechas,
             "bloqueadas": bloqueadas,
             "pendientes": max(0, total - hechas - bloqueadas),
-            "coste_total": coste_por_iter_total if coste_por_iter else coste_acum,
+            "coste_total": coste_total,
             "duracion_min": 0.0,  # Se calcula en UI si hay timestamps
         },
     }
+
+
+def _leer_metrics_jsonl(ruta_proyecto: str) -> list[dict]:
+    """Lee metrics.jsonl y devuelve lista de dicts con métricas reales por llamada a agente."""
+    ruta = os.path.join(ruta_proyecto, "metrics.jsonl")
+    if not os.path.isfile(ruta):
+        return []
+    out = []
+    try:
+        with open(ruta, encoding="utf-8", errors="replace") as f:
+            for linea in f:
+                linea = linea.strip()
+                if not linea:
+                    continue
+                try:
+                    out.append(json.loads(linea))
+                except json.JSONDecodeError:
+                    pass
+    except (OSError, json.JSONDecodeError):
+        pass
+    return out
+
+
+def _enriquecer_con_metricas_reales(iteraciones: list[dict], ruta_proyecto: str) -> list[dict]:
+    """Añade tokens, latencia, coste real, modelo a cada iteración desde metrics.jsonl."""
+    metricas = _leer_metrics_jsonl(ruta_proyecto)
+    if not metricas:
+        return iteraciones
+    # Agrupar métricas por iteración
+    by_iter: dict[int, list[dict]] = {}
+    for m in metricas:
+        it = m.get("iter")
+        if isinstance(it, int):
+            by_iter.setdefault(it, []).append(m)
+    for it in iteraciones:
+        num = it.get("iter")
+        if not isinstance(num, int):
+            continue
+        metricas_it = by_iter.get(num, [])
+        if not metricas_it:
+            continue
+        # Sumar tokens y coste real de todas las llamadas de esa iteración
+        tokens_in = sum(m.get("tokens_in", 0) for m in metricas_it)
+        tokens_out = sum(m.get("tokens_out", 0) for m in metricas_it)
+        costo_real = sum(m.get("costo_usd", 0.0) for m in metricas_it)
+        dur_ms = sum(m.get("dur_ms", 0) for m in metricas_it)
+        modelos = sorted({m.get("modelo", "") for m in metricas_it if m.get("modelo")})
+        agentes = sorted({m.get("agente", "") for m in metricas_it if m.get("agente")})
+        it["tokens_in"] = tokens_in
+        it["tokens_out"] = tokens_out
+        it["tokens_total"] = tokens_in + tokens_out
+        it["costo_real_usd"] = round(costo_real, 6)
+        it["duracion_ms"] = dur_ms
+        it["duracion_s"] = round(dur_ms / 1000, 1)
+        it["modelos"] = ", ".join(modelos) if modelos else ""
+        it["agentes"] = ", ".join(agentes) if agentes else ""
+        # Preferir coste real si existe
+        if costo_real > 0:
+            it["costo_usd_real"] = round(costo_real, 4)
+    return iteraciones
 
 
 def _vacío() -> dict[str, Any]:

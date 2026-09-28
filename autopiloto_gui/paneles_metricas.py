@@ -107,8 +107,8 @@ class PanelMetricas(QWidget):
 
         # ---- Tabla resumen ----
         self.tabla = QTableWidget()
-        self.tabla.setColumnCount(7)
-        self.tabla.setHorizontalHeaderLabels(["Iter", "Tarea", "Duración", "Coste USD", "Gate", "Revisor", "Estado"])
+        self.tabla.setColumnCount(11)
+        self.tabla.setHorizontalHeaderLabels(["Iter", "Tarea", "Duración", "Coste Est.", "Coste Real", "Tokens In", "Tokens Out", "Latencia", "Modelo", "Gate", "Revisor", "Estado"])
         self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         _fuente_monospace(self.tabla)
@@ -221,8 +221,13 @@ class PanelMetricas(QWidget):
             vals = [
                 str(it["iter"]),
                 it["tarea"][:60],
-                f"{it.get('duracion_s', 0)}s",
-                f"{it.get('coste_usd', 0):.2f}",
+                f"{it.get('duracion_s', 0):.1f}s",
+                f"{it.get('coste_usd', 0):.4f}",
+                f"{it.get('costo_real_usd', it.get('costo_usd_real', 0)):.4f}",
+                str(it.get("tokens_in", 0)),
+                str(it.get("tokens_out", 0)),
+                f"{it.get('duracion_ms', it.get('duracion_s', 0)*1000):.0f}ms",
+                it.get("modelos", ""),
                 it.get("gate", "—"),
                 it.get("revisor", "—"),
                 it.get("estado", "—"),
@@ -230,7 +235,7 @@ class PanelMetricas(QWidget):
             for col, val in enumerate(vals):
                 item = QTableWidgetItem(val)
                 item.setTextAlignment(Qt.AlignCenter)
-                if col == 6:
+                if col == 11:
                     if val == "hecha":
                         item.setBackground(pg.mkColor("#22c55e"))
                     elif val == "bloqueada":
@@ -249,12 +254,17 @@ class PanelMetricas(QWidget):
         datos = parsear_log(log)
         with open(ruta, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(["Iter", "Tarea", "Duración", "Coste USD", "Gate", "Revisor", "Estado"])
+            w.writerow(["Iter", "Tarea", "Duración (s)", "Coste Est. (USD)", "Coste Real (USD)", "Tokens In", "Tokens Out", "Latencia (ms)", "Modelo", "Gate", "Revisor", "Estado"])
             for it in datos["iteraciones"]:
                 w.writerow([
-                    it["iter"], it["tarea"], it.get("duracion_s", 0),
-                    f"{it.get('coste_usd', 0):.2f}", it.get("gate", ""),
-                    it.get("revisor", ""), it.get("estado", "")
+                    it["iter"], it["tarea"],
+                    f"{it.get('duracion_s', 0):.1f}",
+                    f"{it.get('coste_usd', 0):.4f}",
+                    f"{it.get('costo_real_usd', it.get('costo_usd_real', 0)):.4f}",
+                    it.get("tokens_in", 0), it.get("tokens_out", 0),
+                    f"{it.get('duracion_ms', it.get('duracion_s', 0)*1000):.0f}",
+                    it.get("modelos", ""),
+                    it.get("gate", ""), it.get("revisor", ""), it.get("estado", "")
                 ])
 
     def closeEvent(self, event):
