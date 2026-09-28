@@ -182,6 +182,8 @@ run_agente() {
     shift 3
     bin="$(cli_agente "$agente")"
     [ -n "$bin" ] || { echo "[autopiloto] ✗ agente desconocido: $agente" | tee -a "$LOG"; return 1; }
+    local t0 t1 dur rc=0
+    t0=$(date +%s%3N)
     case "$agente" in
         opencode)
             if [ -n "$modelo" ]; then
@@ -189,18 +191,62 @@ run_agente() {
             else
                 timeout "$TIMEOUT_POR_TAREA" "$bin" run --agent "${OPENCODE_AGENT_TAREA:-build}" "$@" > "$salida" 2>&1
             fi
+            rc=$?
             ;;
         codex)
             timeout "$TIMEOUT_POR_TAREA" "$bin" exec --skip-git-repo-check "${CODEX_FLAGS:-}" "$@" > "$salida" 2>&1
+            rc=$?
             ;;
         claude)
             timeout "$TIMEOUT_POR_TAREA" "$bin" -p --output-format text "${CLAUDE_FLAGS:-}" "$@" > "$salida" 2>&1
+            rc=$?
             ;;
         *)
             echo "[autopiloto] ✗ agente desconocido: $agente" | tee -a "$LOG"
             return 1
             ;;
     esac
+    t1=$(date +%s%3N)
+    dur=$((t1 - t0))
+    _registrar_metrica "$agente" "$modelo" "$dur" "$rc" "$salida"
+    return $rc
+}
+
+_registrar_metrica() {
+    local agente="$1" modelo="$2" dur_ms="$3" rc="$4" salida="$5"
+    local metric_file="$PROYECTO/metrics.jsonl"
+    local tokens_in=0 tokens_out=0 costo=0
+    case "$agente" in
+        opencode)
+            local usage="$(grep -o '"usage":{"input_tokens":[0-9]*,"output_tokens":[0-9]*}' "$salida" 2>/dev/null | tail -1)"
+            if [ -n "$usage" ]; then
+                tokens_in=$(echo "$usage" | grep -o '"input_tokens":[0-9]*' | cut -d: -f2)
+                tokens_out=$(echo "$usage" | grep -o '"output_tokens":[0-9]*' | cut -d: -f2)
+            fi
+            ;;
+        codex)
+            local usage="$(grep -o 'tokens_used: [0-9]*' "$salida" 2>/dev/null | tail -1)"
+            if [ -n "$usage" ]; then
+                tokens_out=$(echo "$usage" | cut -d' ' -f2)
+            fi
+            ;;
+        claude)
+            local usage="$(grep -o '"usage":{"input_tokens":[0-9]*,"output_tokens":[0-9]*}' "$salida" 2>/dev/null | tail -1)"
+            if [ -n "$usage" ]; then
+                tokens_in=$(echo "$usage" | grep -o '"input_tokens":[0-9]*' | cut -d: -f2)
+                tokens_out=$(echo "$usage" | grep -o '"output_tokens":[0-9]*' | cut -d: -f2)
+            fi
+            ;;
+    esac
+    case "$modelo" in
+        *opus*|*sonnet*|*haiku*) costo=$(awk -v ti="$tokens_in" -v to="$tokens_out" 'BEGIN{printf "%.6f", (ti*15 + to*75)/1000000}') ;;
+        *gpt-4*|*gpt-4o*) costo=$(awk -v ti="$tokens_in" -v to="$tokens_out" 'BEGIN{printf "%.6f", (ti*30 + to*60)/1000000}') ;;
+        *gpt-3.5*) costo=$(awk -v ti="$tokens_in" -v to="$tokens_out" 'BEGIN{printf "%.6f", (ti*0.5 + to*1.5)/1000000}') ;;
+        *) costo=$(awk -v ti="$tokens_in" -v to="$tokens_out" 'BEGIN{printf "%.6f", (ti*1 + to*3)/1000000}') ;;
+    esac
+    printf '{"ts":"%s","iter":%s,"agente":"%s","modelo":"%s","dur_ms":%d,"rc":%d,"tokens_in":%d,"tokens_out":%d,"costo_usd":%.6f,"tarea":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${iter:-0}" "$agente" "${modelo:-default}" "$dur_ms" "$rc" "$tokens_in" "$tokens_out" "$costo" "${TAREA:-}" \
+        >> "$metric_file"
 }
 
 # Navegador de contexto previo a la tarea (agnóstico de agente).
@@ -215,20 +261,29 @@ ENDPOINTS: GET /api/...
 MODELOS: Modulo.servicio"
     bin="$(cli_agente "$agente")"
     [ -n "$bin" ] || return 1
+    local t0 t1 dur rc=0
+    t0=$(date +%s%3N)
     case "$agente" in
         opencode)
             timeout "$TIMEOUT_NAVEGADOR" "$bin" run --agent "${OPENCODE_AGENT_NAV:-navigate}" --model "$modelo" "$prompt" > "$salida" 2>&1
+            rc=$?
             ;;
         codex)
             timeout "$TIMEOUT_NAVEGADOR" "$bin" exec --skip-git-repo-check "$prompt" > "$salida" 2>&1
+            rc=$?
             ;;
         claude)
             timeout "$TIMEOUT_NAVEGADOR" "$bin" -p --output-format text "$prompt" > "$salida" 2>&1
+            rc=$?
             ;;
         *)
             return 1
             ;;
     esac
+    t1=$(date +%s%3N)
+    dur=$((t1 - t0))
+    _registrar_metrica "$agente" "$modelo" "$dur" "$rc" "$salida"
+    return $rc
 }
 
 elegir_revisor() {
