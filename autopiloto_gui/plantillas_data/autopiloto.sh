@@ -248,8 +248,21 @@ elegir_revisor() {
 revisar_diff() {
     local rev="$1" rev_out vdiff
     rev_out="$(mktemp)"
-    vdiff="$(git -C "$PROYECTO" diff --stat; echo '── diff ──'; git -C "$PROYECTO" diff)"
-    local PROMPT_REV="Eres el REVISOR en modo autopiloto (skills autopiloto y veracidad).
+    # El diff que ve el revisor excluye los archivos CONTROL del framework:
+    # plan.md, progreso.log, mapeo.txt, etc. son trazabilidad del propio
+    # autopiloto (marca [x], escribe progreso) y no deben leerse como "cambios
+    # ajenos" al alcance de la tarea (el commit ya los excluye con $CONTROL).
+    # Además se marcan los archivos nuevos como intent-to-add (git add -N) para
+    # que `git diff` los incluya; si no, el revisor solo veía archivos tracked.
+    git -C "$PROYECTO" add -N -A 2>/dev/null
+    local ARCHIVOS_DIFF
+    ARCHIVOS_DIFF="$(git -C "$PROYECTO" diff --name-only | grep -vE "^($CONTROL)$")"
+    if [ -n "$ARCHIVOS_DIFF" ]; then
+        vdiff="$(git -C "$PROYECTO" diff --stat -- "$ARCHIVOS_DIFF"; echo '#----- diff (excluye archivos CONTROL del framework) -----#'; git -C "$PROYECTO" diff -- "$ARCHIVOS_DIFF")"
+    else
+        vdiff="(sin cambios fuera de archivos CONTROL)"
+    fi
+    local PROMPT_REV="Eres el REVISOR en modo autopiloto. Usa únicamente las skills que tu sesión ya tenga cargadas; no intentes cargar ninguna otra.
 Revisas el diff COMPLETO de una tarea, en frío, sin haber participado de ella.
 Tarea: ${TAREA}
 
@@ -407,6 +420,15 @@ if [ -z "$AGENTE_TAREA" ]; then
     fi
 fi
 
+# Antes de lanzar el loop: si el binario del agente no existe, abortar ya.
+if ! agente_ok "$AGENTE_TAREA"; then
+    BIN="$(cli_agente "$AGENTE_TAREA")"
+    echo "[autopiloto] ✗✗ agente '$AGENTE_TAREA' no encontrado (busqué '$BIN')." \
+         "Instálalo o configura el PATH (o CLI_${AGENTE_TAREA^^}) y relanza." | tee -a "$LOG"
+    logx "ABORTADO: agente no disponible ($AGENTE_TAREA)"
+    exit 2
+fi
+
 REVISOR="$(elegir_revisor)"
 COSTO_TOTAL=0
 RECHAZO_MOTIVO=""
@@ -548,7 +570,7 @@ while (( iter < MAX_ITER )); do
             NAV_CONTEXTO=""
         fi
 
-        PROMPT="Estás en MODO AUTOPILOTO (aplica las skills autopiloto y veracidad).
+        PROMPT="Estás en MODO AUTOPILOTO. Usa únicamente las skills que tu sesión ya tenga cargadas; no intentes cargar ninguna otra.
 Tarea actual (solo esta): ${TAREA}
 ${PRE}Criterio de aceptación que debe cumplir tu trabajo (el gate lo verificará): ${CRITERIO:-<sin criterio explícito; usa los tests/mapeo.txt como contrato>}
 Lee plan.md y progreso.log antes de tocar nada. Lee también mapeo.txt (mapa módulos→tests): localiza el/los test del código que vas a tocar y úsalos como contrato.
@@ -565,6 +587,14 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         if [ "$rc" -eq 124 ]; then
             echo "[autopiloto] ⚠ timeout: ${AGENTE_TAREA} tardó más de ${TIMEOUT_POR_TAREA}s" | tee -a "$LOG"
             alerta "Tiempo agotado en una tarea"
+        elif [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
+            # El binario del agente no existe o no es ejecutable: sin agente no
+            # hay loop. Antes se seguía y se marcaba la tarea [x] sin trabajo.
+            echo "[autopiloto] ✗✗ ${AGENTE_TAREA} no se pudo ejecutar (rc=$rc):" \
+                 "binario no encontrado o sin permisos de ejecución." | tee -a "$LOG"
+            logx "ABORTADO: agente no ejecutable (rc=$rc)"
+            alerta "El agente no se pudo ejecutar; revisa PATH/instalación"
+            exit 6
         elif [ "$rc" -ne 0 ]; then
             echo "[autopiloto] ⚠ ${AGENTE_TAREA} salió con rc=$rc" | tee -a "$LOG"
         fi
@@ -706,14 +736,58 @@ if [ -n "${RAMA_TRABAJO:-}" ] && [ "$RAMA_TRABAJO" != "$RAMA_RUN" ]; then
     fi
 fi
 
+# Intentar crear repo en GitHub si hay token y no hay remote origin
+_asegurar_remote_origin() {
+    if ! git -C "$PROYECTO" remote get-url origin >/dev/null 2>&1; then
+        local token="${GITHUB_TOKEN:-}"
+        if [ -z "$token" ] && command -v gh >/dev/null 2>&1; then
+            token="$(gh auth token 2>/dev/null || echo "")"
+        fi
+        if [ -n "$token" ]; then
+            local repo_name="$(basename "$PROYECTO")"
+            local owner="$(curl -s -H "Authorization: Bearer $token" https://api.github.com/user | grep -o '"login":"[^"]*"' | cut -d'"' -f4)"
+            if [ -n "$owner" ]; then
+                echo "[autopiloto] Creando repo GitHub: $owner/$repo_name ..."
+                local create_resp="$(curl -s -X POST -H "Authorization: Bearer $token" \
+                    -H "Accept: application/vnd.github+json" \
+                    "https://api.github.com/user/repos" \
+                    -d "{\"name\":\"$repo_name\",\"private\":true,\"auto_init\":false}")"
+                if echo "$create_resp" | grep -q '"ssh_url"'; then
+                    local ssh_url="$(echo "$create_resp" | grep -o '"ssh_url":"[^"]*"' | cut -d'"' -f4)"
+                    git -C "$PROYECTO" remote add origin "$ssh_url"
+                    logx "repo creado y remote origin configurado: $ssh_url"
+                    echo "[autopiloto] ✔ repo creado en GitHub: $owner/$repo_name"
+                    return 0
+                fi
+            fi
+            echo "[autopiloto] ⚠ no se pudo crear repo (respuesta API: $create_resp)" | tee -a "$LOG"
+        else
+            registrar_leccion \
+                "GitHub: remote origin ausente" \
+                "No hay GITHUB_TOKEN ni 'gh auth token' para crear repo automático." \
+                "Crea el repo manualmente en GitHub y ejecuta: git remote add origin <url>"
+            logx "lección registrada: remote origin ausente (sin credenciales)"
+        fi
+    fi
+}
+
 if [ -n "$PUSH" ]; then
+    _asegurar_remote_origin
     PUSH_RAMA="${RAMA_TRABAJO:-$RAMA_RUN}"
-    git -C "$PROYECTO" push -u origin "$PUSH_RAMA" && logx "push: origin/$PUSH_RAMA"
-    echo "[autopiloto] push OK: origin/$PUSH_RAMA"
-    if [ "$PUSH_RAMA" != "$RAMA_RUN" ]; then
-        echo "[autopiloto] abre el PR de $PUSH_RAMA -> $RAMA_BASE"
+    if git -C "$PROYECTO" remote get-url origin >/dev/null 2>&1; then
+        if git -C "$PROYECTO" push -u origin "$PUSH_RAMA"; then
+            logx "push: origin/$PUSH_RAMA"
+            echo "[autopiloto] ✔ push OK: origin/$PUSH_RAMA"
+            if [ "$PUSH_RAMA" != "$RAMA_RUN" ]; then
+                echo "[autopiloto] abre el PR de $PUSH_RAMA -> $RAMA_BASE"
+            else
+                echo "[autopiloto] abre el PR de $RAMA_RUN -> $RAMA_BASE"
+            fi
+        else
+            echo "[autopiloto] ⚠ falló el push a origin/$PUSH_RAMA. El trabajo queda local." | tee -a "$LOG"
+        fi
     else
-        echo "[autopiloto] abre el PR de $RAMA_RUN -> $RAMA_BASE"
+        echo "[autopiloto] ℹ sin remote origin (repo no creado). Trabajo queda local." | tee -a "$LOG"
     fi
 fi
 
