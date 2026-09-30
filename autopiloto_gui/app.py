@@ -76,7 +76,17 @@ class Ventana(QMainWindow):
         self.proyectos = cargar()
         if not self.proyectos:
             candidato = os.getcwd()
-            if os.path.isfile(os.path.join(candidato, "plan.md")):
+            # Sólo auto-registra el directorio actual si parece un proyecto real
+            # del autopiloto (tiene plan.md + autopiloto.sh + .git) y NO es la
+            # propia carpeta de la GUI. Evita que arrancar dentro del repo de la
+            # app la registre a ella misma como "proyecto" (raíz de confusión).
+            parece_proyecto = (
+                os.path.isfile(os.path.join(candidato, "plan.md"))
+                and os.path.isfile(os.path.join(candidato, "autopiloto.sh"))
+                and os.path.isdir(os.path.join(candidato, ".git"))
+            )
+            dir_gui = os.path.dirname(os.path.abspath(__file__))
+            if parece_proyecto and os.path.abspath(candidato) != dir_gui:
                 self.proyectos[os.path.basename(candidato)] = {"ruta": candidato}
             guardar(self.proyectos, leer_tema())
 
