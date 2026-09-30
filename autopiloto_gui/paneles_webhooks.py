@@ -67,6 +67,8 @@ class PanelWebhooks(QWidget):
         super().__init__(parent)
         self.config = config or {}
         self.webhook = WebhookManager(self.config)
+        self.webhook.enviado.connect(self._webhook_ok)
+        self.webhook.error.connect(self._webhook_err)
 
         v = QVBoxLayout(self)
         v.setSpacing(12)
@@ -185,6 +187,11 @@ class PanelWebhooks(QWidget):
         h.addWidget(b_guardar)
         v.addLayout(h)
 
+        # --- Estado de los envíos de prueba ---
+        self.lbl_estado = _LabelMuted("Sin pruebas todavía")
+        self.lbl_estado.setWordWrap(True)
+        v.addWidget(self.lbl_estado)
+
         v.addStretch()
 
     def _crear_lineedit(self, texto: str, placeholder: str = "") -> QLineEdit:
@@ -195,11 +202,18 @@ class PanelWebhooks(QWidget):
         le.setEchoMode(QLineEdit.Password)  # Tokens sensibles
         return le
 
+    def _webhook_ok(self, plataforma, mensaje):
+        self.lbl_estado.setText(f"✓ {plataforma.capitalize()}: {mensaje}")
+
+    def _webhook_err(self, plataforma, mensaje):
+        self.lbl_estado.setText(f"✗ {plataforma.capitalize()}: {mensaje}")
+
     def _probar(self, plataforma: str):
         ok = self.webhook.probar(plataforma)
         if ok:
-            QMessageBox.information(self, f"Test {plataforma.capitalize()}", "Mensaje de prueba enviado ✓")
+            self.lbl_estado.setText(f"⏳ {plataforma.capitalize()}: enviando prueba…")
         else:
+            self.lbl_estado.setText(f"✗ {plataforma.capitalize()}: configuración incompleta")
             QMessageBox.warning(self, f"Test {plataforma.capitalize()}", "No se pudo enviar. Revisa la configuración.")
 
     def _guardar(self):

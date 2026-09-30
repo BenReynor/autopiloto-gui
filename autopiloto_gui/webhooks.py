@@ -35,6 +35,20 @@ class WebhookManager(QObject):
     def configurar(self, config: dict[str, Any]):
         self.config = config
 
+    def _sanitizar(self, mensaje: str) -> str:
+        """Oculta tokens y URLs embebidas antes de emitir el error.
+
+        El token de Telegram viaja en la propia URL (api.telegram.org/bot<token>/…)
+        y urllib puede incluirlo en el mensaje de excepción; lo enmascaramos.
+        """
+        if not mensaje:
+            return ""
+        for clave in ("telegram_token", "whatsapp_token", "discord_webhook_url", "whatsapp_api_url"):
+            secreto = self.config.get(clave)
+            if secreto:
+                mensaje = mensaje.replace(str(secreto), "***")
+        return mensaje
+
     def esta_activo(self, evento: str) -> bool:
         """Verifica si el evento está habilitado y hay al menos una plataforma configurada."""
         if not self.config.get("eventos", {}).get(evento, False):
@@ -94,11 +108,11 @@ class WebhookManager(QObject):
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 if resp.status != 200:
-                    self.error.emit("telegram", f"HTTP {resp.status}")
+                    self.error.emit("telegram", self._sanitizar(f"HTTP {resp.status}"))
                 else:
                     self.enviado.emit("telegram", "OK")
         except Exception as e:
-            self.error.emit("telegram", str(e))
+            self.error.emit("telegram", self._sanitizar(str(e)))
 
     def _enviar_discord(self, texto: str):
         url = self.config["discord_webhook_url"]
@@ -107,11 +121,11 @@ class WebhookManager(QObject):
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 if resp.status not in (200, 204):
-                    self.error.emit("discord", f"HTTP {resp.status}")
+                    self.error.emit("discord", self._sanitizar(f"HTTP {resp.status}"))
                 else:
                     self.enviado.emit("discord", "OK")
         except Exception as e:
-            self.error.emit("discord", str(e))
+            self.error.emit("discord", self._sanitizar(str(e)))
 
     def _enviar_whatsapp(self, texto: str):
         """WhatsApp via Meta Cloud API (requiere Business Account)."""
@@ -139,11 +153,11 @@ class WebhookManager(QObject):
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 if resp.status != 200:
-                    self.error.emit("whatsapp", f"HTTP {resp.status}")
+                    self.error.emit("whatsapp", self._sanitizar(f"HTTP {resp.status}"))
                 else:
                     self.enviado.emit("whatsapp", "OK")
         except Exception as e:
-            self.error.emit("whatsapp", str(e))
+            self.error.emit("whatsapp", self._sanitizar(str(e)))
 
     def probar(self, plataforma: str) -> bool:
         """Envía mensaje de prueba a una plataforma específica."""

@@ -158,6 +158,82 @@ def test_instalar_no_pisa_gitignore_existente():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_asegurar_gitignore_anade_bloque_existente():
+    """asegurar_gitignore añade el bloque autopiloto a un .gitignore existente."""
+    import shutil
+    tmp = tempfile.mkdtemp()
+    try:
+        ruta = os.path.join(tmp, ".gitignore")
+        with open(ruta, "w", encoding="utf-8") as f:
+            f.write("# node\nnode_modules/\n")
+        assert plantillas.asegurar_gitignore(tmp) is True
+        with open(ruta, encoding="utf-8") as f:
+            contenido = f.read()
+        assert "node_modules/" in contenido, "lo del usuario no se toca"
+        for entrada in ("autopiloto.sh", "gate.sh", "gate_checks/", "plan.md",
+                        "lecciones.md", "progreso.log", "metrics.jsonl",
+                        ".autopiloto_review/"):
+            assert entrada in contenido, f"falta entrada {entrada!r}"
+        # Idempotente: segunda llamada no duplica
+        assert plantillas.asegurar_gitignore(tmp) is False
+        with open(ruta, encoding="utf-8") as f:
+            assert f.read().count("autopiloto.sh") == 1
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_asegurar_gitignore_crea_si_falta():
+    """Si no hay .gitignore, asegurar_gitignore copia la plantilla completa."""
+    import shutil
+    tmp = tempfile.mkdtemp()
+    try:
+        assert plantillas.asegurar_gitignore(tmp) is True
+        ruta = os.path.join(tmp, ".gitignore")
+        assert os.path.exists(ruta)
+        with open(ruta, encoding="utf-8") as f:
+            contenido = f.read()
+        assert "Autopiloto:" in contenido
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_quitar_framework_del_git():
+    """quitar_framework_del_git deja de trackear pero conserva en disco."""
+    import shutil
+    import subprocess
+    tmp = tempfile.mkdtemp()
+    try:
+        subprocess.run(["git", "init", "-q"], cwd=tmp, check=True)
+        for nombre in ["autopiloto.sh", "gate.sh", "plan.md", "lecciones.md",
+                       "progreso.log", "metrics.jsonl", "mapeo.txt",
+                       "endpoints.txt", "gate_checks/01_db.sh", "readme.md"]:
+            p = os.path.join(tmp, nombre)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w", encoding="utf-8"):
+                pass
+        subprocess.run(["git", "add", "-A"], cwd=tmp, check=True)
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=T",
+                        "commit", "-q", "-m", "init"], cwd=tmp, check=True)
+
+        salidos = plantillas.quitar_framework_del_git(tmp)
+
+        assert "autopiloto.sh" in salidos
+        assert "gate_checks/01_db.sh" in salidos
+        assert "readme.md" not in salidos, "lo del usuario no se toca"
+        # En disco siguen
+        assert os.path.exists(os.path.join(tmp, "autopiloto.sh"))
+        assert os.path.exists(os.path.join(tmp, "plan.md"))
+        # Dejaron de estar en el índice
+        out = subprocess.run(["git", "ls-files"], cwd=tmp, capture_output=True,
+                             text=True, check=True)
+        trackeados = out.stdout.splitlines()
+        assert "autopiloto.sh" not in trackeados
+        assert "plan.md" not in trackeados
+        assert "readme.md" in trackeados
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_inicializar_git_crea_repo_si_falta():
     import shutil
     tmp = tempfile.mkdtemp()
@@ -203,4 +279,7 @@ if __name__ == "__main__":
     test_inicializar_git_no_rompe_repo_existente()
     test_instalar_crea_gitignore_del_framework()
     test_instalar_no_pisa_gitignore_existente()
+    test_asegurar_gitignore_anade_bloque_existente()
+    test_asegurar_gitignore_crea_si_falta()
+    test_quitar_framework_del_git()
     print("\n🎉 Todos los tests de plantillas.py PASARON")

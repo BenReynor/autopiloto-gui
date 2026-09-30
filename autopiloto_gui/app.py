@@ -5,9 +5,11 @@ se gestionan los procesos (loop/gate), la configuración persistida y la
 vigilancia (temperatura e internet).
 """
 
+import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 
@@ -114,6 +116,8 @@ class Ventana(QMainWindow):
 
         # Webhook manager
         self.webhook = WebhookManager(self.webhooks_config)
+        self.webhook.error.connect(lambda plataforma, msg: self.statusBar().showMessage(
+            f"Webhook {plataforma}: {msg}", 8000))
 
         # Usar ancho de sidebar persistido (o defecto)
         self._ancho_sidebar = leer_sidebar_ancho()
@@ -236,6 +240,7 @@ class Ventana(QMainWindow):
         self.pan_ejec.panel_revision.rechazado.connect(self._revision_rechazada)
         self.pan_git = PanelGit()
         self.pan_git.revertir_commit.connect(self._ejecutar_revert)
+        self.pan_git.limpiar_git.connect(self._limpiar_git_framework)
         self.pan_logs = PanelLogs()
         self.pan_mapa = PanelMapa()
         self.pan_metricas = PanelMetricas()
@@ -713,10 +718,62 @@ class Ventana(QMainWindow):
             "modelo_revisor": conf['revisor'],
         })
 
+    def _limpiar_sesiones_proyecto(self, ruta_proyecto):
+        """Borra las sesiones de opencode que el loop creó en el proyecto.
+
+        Criterio: directory == proyecto y creadas después del inicio del run.
+        Nota: autopiloto.sh también limpia al salir (trap EXIT); esto cubre
+        la detención manual (la GUI manda SIGKILL y no corre el trap bash).
+        """
+        if not ruta_proyecto:
+            return
+        binario = ""
+        for cand in ("opencode",):
+            ruta = shutil.which(cand)
+            if ruta:
+                binario = ruta
+                break
+            candidata = os.path.expanduser(f"~/.{cand}/bin/{cand}")
+            if os.path.isfile(candidata) and os.access(candidata, os.X_OK):
+                binario = candidata
+                break
+        if not binario:
+            return
+        desde_ms = int(self._inicio_loop_ts * 1000) if self._inicio_loop_ts else 0
+
+        def _ejecutar(*args):
+            try:
+                return subprocess.run(
+                    [binario, *args],
+                    capture_output=True, text=True, timeout=120,
+                )
+            except (subprocess.TimeoutExpired, OSError):
+                return None
+
+        res = _ejecutar("session", "list", "--format", "json")
+        if not res or res.returncode != 0:
+            return
+        try:
+            sesiones = json.loads(res.stdout or "[]")
+        except json.JSONDecodeError:
+            return
+        ids = [
+            s["id"] for s in sesiones
+            if s.get("directory") == ruta_proyecto
+            and int(s.get("created") or 0) >= desde_ms
+        ]
+        for id_ in ids:
+            _ejecutar("session", "delete", id_)
+        if ids:
+            self.pan_logs.panel_loop.appendPlainText(
+                f"[autopiloto] 🧹 Sesiones opencode eliminadas: {len(ids)}")
+
     def _loop_fin(self):
+        p = self._proyecto_actual()
+        if p:
+            self._limpiar_sesiones_proyecto(p[1])
         self.pan_ejec.b_iniciar.setEnabled(True)
         self.pan_ejec.b_detener.setEnabled(False)
-        p = self._proyecto_actual()
         if p:
             self.pan_ejec.b_gate.setEnabled(
                 os.path.exists(os.path.join(p[1], "gate.sh")))
@@ -792,7 +849,7 @@ class Ventana(QMainWindow):
         self.pan_logs.panel_loop.ensureCursorVisible()
 
         # Detectar eventos para webhooks
-        if "tokens agotados" in datos.lower() or "cuota agotada" in datos.lower():
+        if "tokens/cuota agotados" in datos.lower() or "cuota agotada" in datos.lower():
             self._webhook_enviar("tokens", {})
         elif "error crítico" in datos.lower() or "abortado:" in datos.lower():
             self._webhook_enviar("error", {"detalle": "Ver progreso.log"})
@@ -976,6 +1033,52 @@ class Ventana(QMainWindow):
         else:
             self.estado.setText(f"✗ Error revertiendo {sha[:8]}")
             QMessageBox.warning(self, "Error", f"No se pudo revertir el commit {sha[:8]}")
+
+    def _limpiar_git_framework(self):
+        """Asegura .gitignore con el bloque autopiloto y deja de trackear el framework."""
+        p = self._proyecto_actual()
+        if not p:
+            return
+        _, ruta = p
+        resp = QMessageBox.question(
+            self, "Framework fuera de git",
+            "Se hará:\n"
+            "1) Añadir el bloque autopiloto al .gitignore del proyecto\n"
+            "2) git rm --cached de autopiloto.sh, gate.sh, gate_checks/, plan.md,\n"
+            "   lecciones.md, mapeo.txt, progreso.log, metrics.jsonl, etc.\n\n"
+            "Los archivos SIGUEN en disco (el autopiloto los necesita); solo "
+            "dejan de estar en el repo git.\n¿Continuar?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if resp != QMessageBox.Yes:
+            return
+
+        def trabajo():
+            modificado = plantillas.asegurar_gitignore(ruta)
+            salidos = plantillas.quitar_framework_del_git(ruta)
+            return (modificado, len(salidos))
+
+        self.estado.setText("Aplicando limpieza del framework en git...")
+        worker = Trabajo(trabajo)
+        worker.conectar(self._post_limpiar_git_framework)
+        worker.liberar(self, "_worker_limpiar")
+        worker.start()
+        self._worker_limpiar = worker
+
+    def _post_limpiar_git_framework(self, res):
+        modificado, salidos = res
+        if salidos or modificado:
+            self.estado.setText(f"✓ Gitignored actualizado y {salidos} archivos "
+                                "dejaron de trackearse (quedan sin commitear; "
+                                "haz commit en el repo del proyecto si quieres "
+                                "persistirlo)")
+            msg = (f"· .gitignore actualizado: {modificado}\n"
+                   f"· archivos fuera de seguimiento: {salidos}")
+            QMessageBox.information(self, "Framework fuera de git", msg)
+        else:
+            self.estado.setText("Nada que limpiar (ya estaba limpio)")
+        p = self._proyecto_actual()
+        if p:
+            self.pan_git.cargar(p[1])
 
 def main():
     app = QApplication(sys.argv)

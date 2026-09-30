@@ -1299,6 +1299,7 @@ class PanelGit(QWidget):
     """
 
     revertir_commit = Signal(str)  # sha
+    limpiar_git = Signal()  # pedido: asegurar .gitignore + dejar de trackear framework
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1314,10 +1315,15 @@ class PanelGit(QWidget):
         self.lbl_rama = QLabel("")
         _fuente_ui(self.lbl_rama)
         self.lbl_rama.setStyleSheet("font-weight: 500;")
+        b_limpiar = _BtnGhost("🧹 Framework fuera de git")
+        b_limpiar.clicked.connect(self.limpiar_git.emit)
+        b_limpiar.setToolTip("Añade el bloque autopiloto al .gitignore del proyecto y "
+                             "deja de trackear los archivos del framework (siguen en disco)")
         b_ref = _BtnGhost("Refrescar")
         b_ref.clicked.connect(lambda: self.cargar())
         h.addWidget(self.lbl_rama)
         h.addStretch()
+        h.addWidget(b_limpiar)
         h.addWidget(b_ref)
         v.addLayout(h)
 

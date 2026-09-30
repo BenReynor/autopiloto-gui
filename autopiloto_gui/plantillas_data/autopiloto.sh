@@ -105,6 +105,10 @@ FECHA="$(date +%Y-%m-%d)"
 RAMA_RUN="autopiloto/$FECHA"
 RAMA_TRABAJO="${RAMA_TRABAJO:-}"
 
+# Marca de inicio del run (epoch ms) para la limpieza de sesiones de opencode.
+INICIO_MS="$(date +%s%3N)"
+SESIONES_LIMPIADAS=0
+
 logx() { echo "[$(date '+%F %H:%M:%S')] $*" >> "$LOG"; }
 hora_limite() { [[ -n "$HASTA" && "$(date +%H:%M)" > "$HASTA" ]]; }
 
@@ -171,6 +175,29 @@ agente_ok() {
     bin="$(cli_agente "$1")" || return 1
     [ -n "$bin" ] && command -v "$bin" >/dev/null 2>&1
 }
+
+# Limpia las sesiones de opencode que este run haya creado en el proyecto.
+# Criterio: directory == PROYECTO y time_created >= INICIO_MS del run.
+# Se ejecuta al salir (loop completo, break, error o detención manual).
+limpiar_sesiones() {
+    local bin ids id n=0
+    bin="$(cli_agente opencode)"
+    [ -n "$bin" ] || return 0
+    command -v "$bin" >/dev/null 2>&1 || return 0
+    command -v jq >/dev/null 2>&1 || return 0
+    ids="$("$bin" session list --format json 2>/dev/null | jq -r \
+        --arg dir "$PROYECTO" --argjson desde "$INICIO_MS" \
+        '.[] | select(.directory == $dir and .created >= $desde) | .id')"
+    [ -n "$ids" ] || return 0
+    while IFS= read -r id; do
+        [ -z "$id" ] && continue
+        "$bin" session delete "$id" >/dev/null 2>&1
+        n=$((n + 1))
+    done <<< "$ids"
+    SESIONES_LIMPIADAS=$n
+    [ "$n" -gt 0 ] && echo "[autopiloto] 🧹 Sesiones opencode eliminadas: $n" | tee -a "$LOG"
+}
+trap limpiar_sesiones EXIT TERM INT
 
 # Ejecuta una tarea con cualquier agente. Devuelve su exit code.
 #   $1 = agente (opencode|codex|claude)

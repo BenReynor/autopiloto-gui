@@ -126,6 +126,71 @@ def instalar(ruta):
     return creados
 
 
+def _bloque_framework_gitignore():
+    """Líneas del .gitignore de plantilla que excluyen al framework."""
+    ruta = os.path.join(PLANTILLA_DIR, ".gitignore")
+    with open(ruta, encoding="utf-8") as f:
+        lineas = f.read().splitlines()
+    bloque = []
+    for linea in lineas:
+        if linea.startswith("# Entorno"):
+            break
+        bloque.append(linea)
+    return "\n".join(bloque).strip() + "\n"
+
+
+def asegurar_gitignore(ruta):
+    """Garantiza que el .gitignore del proyecto excluya al framework.
+
+    Si no existe, se copia la plantilla completa. Si ya existe (entradas propias
+    del usuario), se AÑADE únicamente el bloque del framework, sin tocar lo demás
+    y sin duplicarlo si ya está. Devuelve True si se modificó.
+    """
+    destino = os.path.join(ruta, ".gitignore")
+    if not os.path.exists(destino):
+        shutil.copy2(os.path.join(PLANTILLA_DIR, ".gitignore"), destino)
+        return True
+    with open(destino, encoding="utf-8") as f:
+        contenido = f.read()
+    if "Autopiloto:" in contenido:
+        return False
+    with open(destino, "a", encoding="utf-8") as f:
+        if not contenido.endswith("\n"):
+            f.write("\n")
+        f.write("\n" + _bloque_framework_gitignore())
+    return True
+
+
+def quitar_framework_del_git(ruta):
+    """Quita del seguimiento git los archivos del framework (sin borrarlos).
+
+    El proyecto sigue conservando autopiloto.sh, gate.sh, gate_checks/, plan.md,
+    etc. en disco (el autopiloto los necesita), pero dejan de estar en el repo.
+    Devuelve la lista de archivos que git dejó de trackear.
+    """
+    if not _es_repo_git(ruta):
+        return []
+    patrones = list(ARCHIVOS) + [GATE_CHECKS_DIR] + ["progreso.log", "metrics.jsonl",
+                                                    "mapeo.txt", "endpoints.txt",
+                                                    ".autopiloto_review"]
+    try:
+        out = subprocess.run(
+            ["git", "ls-files"] + patrones, cwd=ruta, capture_output=True,
+            text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    trackeados = [linea for linea in out.stdout.splitlines() if linea.strip()]
+    if not trackeados:
+        return []
+    try:
+        subprocess.run(["git", "rm", "--cached", "-q", "-r", "--ignore-unmatch",
+                        "--"] + trackeados, cwd=ruta, capture_output=True,
+                       text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    return trackeados
+
+
 def actualizar(ruta):
     """Sobrescribe plantillas que difieren. Devuelve lista de actualizados."""
     actualizados = []
