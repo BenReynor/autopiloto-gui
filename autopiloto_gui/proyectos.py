@@ -68,11 +68,16 @@ def leer_config_proyecto(nombre):
 
 
 def guardar_config_proyecto(proyectos, nombre, config):
-    """Persiste la configuración específica del proyecto junto a su registro."""
+    """Persiste la configuración específica del proyecto junto a su registro.
+
+    No re-añade el proyecto si ya no existe en el registro (p. ej. tras
+    "Quitar"): un nombre eliminado no debe reaparecer al guardar su config.
+    """
+    if nombre not in proyectos:
+        return
     datos = _leer_archivo()
     datos["proyectos"] = proyectos
-    proyectos.setdefault(nombre, {})
-    proyectos[nombre]["config"] = config
+    proyectos.setdefault(nombre, {})["config"] = config
     os.makedirs(cfg.CONFIG_DIR, exist_ok=True)
     with open(cfg.REGISTRO, "w", encoding="utf-8") as f:
         json.dump(datos, f, indent=2, ensure_ascii=False)

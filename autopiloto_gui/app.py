@@ -552,7 +552,16 @@ class Ventana(QMainWindow):
         if self.proyectos.pop(nombre, None) is not None:
             eliminados = plantillas.quitar(ruta) if ruta else []
             guardar(self.proyectos, self.tema)
+            # Si el proyecto quitado era el activo, olvidarlo también en el
+            # settings: sin esto closeEvent/_cambiar_proyecto re-guardarían su
+            # config (y una entrada huérfana) al reabrir la GUI.
+            if getattr(self, "_nombre_activo", "") == nombre:
+                self._nombre_activo = ""
+                if hasattr(self, "_settings"):
+                    self._settings.setValue("proyecto/activo", "")
+            self.cmb.blockSignals(True)
             self.cmb.removeItem(self.cmb.currentIndex())
+            self.cmb.blockSignals(False)
             if eliminados:
                 QMessageBox.information(
                     self, "Proyecto eliminado",
