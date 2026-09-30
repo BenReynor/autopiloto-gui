@@ -65,7 +65,10 @@ def inicializar_git(ruta):
     try:
         subprocess.run(["git", "add", "-A"], cwd=ruta, capture_output=True,
                        text=True, timeout=30)
-        cm = subprocess.run(["git", "commit", "-q", "-m",
+        # --allow-empty: si el proyecto no tiene archivos propios (solo los del
+        # framework, que el .gitignore excluye), master queda con un commit
+        # vacío para que el autopiloto pueda ramificar sobre él.
+        cm = subprocess.run(["git", "commit", "-q", "--allow-empty", "-m",
                              "init: autopiloto (plantillas instaladas)"],
                             cwd=ruta, capture_output=True, text=True,
                             timeout=60)
@@ -107,7 +110,7 @@ def _desactualizados(ruta):
 def instalar(ruta):
     """Copia plantillas (scripts + gate_checks) que falten. Devuelve creados."""
     creados = []
-    for nombre in list(ARCHIVOS) + list(GATE_CHECKS):
+    for nombre in list(ARCHIVOS) + list(GATE_CHECKS) + [".gitignore"]:
         destino = os.path.join(ruta, nombre)
         if not os.path.exists(destino):
             os.makedirs(os.path.dirname(destino), exist_ok=True)

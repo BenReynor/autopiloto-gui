@@ -122,6 +122,42 @@ def test_actualizar_no_toca_gate_checks_custom():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_instalar_crea_gitignore_del_framework():
+    """Un proyecto nuevo recibe .gitignore que excluye los archivos del framework."""
+    tmp = _proyecto_tmp()
+    try:
+        creados = plantillas.instalar(tmp)
+        assert ".gitignore" in creados
+        ruta = os.path.join(tmp, ".gitignore")
+        assert os.path.exists(ruta)
+        with open(ruta, encoding="utf-8") as f:
+            contenido = f.read()
+        # El repo del proyecto jamás debe commitear/pushear archivos del autopiloto
+        for entrada in ("autopiloto.sh", "gate.sh", "gate_checks/", "plan.md",
+                        "lecciones.md", "progreso.log", "metrics.jsonl",
+                        ".autopiloto_review/"):
+            assert entrada in contenido, f"falta entrada {entrada!r}"
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_instalar_no_pisa_gitignore_existente():
+    """Si el proyecto ya tiene .gitignore propio, se respeta (no se sobreescribe)."""
+    import shutil
+    tmp = _proyecto_tmp()
+    try:
+        ruta = os.path.join(tmp, ".gitignore")
+        with open(ruta, "w", encoding="utf-8") as f:
+            f.write("# node\nnode_modules/\n")
+        creados = plantillas.instalar(tmp)
+        assert ".gitignore" not in creados
+        with open(ruta, encoding="utf-8") as f:
+            assert f.read() == "# node\nnode_modules/\n"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_inicializar_git_crea_repo_si_falta():
     import shutil
     tmp = tempfile.mkdtemp()
@@ -165,4 +201,6 @@ if __name__ == "__main__":
     test_actualizar_no_toca_gate_checks_custom()
     test_inicializar_git_crea_repo_si_falta()
     test_inicializar_git_no_rompe_repo_existente()
+    test_instalar_crea_gitignore_del_framework()
+    test_instalar_no_pisa_gitignore_existente()
     print("\n🎉 Todos los tests de plantillas.py PASARON")

@@ -87,7 +87,7 @@ COSTO_POR_ITER="${COSTO_POR_ITER:-0.50}"
 RAMA_BASE="${RAMA_BASE:-master}"
 PUSH=""
 HASTA=""
-CONTROL="plan\.md|lecciones\.md|progreso\.log|gate\.sh|autopiloto\.sh|mapear\.sh|mapeo\.txt|endpoints\.txt"
+CONTROL="plan\.md|lecciones\.md|progreso\.log|gate\.sh|autopiloto\.sh|mapear\.sh|mapeo\.txt|endpoints\.txt|metrics\.jsonl|gate_checks(/.*)?|\.autopiloto_review(/.*)?"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -372,6 +372,32 @@ revertir() {
         done
 }
 
+# --- Integridad del gate: el agente no debe poder alterar gate.sh/gate_checks ---
+# Se respalda el gate prístino al inicio del run; si el agente lo modifica,
+# se restaura y se anula el intento (el gate es código del framework, no del proyecto).
+GATE_BACKUP_DIR="$(mktemp -d)"
+backup_gate() {
+    rm -rf "$GATE_BACKUP_DIR"
+    mkdir -p "$GATE_BACKUP_DIR"
+    cp -f "$GATE" "$GATE_BACKUP_DIR/" 2>/dev/null
+    [ -d "$PROYECTO/gate_checks" ] && cp -rf "$PROYECTO/gate_checks" "$GATE_BACKUP_DIR/" 2>/dev/null
+}
+
+gate_intacto() {
+    diff -q "$GATE" "$GATE_BACKUP_DIR/gate.sh" >/dev/null 2>&1 || return 1
+    local f
+    for f in "$PROYECTO"/gate_checks/*.sh; do
+        [ -f "$f" ] || continue
+        diff -q "$f" "$GATE_BACKUP_DIR/gate_checks/$(basename "$f")" >/dev/null 2>&1 || return 1
+    done
+    return 0
+}
+
+restaurar_gate() {
+    cp -f "$GATE_BACKUP_DIR/gate.sh" "$GATE" 2>/dev/null
+    [ -d "$GATE_BACKUP_DIR/gate_checks" ] && cp -rf "$GATE_BACKUP_DIR/gate_checks/." "$PROYECTO/gate_checks/" 2>/dev/null
+}
+
 # Memoria del proyecto: añade una lección a lecciones.md (corrección única de
 # errores). La usa el agente en la siguiente tarea para no repetir el fallo.
 registrar_leccion() {
@@ -500,6 +526,9 @@ if ! hay_internet; then
     exit 4
 fi
 logx "Internet OK"
+
+# Respaldo del gate prístino ANTES de que el agente pueda tocar nada.
+backup_gate
 
 echo "[autopiloto] Baseline: gate.sh..."
 if ! bash "$GATE"; then
@@ -677,6 +706,18 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
 
         # CRITERIO y MODELO_JUEZ viajan al gate (los lee 98_criterio.sh)
         export CRITERIO MODELO_JUEZ OPENCODE_AGENT_JUEZ
+
+        # Integridad del gate: si el agente alteró gate.sh/gate_checks/*.sh,
+        # restaurar el prístino y anular este intento (no se ejecuta el gate
+        # contaminado; es un vector de inyección de código).
+        if ! gate_intacto; then
+            restaurar_gate
+            echo "[autopiloto] ✗ el agente alteró gate.sh/gate_checks: gate restaurado, intento anulado." | tee -a "$LOG"
+            logx "GATE ALTERADO por el agente (intento $intento), restaurado"
+            PRE="No edites gate.sh ni gate_checks/*.sh (son del framework). Tu cambio a esos archivos se descartó. "
+            continue
+        fi
+
         logx "GATE: ejecutando gate.sh (intento $intento)"
         GATE_OUT="$(mktemp)"
         # tee: la salida del gate se ve en vivo Y se guarda para el feedback
@@ -791,19 +832,28 @@ if [ -n "${RAMA_TRABAJO:-}" ] && [ "$RAMA_TRABAJO" != "$RAMA_RUN" ]; then
     fi
 fi
 
-# Intentar crear repo en GitHub si hay token y no hay remote origin
+# Intentar crear repo en GitHub si hay credenciales y no hay remote origin
+# Vía preferida: CLI gh (usa credenciales del keyring, sin token en línea de
+# comandos ni en logs). Fallback: GITHUB_TOKEN vía API.
 _asegurar_remote_origin() {
     if ! git -C "$PROYECTO" remote get-url origin >/dev/null 2>&1; then
-        local token="${GITHUB_TOKEN:-}"
-        if [ -z "$token" ] && command -v gh >/dev/null 2>&1; then
-            token="$(gh auth token 2>/dev/null || echo "")"
-        fi
-        if [ -n "$token" ]; then
-            local repo_name="$(basename "$PROYECTO")"
-            local owner="$(curl -s -H "Authorization: Bearer $token" https://api.github.com/user | grep -o '"login":"[^"]*"' | cut -d'"' -f4)"
+        local repo_name="$(basename "$PROYECTO")"
+        local owner=""
+        if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+            owner="$(gh api user --jq .login 2>/dev/null)"
+            if [ -n "$owner" ] && gh repo create "$owner/$repo_name" --private >/dev/null 2>&1; then
+                echo "[autopiloto] ✔ repo creado en GitHub: $owner/$repo_name"
+                # remote https: usa el credential helper de gh (keyring), no SSH.
+                git -C "$PROYECTO" remote add origin "https://github.com/$owner/$repo_name.git"
+                logx "repo creado y remote origin configurado: https://github.com/$owner/$repo_name.git"
+                return 0
+            fi
+            echo "[autopiloto] ⚠ no se pudo crear repo con gh (respuesta API)" | tee -a "$LOG"
+        elif [ -n "${GITHUB_TOKEN:-}" ]; then
+            owner="$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/user | grep -o '"login":"[^"]*"' | cut -d'"' -f4)"
             if [ -n "$owner" ]; then
                 echo "[autopiloto] Creando repo GitHub: $owner/$repo_name ..."
-                local create_resp="$(curl -s -X POST -H "Authorization: Bearer $token" \
+                local create_resp="$(curl -s -X POST -H "Authorization: Bearer $GITHUB_TOKEN" \
                     -H "Accept: application/vnd.github+json" \
                     "https://api.github.com/user/repos" \
                     -d "{\"name\":\"$repo_name\",\"private\":true,\"auto_init\":false}")"
@@ -814,12 +864,12 @@ _asegurar_remote_origin() {
                     echo "[autopiloto] ✔ repo creado en GitHub: $owner/$repo_name"
                     return 0
                 fi
+                echo "[autopiloto] ⚠ no se pudo crear repo (respuesta API: $create_resp)" | tee -a "$LOG"
             fi
-            echo "[autopiloto] ⚠ no se pudo crear repo (respuesta API: $create_resp)" | tee -a "$LOG"
         else
             registrar_leccion \
                 "GitHub: remote origin ausente" \
-                "No hay GITHUB_TOKEN ni 'gh auth token' para crear repo automático." \
+                "No hay gh autenticado ni GITHUB_TOKEN para crear repo automático." \
                 "Crea el repo manualmente en GitHub y ejecuta: git remote add origin <url>"
             logx "lección registrada: remote origin ausente (sin credenciales)"
         fi
