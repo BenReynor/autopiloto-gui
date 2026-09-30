@@ -3,6 +3,7 @@
 import filecmp
 import os
 import shutil
+import subprocess
 
 PLANTILLA_DIR = os.path.join(os.path.dirname(__file__), "plantillas_data")
 SCRIPTS = ("autopiloto.sh", "gate.sh", "mapear.sh")
@@ -35,6 +36,52 @@ def quitar(ruta):
         shutil.rmtree(dir_checks)
         eliminados.append(GATE_CHECKS_DIR + "/")
     return eliminados
+
+
+def _es_repo_git(ruta):
+    return os.path.isdir(os.path.join(ruta, ".git"))
+
+
+def inicializar_git(ruta):
+    """Inicializa un repo git si el proyecto no lo tiene.
+
+    El autopiloto trabaja 100% con ramas/commits; sin repo aborta en el primer
+    `git checkout` (como pasó con Proyecto_nuevo). Esto:
+      1. `git init -b master` (rama base del script autopiloto.sh).
+      2. Commit inicial de los archivos para que la rama exista.
+
+    Devuelve un dict {repo: "creado"|"ya-existia"|"no-disponible", archivos: n}.
+    No disponible = git sin instalar o identidad sin configurar (no toca nada).
+    """
+    if _es_repo_git(ruta):
+        return {"repo": "ya-existia", "archivos": 0}
+    try:
+        git = subprocess.run(["git", "init", "-b", "master"], cwd=ruta,
+                             capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return {"repo": "no-disponible", "archivos": 0}
+    if git.returncode != 0:
+        return {"repo": "no-disponible", "archivos": 0}
+    try:
+        subprocess.run(["git", "add", "-A"], cwd=ruta, capture_output=True,
+                       text=True, timeout=30)
+        cm = subprocess.run(["git", "commit", "-q", "-m",
+                             "init: autopiloto (plantillas instaladas)"],
+                            cwd=ruta, capture_output=True, text=True,
+                            timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return {"repo": "creado", "archivos": 0}
+    # El commit falla si no hay identidad git configurada o nada que commitear
+    return {"repo": "creado", "archivos": 0 if cm.returncode != 0 else _git_archivos(ruta)}
+
+
+def _git_archivos(ruta):
+    try:
+        out = subprocess.run(["git", "ls-files"], cwd=ruta, capture_output=True,
+                             text=True, timeout=30)
+        return len([linea for linea in out.stdout.splitlines() if linea.strip()])
+    except (OSError, subprocess.TimeoutExpired):
+        return 0
 
 
 def _desactualizados(ruta):

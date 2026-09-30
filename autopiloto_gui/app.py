@@ -7,6 +7,7 @@ vigilancia (temperatura e internet).
 
 import os
 import re
+import shutil
 import sys
 import time
 
@@ -483,14 +484,26 @@ class Ventana(QMainWindow):
             return
         nombre = os.path.basename(ruta)
         creados = plantillas.instalar(ruta)
+        git = plantillas.inicializar_git(ruta)
         self.proyectos[nombre] = {"ruta": ruta}
         guardar(self.proyectos, self.tema)
         self.cmb.addItem(nombre)
         self.cmb.setCurrentText(nombre)
+        detalles = []
         if creados:
+            detalles.append("· " + "\n  · ".join(creados))
+        if git["repo"] == "creado":
+            detalles.append(
+                f"git inicializado (rama master) con {git['archivos']} archivos")
+        elif git["repo"] == "no-disponible":
+            detalles.append(
+                "⚠ git no disponible: revisa que esté instalado y tu "
+                "identidad configurada (git config user.name/user.email)")
+        if detalles:
             QMessageBox.information(
                 self, "Proyecto listo",
-                f"Se generaron en {ruta}:\n\n  · " + "\n  · ".join(creados) +
+                "Se preparó el proyecto:\n\n  · "
+                + "\n  · ".join(detalles) +
                 "\n\nPulsa '▶ Iniciar loop' cuando quieras arrancar.")
         else:
             QMessageBox.information(
@@ -605,25 +618,52 @@ class Ventana(QMainWindow):
         if conf["push"]:
             args.append("--push")
 
-        env = list(QProcess.systemEnvironment())
-        env.append(f"MAX_ITER={conf['iteraciones']}")
+        env = dict(e.split("=", 1) for e in QProcess.systemEnvironment()
+                   if "=" in e)
+
+        def _ruta_binario(nombre):
+            ruta = shutil.which(nombre)
+            if ruta:
+                return ruta
+            if nombre in ("opencode", "codex", "claude"):
+                candidata = os.path.expanduser(f"~/.{nombre}/bin/{nombre}")
+                if os.path.isfile(candidata) and os.access(candidata, os.X_OK):
+                    return candidata
+            return ""
+
+        # El agente CLI se pasa explícito. Si no está en el PATH del QProcess
+        # (p. ej. GUI abierta sin ~/.opencode/bin), resolvemos su ruta absoluta
+        # y la pasamos como CLI_<AGENTE> (que autopiloto.sh ya soporta). Si hay
+        # PATH incompleto, se añade el dir del binario al PATH del subproceso.
+        dirs_extra = set()
+        mapa_cli = {"opencode": "CLI_OPENCODE", "codex": "CLI_CODEX", "claude": "CLI_CLAUDE"}
+        for clave, var in mapa_cli.items():
+            binario = _ruta_binario(clave)
+            if binario:
+                env[var] = binario
+                dirs_extra.add(os.path.dirname(binario))
+        if dirs_extra:
+            env["PATH"] = ":".join(sorted(dirs_extra)) + (
+                ":" + env["PATH"] if env.get("PATH") else "")
+        env["MAX_ITER"] = str(conf['iteraciones'])
         # El agente CLI (opencode/codex/claude/auto) se pasa explícito.
-        env.append(f"AGENTE_TAREA={conf['agente_cli']}")
-        env.append(f"AGENTE_REVISOR={conf['revisor_cli']}")
+        env["AGENTE_TAREA"] = conf['agente_cli']
+        env["AGENTE_REVISOR"] = conf['revisor_cli']
         # Solo pasa --model si la selección es provider/model completo;
         # autopiloto.sh lo ignora para codex/claude.
         modelo_tarea = conf['agente'] if "/" in conf['agente'] else ""
         modelo_revisor = conf['revisor'] if "/" in conf['revisor'] else ""
         modelo_nav = nav_conf['modelo'] if nav_conf['activo'] else ""
-        env.append(f"MODELO_TAREA={modelo_tarea}")
-        env.append(f"MODELO_REVISOR={modelo_revisor}")
-        env.append(f"NAVEGADOR={'1' if nav_conf['activo'] else '0'}")
-        env.append(f"MODELO_NAVEGADOR={modelo_nav}")
-        env.append(f"REVISION_DUAL={'1' if conf['dual'] else '0'}")
-        env.append(f"VOZ={'1' if conf['voz'] else '0'}")
-        env.append(f"MAX_COSTO={conf['costo_max']}")
-        env.append(f"COSTO_POR_ITER={conf['costo_iter']}")
-        env.append(f"REVISION_MANUAL={'1' if conf['revision_manual'] else '0'}")
+        env["MODELO_TAREA"] = modelo_tarea
+        env["MODELO_REVISOR"] = modelo_revisor
+        env["NAVEGADOR"] = '1' if nav_conf['activo'] else '0'
+        env["MODELO_NAVEGADOR"] = modelo_nav
+        env["REVISION_DUAL"] = '1' if conf['dual'] else '0'
+        env["VOZ"] = '1' if conf['voz'] else '0'
+        env["MAX_COSTO"] = str(conf['costo_max'])
+        env["COSTO_POR_ITER"] = str(conf['costo_iter'])
+        env["REVISION_MANUAL"] = '1' if conf['revision_manual'] else '0'
+        env = [f"{k}={v}" for k, v in env.items()]
 
         panel = self.pan_logs.panel_loop
         panel.clear()

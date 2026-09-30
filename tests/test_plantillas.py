@@ -122,10 +122,47 @@ def test_actualizar_no_toca_gate_checks_custom():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_inicializar_git_crea_repo_si_falta():
+    import shutil
+    tmp = tempfile.mkdtemp()
+    try:
+        with open(os.path.join(tmp, "plan.md"), "w", encoding="utf-8") as f:
+            f.write("# PLAN\n\n- [ ] tarea\n      criterio: ok\n")
+        assert not plantillas._es_repo_git(tmp)
+        res = plantillas.inicializar_git(tmp)
+        assert res["repo"] == "creado"
+        assert res["archivos"] >= 1
+        assert plantillas._es_repo_git(tmp)
+        # Segunda llamada no re-inicializa
+        res2 = plantillas.inicializar_git(tmp)
+        assert res2["repo"] == "ya-existia"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_inicializar_git_no_rompe_repo_existente():
+    import shutil
+    import subprocess
+    tmp = tempfile.mkdtemp()
+    try:
+        subprocess.run(["git", "init", "-q"], cwd=tmp, check=True)
+        with open(os.path.join(tmp, "readme.md"), "w", encoding="utf-8") as f:
+            f.write("# repo\n")
+        subprocess.run(["git", "add", "-A"], cwd=tmp, check=True)
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=T",
+                        "commit", "-q", "-m", "init"], cwd=tmp, check=True)
+        res = plantillas.inicializar_git(tmp)
+        assert res["repo"] == "ya-existia"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_faltan_incluye_lecciones()
     test_instalar_crea_lecciones()
     test_quitar_borra_lecciones()
     test_instalar_propaga_checks_nuevos_sin_pisar_custom()
     test_actualizar_no_toca_gate_checks_custom()
+    test_inicializar_git_crea_repo_si_falta()
+    test_inicializar_git_no_rompe_repo_existente()
     print("\n🎉 Todos los tests de plantillas.py PASARON")
