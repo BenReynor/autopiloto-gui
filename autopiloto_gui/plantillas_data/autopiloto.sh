@@ -150,6 +150,28 @@ tokens_agotados() {
         "$archivo" >/dev/null 2>&1
 }
 
+# Detecta si la salida del agente es "no autenticado / sin credenciales".
+# Un CLI instalado pero sin sesión (p. ej. `claude` sin /login) devuelve un
+# mensaje, NO un error de código: el loop lo marcaría [B] en bucle. Se
+# distingue de la cuota agotada (tokens_agotados) para dar un mensaje útil.
+sin_autenticacion() {
+    local archivo="$1"
+    grep -qiE \
+        -e "not logged in" \
+        -e "please run /login" \
+        -e "not authenticated" \
+        -e "unauthorized" \
+        -e "401" \
+        -e "authentication_error" \
+        -e "invalid.?api.?key" \
+        -e "missing.?api.?key" \
+        -e "OPENAI_API_KEY" \
+        -e "ANTHROPIC_API_KEY" \
+        -e "please set your api key" \
+        -e "run .codex login" \
+        "$archivo" >/dev/null 2>&1
+}
+
 # Detecta el primer agente disponible (opencode -> codex -> claude).
 # El orden y los binarios son configurables:
 #   AGENTES_PREFERIDOS="codex opencode"  (orden de preferencia)
@@ -157,7 +179,11 @@ tokens_agotados() {
 detectar_agente() {
     local i
     for i in ${AGENTES_PREFERIDOS:-opencode codex claude}; do
-        cli_agente "$i" >/dev/null 2>&1 && { echo "$i"; return 0; }
+        [ "$i" = "auto" ] && continue
+        # agente_ok, NO cli_agente: este último sólo devuelve el nombre y
+        # siempre sale con rc=0, así que "detectaba" el primero de la lista
+        # aunque no estuviera instalado (y luego el agente_ok final abortaba).
+        agente_ok "$i" && { echo "$i"; return 0; }
     done
     echo ""
 }
@@ -210,6 +236,12 @@ trap limpiar_sesiones EXIT TERM INT
 run_agente() {
     local agente="$1" salida="$2" modelo="${3:-}" bin
     shift 3
+    # "auto" aquí solo llega si alguien invoca run_agente directamente: se
+    # resuelve como el agente de tarea ya detectado (o el primero disponible).
+    if [ -z "$agente" ] || [ "$agente" = "auto" ]; then
+        agente="${AGENTE_TAREA:-}"
+        [ -z "$agente" ] || [ "$agente" = "auto" ] && agente="$(detectar_agente)"
+    fi
     bin="$(cli_agente "$agente")"
     [ -n "$bin" ] || { echo "[autopiloto] ✗ agente desconocido: $agente" | tee -a "$LOG"; return 1; }
     local t0 t1 dur rc=0
@@ -320,8 +352,13 @@ elegir_revisor() {
     local preferido="${AGENTE_REVISOR:-}"
     local tarea="${AGENTE_TAREA:-}"
     local a
+    # "auto" o vacío = sin preferencia: elige otro agente distinto al de tarea.
+    if [ -z "$preferido" ] || [ "$preferido" = "auto" ]; then
+        preferido=""
+    fi
     for a in $preferido ${AGENTES_PREFERIDOS:-codex claude opencode}; do
         [ -z "$a" ] && continue
+        [ "$a" = "auto" ] && continue
         agente_ok "$a" || continue
         [ "$a" != "$tarea" ] && { echo "$a"; return 0; }
     done
@@ -358,6 +395,14 @@ Evalúa SOLO: (1) la tarea satisface su criterio, (2) no rompe nada obvio del pr
 Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERDICT: PASS o VERDICT: FAIL"
     run_agente "$rev" "$rev_out" "$MODELO_REVISOR" "$PROMPT_REV"
     cat "$rev_out" >> "$LOG"
+
+    # El revisor sin sesión: mismo criterio que el agente de tarea.
+    if sin_autenticacion "$rev_out"; then
+        echo "[autopiloto] ✗✗ revisor ($rev) no está autenticado — deteniendo loop" | tee -a "$LOG"
+        logx "ABORTADO: revisor sin autenticacion ($rev)"
+        alerta "El revisor no está autenticado"
+        exit 7
+    fi
 
     # Comprobar agotamiento de tokens/cuota en la salida del revisor
     if tokens_agotados "$rev_out"; then
@@ -540,13 +585,17 @@ esperar_revision_manual() {
     esac
 }
 
-# ---- Autodetección de agente si no se especificó ----
-if [ -z "$AGENTE_TAREA" ]; then
+# ---- Autodetección de agente si no se especificó (o se pidió "auto") ----
+# "auto" y vacío significan lo mismo: usar el primer agente disponible según
+# AGENTES_PREFERIDOS. La GUI manda "auto" por defecto, así que resolver solo el
+# caso vacío dejaba el loop sin agente (agente_ok "auto" → aborta con exit 2).
+if [ -z "$AGENTE_TAREA" ] || [ "$AGENTE_TAREA" = "auto" ]; then
     AGENTE_TAREA="$(detectar_agente)"
     if [ -z "$AGENTE_TAREA" ]; then
         echo "[autopiloto] ✗ No se encontró ningún agente (opencode, codex, claude)." | tee -a "$LOG"
         exit 2
     fi
+    echo "[autopiloto] Agente autodetectado: $AGENTE_TAREA"
 fi
 
 # Antes de lanzar el loop: si el binario del agente no existe, abortar ya.
@@ -732,6 +781,17 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         fi
         cat "$OUT" >> "$LOG"
         cat "$OUT"
+
+        # Agente instalado pero SIN sesión: no es un fallo de la tarea, es
+        # configuración. Sin este corte el loop marcaría cada tarea [B] y
+        # seguiría gastando iteraciones sin poder trabajar nunca.
+        if sin_autenticacion "$OUT"; then
+            echo "[autopiloto] ✗✗ $AGENTE_TAREA no está autenticado (CLI instalado, sin sesión)." \
+                 "Haz login del agente y relanza (opencode: 'opencode auth login' · claude: '/login' · codex: 'codex login')." | tee -a "$LOG"
+            logx "ABORTADO: agente sin autenticacion ($AGENTE_TAREA)"
+            alerta "El agente no está autenticado; revisa su login"
+            exit 7
+        fi
 
         # Comprobar agotamiento de tokens/cuota en la salida del agente
         if tokens_agotados "$OUT"; then
