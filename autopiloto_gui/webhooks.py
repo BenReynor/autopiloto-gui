@@ -159,9 +159,21 @@ class WebhookManager(QObject):
         except Exception as e:
             self.error.emit("whatsapp", self._sanitizar(str(e)))
 
+    def _configurada(self, plataforma: str) -> bool:
+        """Verifica si la plataforma tiene las claves mínimas para enviar."""
+        if plataforma == "telegram":
+            return bool(self.config.get("telegram_token")
+                        and self.config.get("telegram_chat_id"))
+        if plataforma == "discord":
+            return bool(self.config.get("discord_webhook_url"))
+        if plataforma == "whatsapp":
+            return bool(self.config.get("whatsapp_api_url")
+                        and self.config.get("whatsapp_token"))
+        return False
+
     def probar(self, plataforma: str) -> bool:
         """Envía mensaje de prueba a una plataforma específica."""
-        if not self.config.get(plataforma):
+        if not self._configurada(plataforma):
             return False
 
         texto = "🧪 *Test de webhook* desde Autopiloto GUI"

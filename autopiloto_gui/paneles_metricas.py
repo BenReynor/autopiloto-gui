@@ -107,7 +107,7 @@ class PanelMetricas(QWidget):
 
         # ---- Tabla resumen ----
         self.tabla = QTableWidget()
-        self.tabla.setColumnCount(11)
+        self.tabla.setColumnCount(12)
         self.tabla.setHorizontalHeaderLabels(["Iter", "Tarea", "Duración", "Coste Est.", "Coste Real", "Tokens In", "Tokens Out", "Latencia", "Modelo", "Gate", "Revisor", "Estado"])
         self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)

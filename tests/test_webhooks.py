@@ -90,8 +90,55 @@ def test_whatsapp_config():
     print("✅ test_whatsapp_config PASSED")
 
 
+def test_probar_configurada():
+    """Test que probar() solo envía cuando la plataforma tiene claves mínimas.
+
+    Regresión del bug: probar() comprobaba self.config.get(plataforma) con
+    "telegram"/"discord"/"whatsapp", pero las claves reales son
+    telegram_token, discord_webhook_url, whatsapp_api_url... → siempre False.
+    """
+    # Sin credenciales: no debe enviar (ni siquiera iniciar el envío)
+    wm_vacio = WebhookManager({})
+    assert not wm_vacio._configurada("telegram")
+    assert not wm_vacio._configurada("discord")
+    assert not wm_vacio._configurada("whatsapp")
+    assert not wm_vacio._configurada("desconocida")
+    assert not wm_vacio.probar("telegram")
+    assert not wm_vacio.probar("discord")
+    assert not wm_vacio.probar("whatsapp")
+
+    # Telegram requiere token + chat_id
+    wm_tg = WebhookManager({"telegram_token": "tok", "telegram_chat_id": "123"})
+    assert wm_tg._configurada("telegram")
+    assert wm_tg.probar("telegram")  # devuelve True (inicia envío async)
+
+    wm_tg2 = WebhookManager({"telegram_token": "tok"})
+    assert not wm_tg2._configurada("telegram")
+    assert not wm_tg2.probar("telegram")
+
+    # Discord solo necesita URL
+    wm_dc = WebhookManager({"discord_webhook_url": "https://discord.com/api/webhooks/x"})
+    assert wm_dc._configurada("discord")
+    assert wm_dc.probar("discord")
+
+    # WhatsApp requiere api_url + token (phone_id/to se validan en _enviar_whatsapp)
+    wm_wa = WebhookManager({
+        "whatsapp_api_url": "https://graph.facebook.com/v18.0/123",
+        "whatsapp_token": "tok",
+    })
+    assert wm_wa._configurada("whatsapp")
+    assert wm_wa.probar("whatsapp")
+
+    wm_wa2 = WebhookManager({"whatsapp_api_url": "https://graph.facebook.com/v18.0/123"})
+    assert not wm_wa2._configurada("whatsapp")
+    assert not wm_wa2.probar("whatsapp")
+
+    print("✅ test_probar_configurada PASSED")
+
+
 if __name__ == "__main__":
     test_formateo_plantillas()
     test_eventos_activos()
     test_whatsapp_config()
+    test_probar_configurada()
     print("\n🎉 Todos los tests de webhooks.py PASARON")

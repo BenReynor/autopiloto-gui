@@ -746,6 +746,7 @@ class Ventana(QMainWindow):
                 return subprocess.run(
                     [binario, *args],
                     capture_output=True, text=True, timeout=120,
+                    cwd=ruta_proyecto,
                 )
             except (subprocess.TimeoutExpired, OSError):
                 return None
