@@ -163,7 +163,7 @@ autopiloto_gui/
 │   ├── autopiloto.sh
 │   ├── gate.sh
 │   └── mapear.sh
-└── tests/              # 48 tests (plan, métricas, navegador, plantillas, webhooks, GUI, net, sensor, proceso)
+└── tests/              # 59 tests (plan, métricas, navegador, plantillas, webhooks, GUI, net, sensor, proceso, config)
 ```
 
 ---
