@@ -103,8 +103,9 @@ class Ventana(QMainWindow):
         self._aviso_abierto = None
         self._nombre_activo = ""
         self._log_tam = 0
+        self._log_marca = 0
+        self._log_inicio = 0
         self._revision_pendiente = False
-        self._ultima_bloqueada = False
         self.tema = leer_tema()
         self.seguridad = leer_seguridad()
         self.webhooks_config = leer_webhooks()
@@ -464,6 +465,7 @@ class Ventana(QMainWindow):
         self.pan_ejec.aplicar_config(self._lanzamiento)
         self.pan_logs.panel_gate.clear()
         self.pan_logs.panel_loop.clear()
+        self._log_marca = self._log_inicio = self._tam_log(ruta)
         self._tail_log()
 
         # instalar() es idempotente: propaga scripts y gate_checks NUEVOS de la
@@ -708,6 +710,7 @@ class Ventana(QMainWindow):
         self.cmb.setEnabled(False)
         self.timer.start(cfg.TIMER_TAIL_MS)
         self._inicio_loop_ts = time.time()
+        self._log_marca = self._log_inicio = self._tam_log(ruta)
         self._iter_actual = 0
         self._set_fase_loop(0, int(conf['iteraciones'] or 0), corriendo=True)
 
@@ -780,6 +783,8 @@ class Ventana(QMainWindow):
                 os.path.exists(os.path.join(p[1], "gate.sh")))
         self.cmb.setEnabled(True)
         self.timer.stop()
+        self._revision_pendiente = False
+        self.pan_ejec.panel_revision.ocultar()
         self._set_fase_loop(0, 0, corriendo=False)
         if p:
             self.pan_plan.cargar(os.path.join(p[1], "plan.md"))
@@ -792,12 +797,13 @@ class Ventana(QMainWindow):
             duracion_min = (time.time() - self._inicio_loop_ts) / 60.0
         else:
             duracion_min = 0.0
-        # Parsear log para resumen
+        # Parsear log para resumen (solo lo de ESTE run: desde _log_inicio)
         if p:
             log = os.path.join(p[1], "progreso.log")
             try:
-                with open(log, encoding="utf-8", errors="replace") as f:
-                    contenido = f.read()
+                with open(log, "rb") as f:
+                    f.seek(self._log_inicio)
+                    contenido = f.read().decode("utf-8", "replace")
                 hechas = contenido.count("✔ commit:") + contenido.count("✔ tarea completada")
                 bloqueadas = contenido.count("tarea bloqueada")
                 total = hechas + bloqueadas
@@ -849,18 +855,20 @@ class Ventana(QMainWindow):
         self.pan_logs.panel_loop.setPlainText(datos)
         self.pan_logs.panel_loop.ensureCursorVisible()
 
-        # Detectar eventos para webhooks
-        if "tokens/cuota agotados" in datos.lower() or "cuota agotada" in datos.lower():
-            self._webhook_enviar("tokens", {})
-        elif "error crítico" in datos.lower() or "abortado:" in datos.lower():
-            self._webhook_enviar("error", {"detalle": "Ver progreso.log"})
-
-        # Detectar tarea bloqueada y notificar
-        if "tarea bloqueada" in datos.lower() and not self._ultima_bloqueada:
-            self._ultima_bloqueada = True
-            self._notificar_tarea_bloqueada(datos)
-        elif "tarea bloqueada" not in datos.lower():
-            self._ultima_bloqueada = False
+        # Detectar eventos SOLO en lo nuevo desde la última lectura (edge-triggered:
+        # evita reenviar el mismo webhook en cada refresco). No usar `datos` (ventana
+        # de tail) porque repite contenido ya visto en cada refresco.
+        if self._log_marca > tam:
+            self._log_marca = tam  # log truncado/rotado
+        if tam > self._log_marca:
+            try:
+                with open(log, "rb") as f:
+                    f.seek(self._log_marca)
+                    nuevo = f.read().decode("utf-8", "replace")
+            except OSError:
+                nuevo = ""
+            self._log_marca = tam
+            self._procesar_eventos_log(nuevo)
 
         # Píldora y stepper: iteración en curso + fase detectada
         corriendo = bool(self.loop) and self.loop.state() == QProcess.Running
@@ -870,6 +878,23 @@ class Ventana(QMainWindow):
         if corriendo:
             total = int(self._lanzamiento.get("iteraciones") or 0)
             self._set_fase_loop(self._iter_actual, total, corriendo=True)
+
+    def _procesar_eventos_log(self, texto):
+        """Dispara webhooks/avisos a partir de un fragmento NUEVO del log."""
+        bajo = texto.lower()
+        if "tokens/cuota agotados" in bajo or "cuota agotada" in bajo:
+            self._webhook_enviar("tokens", {})
+        elif "error crítico" in bajo or "abortado:" in bajo:
+            self._webhook_enviar("error", {"detalle": "Ver progreso.log"})
+        if "tarea bloqueada" in bajo:
+            self._notificar_tarea_bloqueada(texto)
+
+    def _tam_log(self, ruta):
+        """Tamaño de progreso.log en bytes (0 si no existe)."""
+        try:
+            return os.path.getsize(os.path.join(ruta, "progreso.log"))
+        except OSError:
+            return 0
 
     def _notificar_tarea_bloqueada(self, log_texto):
         # Extraer nombre de la tarea del log
@@ -895,7 +920,9 @@ class Ventana(QMainWindow):
     def _comprobar_revision_pendiente(self):
         """Detecta si autopiloto.sh está esperando revisión manual."""
         if not self.loop or self.loop.state() != QProcess.Running:
-            self._revision_pendiente = False
+            if self._revision_pendiente:
+                self._revision_pendiente = False
+                self.pan_ejec.panel_revision.ocultar()
             return
         if not self.pan_ejec.revision_manual_activa():
             return
