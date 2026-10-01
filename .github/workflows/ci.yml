@@ -13,6 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Los tests hacen commits/reverts git REALES: sin identidad global,
+      # `git commit` falla y los tests de revert/inicializar_git se rompen.
+      - name: Identidad git
+        run: |
+          git config --global user.name "autopiloto CI"
+          git config --global user.email "ci@autopiloto.local"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
