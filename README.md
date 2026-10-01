@@ -19,6 +19,9 @@ source venv/bin/activate
 pip install -e .
 # o manual: pip install PySide6 pyqtgraph
 
+# Dependencias de desarrollo (tests/lint/types)
+pip install -e ".[dev]"
+
 # Ejecutar
 python -m autopiloto_gui
 ```
@@ -98,9 +101,37 @@ Los scripts `autopiloto.sh`, `gate.sh`, `mapear.sh` se copian automáticamente a
 
 ---
 
+## 🔧 Variables del loop (env)
+
+`autopiloto.sh` se configura por variables de entorno (la GUI las rellena desde
+el formulario de Ejecución). Las más útiles:
+
+| Variable | Descripción |
+|----------|-------------|
+| `AGENTE_TAREA` | Agente que implementa: `opencode`\|`codex`\|`claude`\|`auto` (def). |
+| `AGENTES_PREFERIDOS` | Orden de preferencia para `auto` y el revisor. |
+| `MODELO_TAREA` | Modelo `provider/model` de la tarea (solo opencode). |
+| `AGENTE_REVISOR` / `MODELO_REVISOR` | Agente y modelo del gate dual (revisor del diff). |
+| `REVISION_DUAL` | `1` activa el revisor (def), `0` lo apaga. |
+| `REVISION_MANUAL` | `1` pausa antes de commit y espera tu aprobación en la GUI. |
+| `TIMEOUT_REVISION_MANUAL` | Segundos máximos de espera de aprobación manual; al expirar marca la tarea `[B]` y sigue (`0` = infinito). def: `1800`. |
+| `MAX_COSTO` | Presupuesto en USD (`0` = sin límite). |
+| `COSTO_POR_ITER` | Coste estimado USD por tarea+revisión (def `0.50`). |
+| `VOZ` | `1` activa alertas con `notify-send`/`spd-say`. |
+| `NAVEGADOR` / `MODELO_NAVEGADOR` | Navegador automático de contexto antes de cada tarea. |
+| `CRITERIO` | Se extrae de la línea `criterio:` bajo la tarea en `plan.md`. |
+
+> Durante la espera de `REVISION_MANUAL`, si se cae la red el loop aborta (no se
+> queda colgado); y si expira `TIMEOUT_REVISION_MANUAL` marca la tarea `[B]`.
+
+---
+
 ## 🐛 Desarrollo
 
 ```bash
+# Instalar deps de desarrollo
+pip install -e ".[dev]"
+
 # Tests
 QT_QPA_PLATFORM=offscreen python -m pytest tests/ -q
 
@@ -132,7 +163,7 @@ autopiloto_gui/
 │   ├── autopiloto.sh
 │   ├── gate.sh
 │   └── mapear.sh
-└── tests/              # 17 tests (plan, metricas, navegador, plantillas, webhooks)
+└── tests/              # 48 tests (plan, métricas, navegador, plantillas, webhooks, GUI, net, sensor, proceso)
 ```
 
 ---
