@@ -138,9 +138,6 @@ QT_QPA_PLATFORM=offscreen python -m pytest tests/ -q
 # Lint
 python -m ruff check autopiloto_gui/
 
-# Type check (opcional)
-python -m mypy autopiloto_gui/ --ignore-missing-imports
-
 # Boot test (headless)
 QT_QPA_PLATFORM=offscreen python -c "from autopiloto_gui.app import main; main()" &
 ```
@@ -163,7 +160,7 @@ autopiloto_gui/
 │   ├── autopiloto.sh
 │   ├── gate.sh
 │   └── mapear.sh
-└── tests/              # 59 tests (plan, métricas, navegador, plantillas, webhooks, GUI, net, sensor, proceso, config)
+└── tests/              # 66 tests (plan, métricas, navegador, plantillas, webhooks, GUI, log/revisión, net, sensor, proceso, config)
 ```
 
 ---
