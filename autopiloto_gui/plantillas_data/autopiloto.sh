@@ -46,6 +46,8 @@
 #   CLAUDE_FLAGS      flags extra para claude -p ("" por defecto)
 #   REVISION_DUAL     "1" activa el gate dual (def), "0" lo apaga.
 #   REVISION_MANUAL   "1" pausa antes de commit y espera aprobación GUI, "0" automático.
+#   TIMEOUT_REVISION_MANUAL  segundos máximos esperando la aprobación manual antes
+#                     de marcar la tarea [B] y seguir (0 = esperar indefinidamente). def: 1800.
 #   MAX_COSTO         presupuesto en USD (0 = sin límite). Costo estimado por iteración.
 #   COSTO_POR_ITER    costo estimado USD por tarea+revisión (def 0.50).
 #   VOZ               "1" activa alertas al bloquearte/terminar (notify-send, spd-say).
@@ -81,6 +83,7 @@ MODELO_JUEZ="${MODELO_JUEZ:-opencode/nemotron-3.5-lightning-free}"
 JUEZ_AGENTE_JUEZ="${OPENCODE_AGENT_JUEZ:-build}"
 REVISION_DUAL="${REVISION_DUAL:-1}"
 REVISION_MANUAL="${REVISION_MANUAL:-0}"
+TIMEOUT_REVISION_MANUAL="${TIMEOUT_REVISION_MANUAL:-1800}"
 VOZ="${VOZ:-0}"
 MAX_COSTO="${MAX_COSTO:-0}"
 COSTO_POR_ITER="${COSTO_POR_ITER:-0.50}"
@@ -491,9 +494,27 @@ esperar_revision_manual() {
     echo "[autopiloto] ⏸ Esperando revisión manual en $dir_revision..."
     logx "ESPERANDO REVISIÓN MANUAL: $TAREA"
 
-    local decision=""
+    local decision="" esperado=0
     while [ ! -f "$dir_revision/decision" ]; do
         sleep 2
+        esperado=$((esperado + 2))
+
+        # Criterio de infraestructura: si se cae la red, abortar como el resto del loop.
+        if [ $((esperado % 30)) -eq 0 ] && ! hay_internet; then
+            echo "[autopiloto] ✗ sin internet durante la revisión manual: abortando." | tee -a "$LOG"
+            logx "ABORTADO: sin internet durante revisión manual"
+            alerta "Sin internet, se aborta el autopiloto"
+            rm -f "$dir_revision/waiting" "$dir_revision/decision"
+            exit 4
+        fi
+
+        if [ "$TIMEOUT_REVISION_MANUAL" -gt 0 ] && [ "$esperado" -ge "$TIMEOUT_REVISION_MANUAL" ]; then
+            echo "[autopiloto] ✗ timeout de revisión manual (${TIMEOUT_REVISION_MANUAL}s): tarea bloqueada." | tee -a "$LOG"
+            logx "REVISIÓN MANUAL: timeout sin respuesta"
+            alerta "Revisión manual sin respuesta, tarea marcada como bloqueada"
+            rm -f "$dir_revision/waiting" "$dir_revision/decision"
+            return 2
+        fi
     done
     decision="$(cat "$dir_revision/decision")"
     rm -f "$dir_revision/waiting" "$dir_revision/decision"
@@ -753,8 +774,13 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
                 COSTO_ITER_ACTUAL="$(awk -v t="$COSTO_ITER_ACTUAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a/2}')"
                 if revisar_diff "$REVISOR"; then
                     # Gate dual pasó, ahora verificar revisión manual si está activada
-                    if esperar_revision_manual; then
+                    esperar_revision_manual
+                    rc_rev=$?
+                    if [ "$rc_rev" -eq 0 ]; then
                         hecho=1
+                        break
+                    elif [ "$rc_rev" -eq 2 ]; then
+                        logx "Revisión manual: timeout, tarea marcada [B]"
                         break
                     else
                         # Rechazado: revertir cambios antes de reintentar
@@ -773,8 +799,13 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
                 fi
             else
                 # Sin gate dual, verificar revisión manual
-                if esperar_revision_manual; then
+                esperar_revision_manual
+                rc_rev=$?
+                if [ "$rc_rev" -eq 0 ]; then
                     hecho=1
+                    break
+                elif [ "$rc_rev" -eq 2 ]; then
+                    logx "Revisión manual: timeout, tarea marcada [B]"
                     break
                 else
                     revertir "$BEFORE" "$AFTER"
