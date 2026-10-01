@@ -12,8 +12,9 @@
 #   · Máx 2 llamadas: si el juez no puede responder (cuota/timeout), falla
 #     SUAVE (⚠) para no bloquear el loop por culpa del proveedor.
 #
-# Configurable vía entorno: CRITERIO, MODELO_JUEZ, OPENCODE_AGENT_JUEZ,
-# CLI_OPENCODE, TIMEOUT_JUEZ (def 120 s).
+# Configurable vía entorno: CRITERIO, AGENTE_JUEZ (opencode|codex|claude|auto),
+# MODELO_JUEZ (sólo opencode), OPENCODE_AGENT_JUEZ, CLI_OPENCODE/CLI_CODEX/
+# CLI_CLAUDE, AGENTE_TAREA, AGENTES_PREFERIDOS, TIMEOUT_JUEZ (def 120 s).
 set -uo pipefail
 
 if [ -z "${CRITERIO:-}" ]; then
@@ -21,15 +22,58 @@ if [ -z "${CRITERIO:-}" ]; then
     exit 0
 fi
 
-CLI="${CLI_OPENCODE:-opencode}"
-[ -n "$CLI" ] && command -v "$CLI" >/dev/null 2>&1 || {
-    echo "[GATE] ⚠ opencode no disponible para el juez; se omite (CRITERIO='${CRITERIO:0:60}…')"
-    exit 0
-}
-
 TIMEOUT_JUEZ="${TIMEOUT_JUEZ:-120}"
 MODELO_JUEZ="${MODELO_JUEZ:-opencode/nemotron-3.5-lightning-free}"
-AGENTE="${OPENCODE_AGENT_JUEZ:-build}"
+OPENCODE_AGENT="${OPENCODE_AGENT_JUEZ:-build}"
+
+# Agente del juez: AGENTE_JUEZ (opencode|codex|claude|auto). "auto" y vacío
+# siguen al agente de tarea si su CLI está disponible, y si no, al primero
+# disponible. MODELO_JUEZ sólo aplica a opencode.
+AGENTE="${AGENTE_JUEZ:-auto}"
+case "$AGENTE" in
+    auto|"")
+        if [ -n "${AGENTE_TAREA:-}" ] && [ "${AGENTE_TAREA}" != "auto" ]; then
+            _cand="$AGENTE_TAREA"
+        else
+            _cand=""
+        fi
+        _pick=""
+        for _a in $_cand ${AGENTES_PREFERIDOS:-opencode codex claude}; do
+            [ -z "$_a" ] || [ "$_a" = "auto" ] && continue
+            case "$_a" in
+                opencode) _b="${CLI_OPENCODE:-opencode}" ;;
+                codex)    _b="${CLI_CODEX:-codex}" ;;
+                claude)   _b="${CLI_CLAUDE:-claude}" ;;
+                *)        continue ;;
+            esac
+            command -v "$_b" >/dev/null 2>&1 && { _pick="$_a"; break; }
+        done
+        # _cand primero SÓLO si su CLI existe; si no, cae a la lista.
+        if [ -z "$_pick" ] && [ -n "$_cand" ]; then
+            case "$_cand" in
+                opencode) command -v "${CLI_OPENCODE:-opencode}" >/dev/null 2>&1 && _pick="$_cand" ;;
+                codex)    command -v "${CLI_CODEX:-codex}" >/dev/null 2>&1 && _pick="$_cand" ;;
+                claude)   command -v "${CLI_CLAUDE:-claude}" >/dev/null 2>&1 && _pick="$_cand" ;;
+            esac
+        fi
+        AGENTE="${_pick:-opencode}"
+        ;;
+esac
+
+case "$AGENTE" in
+    opencode) CLI="${CLI_OPENCODE:-opencode}" ;;
+    codex)    CLI="${CLI_CODEX:-codex}" ;;
+    claude)   CLI="${CLI_CLAUDE:-claude}" ;;
+    *)        CLI="${CLI_OPENCODE:-opencode}"; AGENTE="opencode" ;;
+esac
+
+if ! command -v "$CLI" >/dev/null 2>&1; then
+    echo "[GATE] ⚠ $AGENTE no disponible para el juez; se omite (CRITERIO='${CRITERIO:0:60}…')"
+    exit 0
+fi
+if [ "$AGENTE" != "opencode" ]; then
+    echo "[GATE] juez: agente=$AGENTE (MODELO_JUEZ no aplica a $AGENTE)"
+fi
 GATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROYECTO_J="$GATE_DIR"
 [ "$(basename "$PROYECTO_J")" = "gate_checks" ] && PROYECTO_J="$(dirname "$PROYECTO_J")"
@@ -58,7 +102,31 @@ Respondes ÚNICAMENTE con JSON en la última línea, sin markdown:
 {\"met\": true, \"reason\": \"<por qué se cumple, máx 120 caracteres>\"}   o
 {\"met\": false, \"reason\": \"<qué falta, máx 120 caracteres>\"}"
 
-SALIDA="$(timeout "$TIMEOUT_JUEZ" "$CLI" run --agent "$AGENTE" --model "$MODELO_JUEZ" "$PROMPT_JUEZ" 2>&1)"
+# Invocación según el agente del juez. El modelo (--model) sólo existe en
+# opencode; codex y claude se configuran por su cuenta y no aceptan la flag,
+# así que se les ignora MODELO_JUEZ.
+run_juez() {
+    case "$AGENTE" in
+        opencode)
+            if [ -n "$MODELO_JUEZ" ]; then
+                timeout "$TIMEOUT_JUEZ" "$CLI" run --agent "$OPENCODE_AGENT" --model "$MODELO_JUEZ" "$PROMPT_JUEZ" 2>&1
+            else
+                timeout "$TIMEOUT_JUEZ" "$CLI" run --agent "$OPENCODE_AGENT" "$PROMPT_JUEZ" 2>&1
+            fi
+            ;;
+        codex)
+            timeout "$TIMEOUT_JUEZ" "$CLI" exec --skip-git-repo-check "${CODEX_FLAGS:-}" "$PROMPT_JUEZ" 2>&1
+            ;;
+        claude)
+            timeout "$TIMEOUT_JUEZ" "$CLI" -p --output-format text "${CLAUDE_FLAGS:-}" "$PROMPT_JUEZ" 2>&1
+            ;;
+        *)
+            timeout "$TIMEOUT_JUEZ" "$CLI" run --agent "$OPENCODE_AGENT" "$PROMPT_JUEZ" 2>&1
+            ;;
+    esac
+}
+
+SALIDA="$(run_juez)"
 RC=$?
 
 if [ "$RC" -eq 124 ]; then
