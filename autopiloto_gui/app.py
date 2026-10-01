@@ -726,7 +726,8 @@ class Ventana(QMainWindow):
 
         Criterio: directory == proyecto y creadas después del inicio del run.
         Nota: autopiloto.sh también limpia al salir (trap EXIT); esto cubre
-        la detención manual (la GUI manda SIGKILL y no corre el trap bash).
+        la detención manual (la GUI manda SIGTERM; sólo si no termina en unos
+        segundos pasa a SIGKILL, y entonces el trap bash no llega a correr).
         """
         if not ruta_proyecto:
             return
@@ -1043,10 +1044,12 @@ class Ventana(QMainWindow):
                   self.timer_revision, self.timer_metricas,
                   self.timer_plan, self.timer_lecciones):
             t.stop()
-        # Terminar proceso loop si corre
+        # Terminar proceso loop si corre (SIGTERM y, si no muere, SIGKILL)
         if self.loop and self.loop.state() == QProcess.Running:
             self.loop.terminate()
-            self.loop.waitForFinished(3000)
+            if not self.loop.waitForFinished(5000):
+                self.loop.kill()
+                self.loop.waitForFinished(1000)
         super().closeEvent(event)
 
     def _post_revert(self, ok: bool, sha: str):
