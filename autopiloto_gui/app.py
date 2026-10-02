@@ -647,38 +647,54 @@ class Ventana(QMainWindow):
         env = dict(e.split("=", 1) for e in QProcess.systemEnvironment()
                    if "=" in e)
 
-        def _ruta_binario(nombre):
-            ruta = shutil.which(nombre)
-            if ruta:
-                return ruta
-            if nombre in ("opencode", "codex", "claude"):
-                candidata = os.path.expanduser(f"~/.{nombre}/bin/{nombre}")
-                if os.path.isfile(candidata) and os.access(candidata, os.X_OK):
-                    return candidata
-            return ""
-
         # El agente CLI se pasa explícito. Si no está en el PATH del QProcess
         # (p. ej. GUI abierta sin ~/.opencode/bin), resolvemos su ruta absoluta
         # y la pasamos como CLI_<AGENTE> (que autopiloto.sh ya soporta). Si hay
         # PATH incompleto, se añade el dir del binario al PATH del subproceso.
         dirs_extra = set()
-        mapa_cli = {"opencode": "CLI_OPENCODE", "codex": "CLI_CODEX", "claude": "CLI_CLAUDE"}
+        mapa_cli = {"opencode": "CLI_OPENCODE", "codex": "CLI_CODEX",
+                    "claude": "CLI_CLAUDE"}
         for clave, var in mapa_cli.items():
-            binario = _ruta_binario(clave)
+            binario = modelos.ruta_binario(clave)
             if binario:
                 env[var] = binario
                 dirs_extra.add(os.path.dirname(binario))
         if dirs_extra:
             env["PATH"] = ":".join(sorted(dirs_extra)) + (
                 ":" + env["PATH"] if env.get("PATH") else "")
+
+        # Un selector en "auto" no es el nombre del agente: lo resolvemos aquí
+        # con la misma lista de preferencia que usa autopiloto.sh, para que el
+        # log de la GUI y el motivo de lanzamiento coincidan con lo ejecutado.
+        detectados = modelos.agentes_instalados()
+        detectado_auto = detectados[0] if detectados else "opencode"
+        agente_tarea = (detectado_auto if conf['agente_cli'] == "auto"
+                        else conf['agente_cli'])
+        agente_revisor = (detectado_auto if conf['revisor_cli'] == "auto"
+                          else conf['revisor_cli'])
+        if not detectados:
+            self.estado.setText(
+                "No se detectó ningún agente CLI (opencode, codex o claude)")
+            panel = self.pan_logs.panel_loop
+            panel.clear()
+            panel.appendPlainText(
+                "> bash autopiloto.sh  (sin agentes CLI instalados: "
+                "instala opencode, codex o claude para usar el autopiloto)")
+            self.pan_ejec.b_iniciar.setEnabled(True)
+            return
+
         env["MAX_ITER"] = str(conf['iteraciones'])
-        # El agente CLI (opencode/codex/claude/auto) se pasa explícito.
-        env["AGENTE_TAREA"] = conf['agente_cli']
-        env["AGENTE_REVISOR"] = conf['revisor_cli']
-        # Solo pasa --model si la selección es provider/model completo;
-        # autopiloto.sh lo ignora para codex/claude.
-        modelo_tarea = conf['agente'] if "/" in conf['agente'] else ""
-        modelo_revisor = conf['revisor'] if "/" in conf['revisor'] else ""
+        env["AGENTE_TAREA"] = agente_tarea
+        env["AGENTE_REVISOR"] = agente_revisor
+        env["AGENTES_PREFERIDOS"] = " ".join(detectados)
+        # El juez sigue al agente de la tarea salvo elección explícita.
+        env["AGENTE_JUEZ"] = agente_tarea
+        # Solo pasa --model si la selección es provider/model completo Y el
+        # agente es opencode (codex y claude no aceptan --model aquí).
+        modelo_tarea = (conf['agente'] if "/" in conf['agente']
+                        and agente_tarea == "opencode" else "")
+        modelo_revisor = (conf['revisor'] if "/" in conf['revisor']
+                          and agente_revisor == "opencode" else "")
         modelo_nav = nav_conf['modelo'] if nav_conf['activo'] else ""
         env["MODELO_TAREA"] = modelo_tarea
         env["MODELO_REVISOR"] = modelo_revisor
@@ -695,8 +711,9 @@ class Ventana(QMainWindow):
         panel.clear()
         panel.appendPlainText(
             f"> bash autopiloto.sh {' '.join(args)}  "
-            f"(agente={conf['agente_cli']}, modelo tarea={conf['agente']}, "
-            f"revisor={conf['revisor_cli']}, modelo revisor={conf['revisor']}, "
+            f"(agente={agente_tarea}, modelo tarea={modelo_tarea or 'n/a'}, "
+            f"revisor={agente_revisor}, modelo revisor="
+            f"{modelo_revisor or 'n/a'}, "
             f"nav={'on' if nav_conf['activo'] else 'off'}, "
             f"dual={conf['dual']}, "
             f"costo/iter={conf['costo_iter']} USD, iter={conf['iteraciones']})")

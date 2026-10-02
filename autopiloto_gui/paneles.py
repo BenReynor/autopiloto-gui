@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import configuracion as cfg
-from . import plan
+from . import modelos, plan
 from .modelos import PROVEEDORES_CATALOGO
 from .paneles_webhooks import PanelWebhooks
 from .proceso import PanelTarea, Trabajo
@@ -128,6 +128,24 @@ class _BtnSmallGhost(QPushButton):
 PIPELINE_FASES = ["Plan", "Agente", "Gate", "Revisor", "Commit"]
 
 
+def _sincronizar_modelo(selector, cmb_cli):
+    """El selector de modelo sólo aplica a opencode.
+
+    codex y claude toman su modelo de su propia cuenta, así que el selector se
+    deshabilita con una nota: evita que la GUI ofrezca un modelo opencode que el
+    script luego ignora en silencio.
+    """
+    if selector is None or cmb_cli is None:
+        return
+    actual = cmb_cli.currentData() or "auto"
+    es_opencode = actual not in ("codex", "claude")
+    selector.setEnabled(es_opencode)
+    if not es_opencode:
+        selector.setToolTip(
+            f"{actual} no acepta --model aquí: se usa el modelo "
+            "configurado en su propia cuenta")
+
+
 def fase_actual(log_ruta: str) -> str:
     """Deduce la fase actual del loop desde progreso.log (últimas ~40 líneas).
 
@@ -144,6 +162,9 @@ def fase_actual(log_ruta: str) -> str:
     texto = "\n".join(lineas)
     if re.search(r"AUTOPILOTO FINALIZADO|ABORTADO|tarea BLOQUEADA", texto):
         return ""
+    if re.search(r"sin login|no hay sesión|credenciales|API key inválida|"
+                 r"no autenticado|autenticarse", texto):
+        return "Gate"
     if re.search(r"ESPERANDO REVISIÓN MANUAL|REVISIÓN MANUAL", texto):
         return "Revisor"
     if re.search(r"revisor.*(PASS|FAIL)|VERDICT:", texto):
@@ -1015,18 +1036,38 @@ class PanelEjecucion(QWidget):
             g.addWidget(widget, row, 1)
 
         def contenedor_agente(selector):
-            """Fila agente=combo CLI + selector de modelo en un mismo widget."""
+            """Fila agente=combo CLI + selector de modelo en un mismo widget.
+
+            El combo sólo ofrece los agentes INSTALADOS (más "auto"), para no
+            dejar elegir uno que no exista. El selector de modelo se activa
+            solo con opencode: codex y claude no aceptan --model aquí.
+            """
             h = QHBoxLayout()
             h.setSpacing(8)
             cmb_cli = QComboBox()
-            cmb_cli.addItems(cfg.AGENTES_DISPONIBLES)
-            cmb_cli.setCurrentText(cfg.AGENTE_DEFECTO)
-            cmb_cli.setMinimumWidth(118)
+            instalados = modelos.agentes_instalados()
+            if instalados:
+                detectado = instalados[0]
+                cmb_cli.addItem(f"auto → {detectado}")
+                cmb_cli.setItemData(0, "auto")
+                for a in instalados:
+                    cmb_cli.addItem(a, a)
+                cmb_cli.setCurrentIndex(0)
+            else:
+                cmb_cli.addItem("auto (sin agentes)")
+                cmb_cli.setItemData(0, "auto")
+            cmb_cli.setToolTip(
+                "Agentes detectados: " + (", ".join(instalados) or "ninguno")
+                + "\nModelos: sólo para opencode")
+            cmb_cli.setMinimumWidth(150)
+            cmb_cli.currentIndexChanged.connect(
+                lambda _i, s=selector, c=cmb_cli: _sincronizar_modelo(s, c))
             h.addWidget(cmb_cli, 0)
             h.addWidget(selector, 1)
             w = QWidget()
             w.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             w.setLayout(h)
+            _sincronizar_modelo(selector, cmb_cli)
             return w, cmb_cli
 
         add_field(0, "Hasta (HH:MM, vacío = sin límite):",
@@ -1266,8 +1307,8 @@ class PanelEjecucion(QWidget):
         return {
             "tarea": self.cmb_agente.currentText(),
             "revisor": self.cmb_revisor.currentText(),
-            "agente_cli": self.cmb_agente_cli.currentText(),
-            "revisor_cli": self.cmb_revisor_cli.currentText(),
+            "agente_cli": self.cmb_agente_cli.currentData() or "auto",
+            "revisor_cli": self.cmb_revisor_cli.currentData() or "auto",
         }
 
     def navegador_config(self):

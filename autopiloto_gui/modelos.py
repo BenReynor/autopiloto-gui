@@ -155,6 +155,39 @@ def lista_modelos_proveedor(proveedor, forzar=False):
     return _modelos_por_proveedor[proveedor]
 
 
+def ruta_binario(nombre):
+    """Ruta absoluta del CLI de un agente, o "" si no está instalado.
+
+    Busca en el PATH y, como los CLIs de agentes suelen instalarse en
+    ~/.<agente>/bin sin tocar el PATH del shell, prueba ese fallback.
+    """
+    ruta = shutil.which(nombre)
+    if ruta:
+        return ruta
+    if nombre in cfg.AGENTES_DISPONIBLES:
+        candidata = os.path.expanduser(f"~/.{nombre}/bin/{nombre}")
+        if os.path.isfile(candidata) and os.access(candidata, os.X_OK):
+            return candidata
+    return ""
+
+
+def agentes_instalados(preferidos=None):
+    """Agentes CLI disponibles en esta máquina, en orden de preferencia.
+
+    `preferidos` = orden a respetar (por defecto, AGENTES_PREFERIDOS). Devuelve
+    sólo los que existen de verdad, para que la GUI no ofrezca un agente que
+    no se pueda ejecutar.
+    """
+    orden = preferidos or cfg.AGENTES_PREFERIDOS
+    return [a for a in orden if a in cfg.AGENTES_DISPONIBLES and ruta_binario(a)]
+
+
+def agente_por_defecto():
+    """Agente a usar cuando el usuario deja el selector en 'auto'."""
+    instalados = agentes_instalados()
+    return instalados[0] if instalados else ""
+
+
 def invalidar_cache():
     """Olvida los resultados caché; la siguiente consulta vuelve a la red."""
     global _modelos, _proveedores

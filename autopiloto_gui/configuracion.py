@@ -75,7 +75,11 @@ WEBHOOK_DEFECTO = {
 MODELO_SUGERIDO = "opencode/big-pickle"
 
 # ----- Agentes CLI disponibles -----
-AGENTES_DISPONIBLES = ("opencode", "codex", "claude", "auto")
+# AGENTES_CONOCIDOS son los CLIs que el autopiloto sabe invocar. AGENTE_DEFECTO
+# "auto" = usar el primero instalado según AGENTES_PREFERIDOS.
+AGENTES_CONOCIDOS = ("opencode", "codex", "claude")
+AGENTES_PREFERIDOS = ("opencode", "codex", "claude")
+AGENTES_DISPONIBLES = AGENTES_CONOCIDOS + ("auto",)
 AGENTE_DEFECTO = "auto"
 
 # ----- Timeouts (segundos) -----
