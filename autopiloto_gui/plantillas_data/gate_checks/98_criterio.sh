@@ -115,10 +115,18 @@ run_juez() {
             fi
             ;;
         codex)
-            timeout "$TIMEOUT_JUEZ" "$CLI" exec --skip-git-repo-check "${CODEX_FLAGS:-}" "$PROMPT_JUEZ" 2>&1
+            # Los flags van en un array: entrecomillar "${CODEX_FLAGS:-}"
+            # pasaría un argumento vacío que el CLI tomaría como el prompt.
+            local -a flags=()
+            [ -n "${CODEX_FLAGS:-}" ] && read -r -a flags <<< "$CODEX_FLAGS"
+            timeout "$TIMEOUT_JUEZ" "$CLI" exec --skip-git-repo-check \
+                ${flags[@]+"${flags[@]}"} "$PROMPT_JUEZ" 2>&1
             ;;
         claude)
-            timeout "$TIMEOUT_JUEZ" "$CLI" -p --output-format text "${CLAUDE_FLAGS:-}" "$PROMPT_JUEZ" 2>&1
+            local -a flags=()
+            [ -n "${CLAUDE_FLAGS:-}" ] && read -r -a flags <<< "$CLAUDE_FLAGS"
+            timeout "$TIMEOUT_JUEZ" "$CLI" -p --output-format text \
+                ${flags[@]+"${flags[@]}"} "$PROMPT_JUEZ" 2>&1
             ;;
         *)
             timeout "$TIMEOUT_JUEZ" "$CLI" run --agent "$OPENCODE_AGENT" "$PROMPT_JUEZ" 2>&1

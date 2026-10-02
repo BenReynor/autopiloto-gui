@@ -256,11 +256,20 @@ run_agente() {
             rc=$?
             ;;
         codex)
-            timeout "$TIMEOUT_POR_TAREA" "$bin" exec --skip-git-repo-check "${CODEX_FLAGS:-}" "$@" > "$salida" 2>&1
+            # OJO: los flags van en un array. "${CODEX_FLAGS:-}" entrecomillado
+            # añadiría un argumento VACÍO al final y el CLI lo tomaría como el
+            # prompt, dejando el prompt real como segundo posicional.
+            local -a flags=()
+            [ -n "${CODEX_FLAGS:-}" ] && read -r -a flags <<< "$CODEX_FLAGS"
+            timeout "$TIMEOUT_POR_TAREA" "$bin" exec --skip-git-repo-check \
+                ${flags[@]+"${flags[@]}"} "$@" > "$salida" 2>&1
             rc=$?
             ;;
         claude)
-            timeout "$TIMEOUT_POR_TAREA" "$bin" -p --output-format text "${CLAUDE_FLAGS:-}" "$@" > "$salida" 2>&1
+            local -a flags=()
+            [ -n "${CLAUDE_FLAGS:-}" ] && read -r -a flags <<< "$CLAUDE_FLAGS"
+            timeout "$TIMEOUT_POR_TAREA" "$bin" -p --output-format text \
+                ${flags[@]+"${flags[@]}"} "$@" > "$salida" 2>&1
             rc=$?
             ;;
         *)
@@ -352,17 +361,21 @@ elegir_revisor() {
     local preferido="${AGENTE_REVISOR:-}"
     local tarea="${AGENTE_TAREA:-}"
     local a
-    # "auto" o vacío = sin preferencia: elige otro agente distinto al de tarea.
-    if [ -z "$preferido" ] || [ "$preferido" = "auto" ]; then
-        preferido=""
+    # Elección explícita (la GUI envía el agente detectado al resolver "auto"):
+    # gana aunque sea el mismo que implementa, porque es lo que pidió el
+    # usuario; no lo sustituimos por otro.
+    if [ -n "$preferido" ] && [ "$preferido" != "auto" ]; then
+        agente_ok "$preferido" && { echo "$preferido"; return 0; }
     fi
-    for a in $preferido ${AGENTES_PREFERIDOS:-codex claude opencode}; do
+    # "auto" o vacío = ojos frescos: otro agente distinto al de tarea.
+    for a in ${AGENTES_PREFERIDOS:-codex claude opencode}; do
         [ -z "$a" ] && continue
         [ "$a" = "auto" ] && continue
         agente_ok "$a" || continue
         [ "$a" != "$tarea" ] && { echo "$a"; return 0; }
     done
-    [ -n "$preferido" ] && agente_ok "$preferido" && { echo "$preferido"; return 0; }
+    # Sólo hay un agente disponible: que revise el mismo que implementó, o el
+    # gate se quedaría sin revisión.
     agente_ok "$tarea" && { echo "$tarea"; return 0; }
     echo ""
 }
