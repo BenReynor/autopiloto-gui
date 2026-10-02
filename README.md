@@ -112,6 +112,7 @@ el formulario de Ejecución). Las más útiles:
 | `AGENTES_PREFERIDOS` | Orden de preferencia para `auto` y el revisor. |
 | `MODELO_TAREA` | Modelo `provider/model` de la tarea (solo opencode). |
 | `AGENTE_REVISOR` / `MODELO_REVISOR` | Agente y modelo del gate dual (revisor del diff). |
+| `AGENTE_JUEZ` | Agente del juez de `criterio:` (def: el de la tarea). |
 | `REVISION_DUAL` | `1` activa el revisor (def), `0` lo apaga. |
 | `REVISION_MANUAL` | `1` pausa antes de commit y espera tu aprobación en la GUI. |
 | `TIMEOUT_REVISION_MANUAL` | Segundos máximos de espera de aprobación manual; al expirar marca la tarea `[B]` y sigue (`0` = infinito). def: `1800`. |
@@ -123,6 +124,21 @@ el formulario de Ejecución). Las más útiles:
 
 > Durante la espera de `REVISION_MANUAL`, si se cae la red el loop aborta (no se
 > queda colgado); y si expira `TIMEOUT_REVISION_MANUAL` marca la tarea `[B]`.
+
+### Agentes CLI
+
+`auto` (por defecto) elige el primer CLI instalado según `AGENTES_PREFERIDOS`
+(`opencode codex claude`). La GUI muestra sólo los agentes que encuentra en la
+máquina y etiqueta el detectado en la opción `auto`, así que nunca ofrece uno
+que no exista.
+
+- `codex` se invoca con `codex exec --skip-git-repo-check`.
+- `claude` se invoca con `claude -p --output-format text`.
+- Sólo `opencode` acepta `MODELO_*` (`provider/model`); la GUI deshabilita el
+  selector para los otros dos, que toman su modelo de su propia cuenta.
+- Si el CLI está instalado pero sin sesión (`Not logged in`, 401, API key
+  inválida), el loop se detiene con un aviso claro en lugar de marcar tareas
+  como fallidas por un error de autenticación.
 
 ---
 
@@ -160,7 +176,7 @@ autopiloto_gui/
 │   ├── autopiloto.sh
 │   ├── gate.sh
 │   └── mapear.sh
-└── tests/              # 66 tests (plan, métricas, navegador, plantillas, webhooks, GUI, log/revisión, net, sensor, proceso, config)
+└── tests/              # 97 tests (plan, métricas, navegador, plantillas, webhooks, GUI, log/revisión, agentes, net, sensor, proceso, config)
 ```
 
 ---
