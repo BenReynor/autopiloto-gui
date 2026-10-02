@@ -356,6 +356,47 @@ def test_ejecucion_config_roundtrip(app, proyecto_git):
     assert p2.txt_iter.text() == "5"
 
 
+def test_ejecucion_combo_agente_solo_ofrece_instalados(
+        app, proyecto_git, monkeypatch):
+    """El combo no debe ofrecer agentes que no existen en la máquina."""
+    from autopiloto_gui import modelos, paneles
+
+    monkeypatch.setattr(modelos.shutil, "which", lambda n: (
+        "/usr/bin/claude" if n == "claude" else None))
+    monkeypatch.setenv("HOME", str(proyecto_git))
+
+    p = paneles.PanelEjecucion()
+    etiquetas = [p.cmb_agente_cli.itemText(i)
+                 for i in range(p.cmb_agente_cli.count())]
+    assert etiquetas[0].startswith("auto")
+    assert "claude" in etiquetas
+    assert "codex" not in etiquetas
+    assert "opencode" not in etiquetas
+
+
+def test_ejecucion_auto_usa_current_data(app, proyecto_git, monkeypatch):
+    """La etiqueta "auto → x" es decorativa: el valor real debe ser 'auto'."""
+    from autopiloto_gui import modelos, paneles
+
+    monkeypatch.setattr(modelos.shutil, "which", lambda n: (
+        "/usr/bin/claude" if n == "claude" else None))
+    monkeypatch.setenv("HOME", str(proyecto_git))
+
+    p = paneles.PanelEjecucion()
+    assert p.modelos_seleccion()["agente_cli"] == "auto"
+
+    idx = p.cmb_agente_cli.findData("claude")
+    assert idx > 0
+    p.cmb_agente_cli.setCurrentIndex(idx)
+    assert p.modelos_seleccion()["agente_cli"] == "claude"
+    # claude no acepta --model: el selector debe quedar deshabilitado.
+    assert not p.cmb_agente.isEnabled()
+
+    p.cmb_agente_cli.setCurrentIndex(0)
+    assert p.modelos_seleccion()["agente_cli"] == "auto"
+    assert p.cmb_agente.isEnabled()
+
+
 # ─── PanelSeguridad / PanelWebhooks ───────────────────────────
 
 def test_seguridad_guardar_emite(app, proyecto_git, cerrar_modales):

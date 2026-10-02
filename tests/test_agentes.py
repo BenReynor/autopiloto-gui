@@ -1,0 +1,527 @@
+#!/usr/bin/env python3
+"""Tests del soporte multiagente (opencode / codex / claude).
+
+No se requiere ninguna suscripción: se crean CLIs falsos en un PATH temporal y
+se ejercitan las funciones reales de la plantilla (autodetección, flags de
+invocación, corte por falta de login y juez de criterio) más la detección de
+agentes instalados que usa la GUI.
+"""
+
+import json
+import os
+import shutil
+import stat
+import subprocess
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PLANTILLA = os.path.join(RAIZ, "autopiloto_gui", "plantillas_data",
+                         "autopiloto.sh")
+JUEZ = os.path.join(RAIZ, "autopiloto_gui", "plantillas_data",
+                    "gate_checks", "98_criterio.sh")
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("bash") is None, reason="bash no disponible")
+
+
+def _extraer_funcion(texto, nombre):
+    """Devuelve el texto de `nombre() { ... }` usando balance de llaves."""
+    inicio = texto.index(f"{nombre}() {{")
+    i = texto.index("{", inicio)
+    profundidad = 0
+    for j in range(i, len(texto)):
+        if texto[j] == "{":
+            profundidad += 1
+        elif texto[j] == "}":
+            profundidad -= 1
+            if profundidad == 0:
+                return texto[inicio:j + 1]
+    raise AssertionError(f"no se pudo extraer {nombre}")
+
+
+def _leer_plantilla():
+    with open(PLANTILLA, encoding="utf-8") as f:
+        return f.read()
+
+
+def _cli_falso(directorio, nombre, cuerpo):
+    """Escribe un CLI ejecutable que registra sus argumentos y devuelve cuerpo."""
+    ruta = os.path.join(directorio, nombre)
+    with open(ruta, "w", encoding="utf-8") as f:
+        f.write("#!/usr/bin/env bash\n"
+                'printf "%s\\n" "$*" >> "$REG_ARGS"\n')
+        f.write(cuerpo)
+    os.chmod(ruta, os.stat(ruta).st_mode | stat.S_IEXEC | stat.S_IXGRP
+             | stat.S_IXOTH)
+    return ruta
+
+
+# ---------- detección de agentes instalados (Python / GUI) ----------
+
+def test_agentes_instalados_respeta_preferencia(tmp_path):
+    from autopiloto_gui import modelos
+
+    d = str(tmp_path)
+    _cli_falso(d, "claude", "exit 0\n")
+    _cli_falso(d, "codex", "exit 0\n")
+
+    # Sólo codex y claude existen: opencode NO debe ganar aunque sea el primero
+    # de la lista de preferencia. HOME aislado para que el fallback
+    # ~/.opencode/bin del equipo de pruebas no se cuele.
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(modelos.shutil, "which", lambda n: (
+        os.path.join(d, n) if n in ("codex", "claude") else None))
+    monkey.setenv("HOME", str(tmp_path))
+    try:
+        assert modelos.agentes_instalados() == ["codex", "claude"]
+        assert modelos.agente_por_defecto() == "codex"
+        assert modelos.ruta_binario("opencode") == ""
+        assert modelos.agentes_instalados(preferidos=("claude", "codex")) == [
+            "claude", "codex"]
+    finally:
+        monkey.undo()
+
+
+def test_agentes_instalados_vacio_no_inventa(tmp_path):
+    from autopiloto_gui import modelos
+
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(modelos.shutil, "which", lambda n: None)
+    monkey.setenv("HOME", str(tmp_path))
+    try:
+        assert modelos.agentes_instalados() == []
+        assert modelos.agente_por_defecto() == ""
+    finally:
+        monkey.undo()
+
+
+def test_ruta_binario_usa_fallback_dot_dir(tmp_path):
+    """Instalado en ~/.codex/bin/codex y fuera del PATH: debe resolverse."""
+    from autopiloto_gui import modelos
+
+    d = tmp_path / ".codex" / "bin"
+    d.mkdir(parents=True)
+    binario = d / "codex"
+    binario.write_text("#!/usr/bin/env bash\nexit 0\n")
+    binario.chmod(0o755)
+
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(modelos.shutil, "which", lambda n: None)
+    monkey.setenv("HOME", str(tmp_path))
+    try:
+        assert modelos.ruta_binario("codex") == str(binario)
+        assert modelos.ruta_binario("claude") == ""
+    finally:
+        monkey.undo()
+
+
+# ---------- autodetección en bash ----------
+
+def _harness_deteccion(tmp_path, instalados):
+    """Ejecuta detectar_agente/elegir_revisor con un PATH controlado."""
+    d = tmp_path / "bin"
+    d.mkdir(exist_ok=True)
+    for nombre in ("opencode", "codex", "claude"):
+        if nombre in instalados:
+            _cli_falso(str(d), nombre, "exit 0\n")
+    texto = _leer_plantilla()
+    (tmp_path / "func.sh").write_text("\n\n".join([
+        _extraer_funcion(texto, "sin_autenticacion"),
+        _extraer_funcion(texto, "detectar_agente"),
+        _extraer_funcion(texto, "cli_agente"),
+        _extraer_funcion(texto, "agente_ok"),
+        _extraer_funcion(texto, "elegir_revisor"),
+    ]), encoding="utf-8")
+
+    script = r'''
+. "$1"
+logx() { :; }
+alerta() { :; }
+AGENTES_PREFERIDOS="$2"
+echo "detectado=$(detectar_agente)"
+AGENTE_TAREA="$(detectar_agente)"
+AGENTE_REVISOR="auto"
+REVISION_DUAL="1"
+echo "revisor=$(elegir_revisor)"
+AGENTE_TAREA="opencode"
+AGENTE_REVISOR="opencode"
+echo "revisor_mismo=$(elegir_revisor)"
+'''
+    (tmp_path / "run.sh").write_text(script, encoding="utf-8")
+    env = {"PATH": f"{d}:/usr/bin:/bin", "HOME": str(tmp_path)}
+    return subprocess.run(
+        ["bash", str(tmp_path / "run.sh"), str(tmp_path / "func.sh"),
+         "opencode codex claude"],
+        capture_output=True, text=True, timeout=30, env=env)
+
+
+def test_autodetecta_claude_si_es_el_unico(tmp_path):
+    r = _harness_deteccion(tmp_path, {"claude"})
+    assert r.returncode == 0, r.stderr
+    assert "detectado=claude" in r.stdout
+    # "auto" = sin preferencia: con un solo agente, el revisor es ese mismo.
+    assert "revisor=claude" in r.stdout
+
+
+def test_autodetecta_segun_preferencia(tmp_path):
+    r = _harness_deteccion(tmp_path, {"opencode", "codex", "claude"})
+    assert "detectado=opencode" in r.stdout
+
+    texto = _leer_plantilla()
+    (tmp_path / "func.sh").write_text("\n\n".join([
+        _extraer_funcion(texto, "detectar_agente"),
+        _extraer_funcion(texto, "cli_agente"),
+        _extraer_funcion(texto, "agente_ok"),
+    ]), encoding="utf-8")
+    script = '. "$1"\nAGENTES_PREFERIDOS="claude codex opencode"\n' \
+             'echo "detectado=$(detectar_agente)"\n'
+    (tmp_path / "run2.sh").write_text(script, encoding="utf-8")
+    r2 = subprocess.run(
+        ["bash", str(tmp_path / "run2.sh"), str(tmp_path / "func.sh")],
+        capture_output=True, text=True, timeout=30,
+        env={"PATH": f"{tmp_path / 'bin'}:/usr/bin:/bin",
+             "HOME": str(tmp_path)})
+    assert "detectado=claude" in r2.stdout
+
+
+def test_autodetecta_vacio_sin_agentes(tmp_path):
+    r = _harness_deteccion(tmp_path, set())
+    assert r.returncode == 0, r.stderr
+    assert "detectado=\n" in r.stdout
+    assert "revisor=\n" in r.stdout
+
+
+def test_revisor_explicito_gana_a_otro_agente(tmp_path):
+    """La GUI resuelve 'auto' al detectado y lo envía explícito: si el usuario
+    (o la GUI) pidió opencode, el revisor es opencode aunque haya otro CLI."""
+    r = _harness_deteccion(tmp_path, {"opencode", "claude"})
+    assert "detectado=opencode" in r.stdout
+    assert "revisor_mismo=opencode" in r.stdout
+
+
+def test_revisor_auto_prefiere_otro_agente(tmp_path):
+    """Sin preferencia explícita, busca ojos frescos (otro agente)."""
+    d = tmp_path / "bin"
+    d.mkdir(exist_ok=True)
+    _cli_falso(str(d), "opencode", "exit 0\n")
+    _cli_falso(str(d), "claude", "exit 0\n")
+    texto = _leer_plantilla()
+    (tmp_path / "func.sh").write_text("\n\n".join([
+        _extraer_funcion(texto, "detectar_agente"),
+        _extraer_funcion(texto, "cli_agente"),
+        _extraer_funcion(texto, "agente_ok"),
+        _extraer_funcion(texto, "elegir_revisor"),
+    ]), encoding="utf-8")
+    (tmp_path / "run.sh").write_text(
+        '. "$1"\nAGENTES_PREFERIDOS="opencode codex claude"\n'
+        'AGENTE_TAREA=opencode\nAGENTE_REVISOR=auto\n'
+        'echo "revisor=$(elegir_revisor)"\n', encoding="utf-8")
+    r = subprocess.run(
+        ["bash", str(tmp_path / "run.sh"), str(tmp_path / "func.sh")],
+        capture_output=True, text=True, timeout=30,
+        env={"PATH": f"{d}:/usr/bin:/bin", "HOME": str(tmp_path)})
+    assert "revisor=claude" in r.stdout, r.stdout + r.stderr
+
+
+def test_revisor_auto_con_un_solo_agente_reusa_el_mismo(tmp_path):
+    """Si no hay un segundo CLI, revisa el mismo antes que dejar el gate vacío."""
+    r = _harness_deteccion(tmp_path, {"opencode"})
+    assert "detectado=opencode" in r.stdout
+    assert "revisor=opencode" in r.stdout
+
+
+# ---------- invocación por CLI ----------
+
+def _harness_run_agente(tmp_path, agent_stub_body, modelo="", metrica_real=True):
+    texto = _leer_plantilla()
+    metricas = (_extraer_funcion(texto, "_registrar_metrica")
+                if metrica_real else "_registrar_metrica() { :; }\n")
+    (tmp_path / "func.sh").write_text("\n\n".join([
+        _extraer_funcion(texto, "sin_autenticacion"),
+        _extraer_funcion(texto, "detectar_agente"),
+        _extraer_funcion(texto, "cli_agente"),
+        _extraer_funcion(texto, "agente_ok"),
+        _extraer_funcion(texto, "run_agente"),
+        metricas,
+        "logx() { :; }\n"
+        "alerta() { :; }\n",
+    ]), encoding="utf-8")
+    d = tmp_path / "bin"
+    d.mkdir(exist_ok=True)
+    _cli_falso(str(d), "codex", agent_stub_body)
+    (tmp_path / "out").write_text("", encoding="utf-8")
+    script = r'''
+. "$1"
+LOG="$2/out.log"
+PROYECTO="$2"
+TIMEOUT_POR_TAREA=10
+OPENCODE_AGENT_TAREA=build
+run_agente codex "$2/out" "$3" "TAREA DE PRUEBA"
+echo "rc=$?"
+'''
+    (tmp_path / "run.sh").write_text(script, encoding="utf-8")
+    return subprocess.run(
+        ["bash", str(tmp_path / "run.sh"), str(tmp_path / "func.sh"),
+         str(tmp_path), modelo],
+        capture_output=True, text=True, timeout=30,
+        env={"PATH": f"{d}:/usr/bin:/bin", "HOME": str(tmp_path),
+             "CLI_CODEX": str(d / "codex"), "REG_ARGS": str(tmp_path / "args")})
+
+
+def test_codex_usa_exec_y_skip_git_repo_check(tmp_path):
+    r = _harness_run_agente(tmp_path, 'echo "hecho"\n')
+    assert r.returncode == 0, r.stderr
+    assert "rc=0" in r.stdout
+    args = (tmp_path / "args").read_text()
+    assert "exec" in args
+    assert "--skip-git-repo-check" in args
+    assert "TAREA DE PRUEBA" in args
+    # codex no recibe --model (no existe ese flag en `codex exec`).
+    assert "--model" not in args
+
+
+def test_claude_usa_modo_print_y_sin_modelo(tmp_path):
+    texto = _leer_plantilla()
+    (tmp_path / "func.sh").write_text("\n\n".join([
+        _extraer_funcion(texto, "cli_agente"),
+        _extraer_funcion(texto, "run_agente"),
+        "_registrar_metrica() { :; }\n",
+    ]), encoding="utf-8")
+    d = tmp_path / "bin"
+    d.mkdir(exist_ok=True)
+    _cli_falso(str(d), "claude", 'echo "hecho"\n')
+    (tmp_path / "run.sh").write_text(
+        '. "$1"\nLOG="$2/out.log"\nPROYECTO="$2"\nTIMEOUT_POR_TAREA=10\n'
+        'run_agente claude "$2/out" "" "TAREA DE PRUEBA"\necho "rc=$?"\n',
+        encoding="utf-8")
+    r = subprocess.run(
+        ["bash", str(tmp_path / "run.sh"), str(tmp_path / "func.sh"),
+         str(tmp_path)],
+        capture_output=True, text=True, timeout=30,
+        env={"PATH": f"{d}:/usr/bin:/bin", "HOME": str(tmp_path),
+             "CLI_CLAUDE": str(d / "claude"),
+             "REG_ARGS": str(tmp_path / "args")})
+    assert r.returncode == 0, r.stderr
+    assert "rc=0" in r.stdout
+    args = (tmp_path / "args").read_text()
+    assert "-p" in args
+    assert "--output-format text" in args
+    assert "--model" not in args
+
+
+def test_claude_no_recibe_argumento_vacio(tmp_path):
+    """Regresión: `${CLAUDE_FLAGS:-}` entrecomillado añadía un argumento vacío
+    y claude lo tomaba como el prompt, dejando el prompt real huérfano."""
+    texto = _leer_plantilla()
+    (tmp_path / "func.sh").write_text("\n\n".join([
+        _extraer_funcion(texto, "cli_agente"),
+        _extraer_funcion(texto, "run_agente"),
+        "_registrar_metrica() { :; }\n",
+    ]), encoding="utf-8")
+    d = tmp_path / "bin"
+    d.mkdir(exist_ok=True)
+    # El stub falla si recibe un argumento vacío, como hace claude en realidad.
+    _cli_falso(str(d), "claude",
+               'for a in "$@"; do [ -n "$a" ] || exit 9; done\n'
+               'echo "hecho"\n')
+    (tmp_path / "run.sh").write_text(
+        '. "$1"\nLOG="$2/out.log"\nPROYECTO="$2"\nTIMEOUT_POR_TAREA=10\n'
+        'CLAUDE_FLAGS=""\n'
+        'run_agente claude "$2/out" "" "TAREA DE PRUEBA"\necho "rc=$?"\n',
+        encoding="utf-8")
+    r = subprocess.run(
+        ["bash", str(tmp_path / "run.sh"), str(tmp_path / "func.sh"),
+         str(tmp_path)],
+        capture_output=True, text=True, timeout=30,
+        env={"PATH": f"{d}:/usr/bin:/bin", "HOME": str(tmp_path),
+             "CLI_CLAUDE": str(d / "claude"),
+             "REG_ARGS": str(tmp_path / "args")})
+    assert "rc=0" in r.stdout, f"argumento vacío pasado a claude:\n{r.stdout}"
+
+
+def test_codex_recibe_flags_sin_argumentos_vacios(tmp_path):
+    """CODEX_FLAGS con varios flags deben llegar troceados, sin huecos."""
+    texto = _leer_plantilla()
+    (tmp_path / "func.sh").write_text("\n\n".join([
+        _extraer_funcion(texto, "cli_agente"),
+        _extraer_funcion(texto, "run_agente"),
+        "_registrar_metrica() { :; }\n",
+    ]), encoding="utf-8")
+    d = tmp_path / "bin"
+    d.mkdir(exist_ok=True)
+    _cli_falso(str(d), "codex",
+               'for a in "$@"; do [ -n "$a" ] || exit 9; done\n'
+               'echo "hecho"\n')
+    (tmp_path / "run.sh").write_text(
+        '. "$1"\nLOG="$2/out.log"\nPROYECTO="$2"\nTIMEOUT_POR_TAREA=10\n'
+        'CODEX_FLAGS="-s danger-full-access"\n'
+        'run_agente codex "$2/out" "" "TAREA"\necho "rc=$?"\n',
+        encoding="utf-8")
+    r = subprocess.run(
+        ["bash", str(tmp_path / "run.sh"), str(tmp_path / "func.sh"),
+         str(tmp_path)],
+        capture_output=True, text=True, timeout=30,
+        env={"PATH": f"{d}:/usr/bin:/bin", "HOME": str(tmp_path),
+             "CLI_CODEX": str(d / "codex"),
+             "REG_ARGS": str(tmp_path / "args")})
+    assert "rc=0" in r.stdout, r.stdout + r.stderr
+    args = (tmp_path / "args").read_text()
+    assert "-s danger-full-access" in args
+
+
+# ---------- autenticación ----------
+
+@pytest.mark.parametrize("salida", [
+    "Not logged in · Please run /login",
+    "Error: 401 Unauthorized",
+    "Invalid API key provided",
+    "Please set your API key",
+    "missing OPENAI_API_KEY",
+    "run 'codex login' to authenticate",
+])
+def test_sin_autenticacion_detecta_mensajes(tmp_path, salida):
+    texto = _leer_plantilla()
+    (tmp_path / "func.sh").write_text(
+        _extraer_funcion(texto, "sin_autenticacion"), encoding="utf-8")
+    f = tmp_path / "salida.txt"
+    f.write_text(salida, encoding="utf-8")
+    r = subprocess.run(
+        ["bash", "-c", '. "$1"; sin_autenticacion "$2"; echo rc=$?',
+         "_", str(tmp_path / "func.sh"), str(f)],
+        capture_output=True, text=True, timeout=15)
+    assert "rc=0" in r.stdout, f"no detectado: {salida}\n{r.stderr}"
+
+
+def test_sin_autenticacion_no_falsa_positivo(tmp_path):
+    texto = _leer_plantilla()
+    (tmp_path / "func.sh").write_text(
+        _extraer_funcion(texto, "sin_autenticacion"), encoding="utf-8")
+    f = tmp_path / "salida.txt"
+    f.write_text("Tarea completada. 3 archivos modificados.\n", encoding="utf-8")
+    r = subprocess.run(
+        ["bash", "-c", '. "$1"; sin_autenticacion "$2"; echo rc=$?',
+         "_", str(tmp_path / "func.sh"), str(f)],
+        capture_output=True, text=True, timeout=15)
+    assert "rc=1" in r.stdout, r.stderr
+
+
+# ---------- juez de criterio polivalente ----------
+
+def _harness_juez(tmp_path, cuerpo, veredicto, extra_env=None):
+    d = tmp_path / "bin"
+    d.mkdir(exist_ok=True)
+    _cli_falso(str(d), "claude", cuerpo)
+    (tmp_path / "juez.sh").write_text(
+        _leer_juez(), encoding="utf-8")
+    env = {"PATH": f"{d}:/usr/bin:/bin", "HOME": str(tmp_path),
+           "CRITERIO": "existe la función f()",
+           "AGENTE_JUEZ": "claude",
+           "CLI_CLAUDE": str(d / "claude"),
+           "REG_ARGS": str(tmp_path / "args"),
+           "TIMEOUT_JUEZ": "15"}
+    env.update(extra_env or {})
+    return subprocess.run(
+        ["bash", str(tmp_path / "juez.sh")],
+        capture_output=True, text=True, timeout=30, env=env), veredicto
+
+
+def _leer_juez():
+    with open(JUEZ, encoding="utf-8") as f:
+        return f.read()
+
+
+def test_juez_con_claude_acepta_veredicto(tmp_path):
+    r, _ = _harness_juez(
+        tmp_path,
+        'echo \'{"met": true, "reason": "la función existe"}\'\n', True)
+    assert r.returncode == 0, r.stderr
+    assert "juez: agente=claude" in r.stdout
+    assert "MODELO_JUEZ no aplica a claude" in r.stdout
+    assert "criterio cumplido" in r.stdout
+    args = (tmp_path / "args").read_text()
+    assert "-p" in args
+    assert "--model" not in args
+
+
+def test_juez_con_claude_rechaza_veredicto(tmp_path):
+    r, _ = _harness_juez(
+        tmp_path,
+        'echo \'{"met": false, "reason": "falta la función"}\'\n', False)
+    assert r.returncode != 0, r.stdout
+    assert "NO cumplido" in r.stdout
+
+
+def test_juez_omitido_si_falla_el_cli(tmp_path):
+    """El juez nunca bloquea: si el CLI falla, sale 0 con aviso."""
+    r, _ = _harness_juez(tmp_path, "exit 3\n", None)
+    assert r.returncode == 0, r.stdout
+    assert "se omite" in r.stdout
+
+
+def test_juez_auto_sigue_al_agente_de_tarea(tmp_path):
+    r, _ = _harness_juez(
+        tmp_path,
+        'echo \'{"met": true, "reason": "ok"}\'\n', True,
+        extra_env={"AGENTE_JUEZ": "auto", "AGENTE_TAREA": "claude"})
+    assert "juez: agente=claude" in r.stdout
+
+
+def test_juez_envia_agente_que_evalua(tmp_path):
+    """El prompt del juez debe llegar al CLI con el criterio dentro."""
+    r, _ = _harness_juez(
+        tmp_path,
+        'printf "%s\\n" "$*" > "$REG_ARGS"\n'
+        'echo \'{"met": true, "reason": "ok"}\'\n', True)
+    assert r.returncode == 0, r.stderr
+    args = (tmp_path / "args").read_text()
+    assert "JUEZ" in args
+    assert "existe la función f()" in args
+
+
+def test_juez_sin_agentes_omitido(tmp_path):
+    """Sin ningún CLI disponible el juez se omite sin romper el gate."""
+    d = tmp_path / "bin"
+    d.mkdir(exist_ok=True)
+    (tmp_path / "juez.sh").write_text(_leer_juez(), encoding="utf-8")
+    r = subprocess.run(
+        ["bash", str(tmp_path / "juez.sh")],
+        capture_output=True, text=True, timeout=30,
+        env={"PATH": f"{d}:/usr/bin:/bin", "HOME": str(tmp_path),
+             "CRITERIO": "existe la función f()", "AGENTE_JUEZ": "claude",
+             "CLI_CLAUDE": str(d / "no-existe")})
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "no disponible" in r.stdout
+
+
+def test_juez_sin_criterio_omitido(tmp_path):
+    (tmp_path / "juez.sh").write_text(_leer_juez(), encoding="utf-8")
+    r = subprocess.run(
+        ["bash", str(tmp_path / "juez.sh")],
+        capture_output=True, text=True, timeout=30,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)})
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "sin CRITERIO" in r.stdout
+
+
+def test_configuracion_expone_agentes_conocidos():
+    from autopiloto_gui import configuracion as cfg
+
+    assert "auto" in cfg.AGENTES_DISPONIBLES
+    assert set(cfg.AGENTES_CONOCIDOS) == {"opencode", "codex", "claude"}
+    assert cfg.AGENTE_DEFECTO == "auto"
+
+
+def test_json_de_metrice_es_una_linea(tmp_path):
+    """run_agente escribe metrics.jsonl con una línea JSON por llamada."""
+    r = _harness_run_agente(tmp_path, 'echo "hecho"\n')
+    assert r.returncode == 0, r.stderr
+    metricas = tmp_path / "metrics.jsonl"
+    lineas = [x for x in metricas.read_text().splitlines() if x.strip()]
+    assert len(lineas) == 1
+    reg = json.loads(lineas[0])
+    assert reg["agente"] == "codex"
+    assert reg["rc"] == 0
