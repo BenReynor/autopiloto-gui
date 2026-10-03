@@ -16,8 +16,13 @@ if [ -f "$CHECKS_DIR/_env.sh" ]; then
 elif [ -f "$SCRIPT_DIR/_env.sh" ]; then
     source "$SCRIPT_DIR/_env.sh"
 else
-    # Retrocompat: sin _env.sh definimos lo mínimo
+    # Retrocompat: sin _env.sh definimos lo mínimo.
+    # fail/ok también son obligatorios: sin ellos, un check que falla provoca
+    # "fail: orden no encontrada" (rc=127) que el bucle ignora (no hay set -e)
+    # y el gate terminaba imprimiendo "✅ TODO OK" con rc=0.
     PROYECTO="$SCRIPT_DIR"
+    fail() { echo "[GATE] ✗ $1"; exit 1; }
+    ok()   { echo "[GATE] ✓ $1"; }
 fi
 
 export PROYECTO
