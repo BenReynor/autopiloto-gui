@@ -382,6 +382,42 @@ def test_ejecucion_auto_sin_agente_operativo(app, proyecto_git, monkeypatch):
     assert p.modelos_seleccion()["agente_cli"] == "auto"
 
 
+def test_ejecucion_config_devuelve_el_valor_y_no_la_etiqueta(
+        app, proyecto_git, monkeypatch):
+    """config() alimenta AGENTE_TAREA, así que debe devolver el valor real.
+
+    La etiqueta del combo es decorativa ("auto → opencode"); si config()
+    devolviera el texto, el env llevaría "auto → opencode", autopiloto.sh no
+    entraría en autodetección y abortaría con exit 2 sin llegar a la tarea 1.
+    """
+    from autopiloto_gui import modelos, paneles
+
+    monkeypatch.setattr(modelos.shutil, "which", lambda n: (
+        "/usr/bin/opencode" if n == "opencode" else None))
+    monkeypatch.setattr(modelos, "sesion_agente", lambda n: None)
+    monkeypatch.setenv("HOME", str(proyecto_git))
+    modelos.invalidar_cache()
+
+    p = paneles.PanelEjecucion()
+    assert p.cmb_agente_cli.currentText() == "auto → opencode"
+
+    conf = p.config()
+    # ni la etiqueta decorativa ni un id de agente: exactamente "auto"
+    assert conf["agente_cli"] == "auto"
+    assert conf["revisor_cli"] == "auto"
+
+    # app.py sólo resuelve el valor "auto" hacia la autodetección; cualquier
+    # otro valor se manda tal cual al env, así que debe ser un id de agente.
+    for clave in ("agente_cli", "revisor_cli"):
+        valor = conf[clave]
+        assert valor == "auto", f"{clave} no es auto: {valor!r}"
+
+    # y con un agente concreto explícito, devuelve ese id (no la etiqueta)
+    idx = p.cmb_agente_cli.findText("opencode")
+    p.cmb_agente_cli.setCurrentIndex(idx)
+    assert p.config()["agente_cli"] == "opencode"
+
+
 def test_ejecucion_config_roundtrip(app, proyecto_git):
     from autopiloto_gui.paneles import PanelEjecucion
     p = PanelEjecucion()

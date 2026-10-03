@@ -340,6 +340,34 @@ def test_revisor_auto_con_un_solo_agente_reusa_el_mismo(tmp_path):
     assert "revisor=opencode" in r.stdout
 
 
+def test_agente_ok_rechaza_la_etiqueta_decorativa_del_combo(tmp_path):
+    """La etiqueta "auto → opencode" es para el ojo; el env exige el valor.
+
+    Si la GUI mandara la etiqueta, cli_agente cae en su rama *) y devuelve "",
+    por lo que agente_ok falla y autopiloto.sh aborta con exit 2. Este test
+    fija esa frontera para que config() no vuelva a leer currentText().
+    """
+    d = tmp_path / "bin"
+    d.mkdir(exist_ok=True)
+    _cli_falso(str(d), "opencode", "exit 0\n")
+    texto = _leer_plantilla()
+    (tmp_path / "func.sh").write_text("\n\n".join([
+        _extraer_funcion(texto, "cli_agente"),
+        _extraer_funcion(texto, "agente_ok"),
+    ]), encoding="utf-8")
+    (tmp_path / "run.sh").write_text(
+        '. "$1"\n'
+        'for v in "auto → opencode" "opencode" "codex"; do\n'
+        '    if agente_ok "$v"; then echo "$v OK"; else echo "$v FALLA"; fi\n'
+        'done\n', encoding="utf-8")
+    r = subprocess.run(
+        ["bash", str(tmp_path / "run.sh"), str(tmp_path / "func.sh")],
+        capture_output=True, text=True, timeout=30,
+        env={"PATH": f"{d}:/usr/bin:/bin", "HOME": str(tmp_path)})
+    assert "auto → opencode FALLA" in r.stdout, r.stdout + r.stderr
+    assert "opencode OK" in r.stdout, r.stdout + r.stderr
+
+
 # ---------- invocación por CLI ----------
 
 def _harness_run_agente(tmp_path, agent_stub_body, modelo="", metrica_real=True):
