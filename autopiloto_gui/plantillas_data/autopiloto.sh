@@ -432,23 +432,39 @@ elegir_revisor() {
     echo ""
 }
 
+diff_revision() {
+    # Diff de la iteración para el revisor, excluyendo los archivos CONTROL
+    # del framework (plan.md, progreso.log, mapeo.txt…): son trazabilidad del
+    # propio autopiloto, no "cambios ajenos" a la tarea.
+    # Los archivos nuevos se marcan intent-to-add (git add -N) para que
+    # `git diff` los incluya; si no, el revisor sólo veía archivos tracked.
+    local -a archivos=()
+    local linea
+    git -C "$PROYECTO" add -N -A 2>/dev/null
+    # OJO: las rutas van como pathspec SEPARADOS. Pasar la lista multilínea
+    # como un único argumento entrecomillado ("$ARCHIVOS_DIFF") la convierte en
+    # un pathspec literal con saltos de línea, que no casa con ningún fichero:
+    # con dos o más ficheros modificados el revisor recibía un diff VACÍO y
+    # aprobaba sin haber visto nada. Ver tests/test_revisor_diff.py.
+    # Y OJO: `read -a` parte por espacios SÓLO la línea que lee, así que con
+    # `<<<` sobre una lista multilínea se quedaría con el primer fichero.
+    while IFS= read -r linea; do
+        [ -n "$linea" ] || continue
+        archivos+=("$linea")
+    done < <(git -C "$PROYECTO" diff --name-only | grep -vE "^($CONTROL)$")
+    if [ ${#archivos[@]} -eq 0 ]; then
+        echo "(sin cambios fuera de archivos CONTROL)"
+        return 0
+    fi
+    git -C "$PROYECTO" diff --stat -- ${archivos[@]+"${archivos[@]}"}
+    echo '#----- diff (excluye archivos CONTROL del framework) -----#'
+    git -C "$PROYECTO" diff -- ${archivos[@]+"${archivos[@]}"}
+}
+
 revisar_diff() {
     local rev="$1" rev_out vdiff
     rev_out="$(mktemp)"
-    # El diff que ve el revisor excluye los archivos CONTROL del framework:
-    # plan.md, progreso.log, mapeo.txt, etc. son trazabilidad del propio
-    # autopiloto (marca [x], escribe progreso) y no deben leerse como "cambios
-    # ajenos" al alcance de la tarea (el commit ya los excluye con $CONTROL).
-    # Además se marcan los archivos nuevos como intent-to-add (git add -N) para
-    # que `git diff` los incluya; si no, el revisor solo veía archivos tracked.
-    git -C "$PROYECTO" add -N -A 2>/dev/null
-    local ARCHIVOS_DIFF
-    ARCHIVOS_DIFF="$(git -C "$PROYECTO" diff --name-only | grep -vE "^($CONTROL)$")"
-    if [ -n "$ARCHIVOS_DIFF" ]; then
-        vdiff="$(git -C "$PROYECTO" diff --stat -- "$ARCHIVOS_DIFF"; echo '#----- diff (excluye archivos CONTROL del framework) -----#'; git -C "$PROYECTO" diff -- "$ARCHIVOS_DIFF")"
-    else
-        vdiff="(sin cambios fuera de archivos CONTROL)"
-    fi
+    vdiff="$(diff_revision)"
     local PROMPT_REV="Eres el REVISOR en modo autopiloto. Usa únicamente las skills que tu sesión ya tenga cargadas; no intentes cargar ninguna otra.
 Revisas el diff COMPLETO de una tarea, en frío, sin haber participado de ella.
 Tarea: ${TAREA}
