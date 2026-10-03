@@ -73,7 +73,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest ruff
           python -m ruff check tests/test_portabilidad.py
-          python -m pytest tests/test_portabilidad.py -q
+          # --noconftest: el conftest del repo importa PySide6, que aquí no
+          # interesa (este test no abre ninguna ventana). Así el runner de
+          # macOS no necesita Qt instalado.
+          python -m pytest tests/test_portabilidad.py -q --noconftest
 
       - name: Sondeo de red con el ping de BSD
         # `ping -W` son segundos en GNU y milisegundos en BSD: si el flag se
