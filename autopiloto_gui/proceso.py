@@ -66,6 +66,10 @@ class Proceso(QProcess):
         self.readyReadStandardOutput.connect(self._leer)
         self.readyReadStandardError.connect(self._leer)
         self.finished.connect(self._terminado)
+        # Si el proceso no arranca (dir inexistente, binario no ejecutable, etc.)
+        # Qt emite errorOccurred(FailedToStart) y NO emite finished → sin esto
+        # el callback on_fin nunca se llama y la UI queda bloqueada.
+        self.errorOccurred.connect(self._error)
 
     def _leer(self):
         data = self.readAll().data()
@@ -79,3 +83,9 @@ class Proceso(QProcess):
         self.panel.appendPlainText(f"[fin] exit={code} ({status})")
         if self._on_fin:
             self._on_fin()
+
+    def _error(self, error):
+        if error == QProcess.ProcessError.FailedToStart:
+            self.panel.appendPlainText("[fin] error: FailedToStart (no se pudo iniciar el proceso)")
+            if self._on_fin:
+                self._on_fin()
