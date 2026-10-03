@@ -48,6 +48,17 @@ def _leer_plantilla():
         return f.read()
 
 
+def _valor_control():
+    """Saca el valor real de CONTROL= de la plantilla para no duplicarlo."""
+    for linea in _leer_plantilla().splitlines():
+        if linea.startswith("CONTROL="):
+            return linea[len("CONTROL="):].strip().strip('"')
+    raise AssertionError("no se encontró CONTROL= en la plantilla")
+
+
+_CONTROL = _valor_control()
+
+
 def _cli_falso(directorio, nombre, cuerpo):
     """Escribe un CLI ejecutable que registra sus argumentos y devuelve cuerpo."""
     ruta = os.path.join(directorio, nombre)
@@ -514,33 +525,161 @@ def test_codex_recibe_flags_sin_argumentos_vacios(tmp_path):
     "Error: 401 Unauthorized",
     "Invalid API key provided",
     "Please set your API key",
-    "missing OPENAI_API_KEY",
-    "run 'codex login' to authenticate",
+    "run opencode auth login",
+    "Authentication Error: invalid token",
+    "HTTP 401 Unauthorized",
 ])
-def test_sin_autenticacion_detecta_mensajes(tmp_path, salida):
+def test_sin_autenticacion_detecta_con_corroboracion(tmp_path, salida):
+    """Patrones de ALTA CONFIANZA que SÍ deben detectarse CON corroboración=1 (iteración sin trabajo)."""
     texto = _leer_plantilla()
     (tmp_path / "func.sh").write_text(
         _extraer_funcion(texto, "sin_autenticacion"), encoding="utf-8")
-    f = tmp_path / "salida.txt"
-    f.write_text(salida, encoding="utf-8")
+    f_out = tmp_path / "salida.txt"
+    f_err = tmp_path / "salida.err"
+    f_out.write_text(salida, encoding="utf-8")
+    f_err.write_text("", encoding="utf-8")
     r = subprocess.run(
-        ["bash", "-c", '. "$1"; sin_autenticacion "$2"; echo rc=$?',
-         "_", str(tmp_path / "func.sh"), str(f)],
+        ["bash", "-c", '. "$1"; sin_autenticacion "$2" "$3" 1; echo rc=$?',
+         "_", str(tmp_path / "func.sh"), str(f_err), str(f_out)],
         capture_output=True, text=True, timeout=15)
-    assert "rc=0" in r.stdout, f"no detectado: {salida}\n{r.stderr}"
+    assert "rc=0" in r.stdout, f"no detectado con corroboración: {salida}\n{r.stderr}"
 
 
 def test_sin_autenticacion_no_falsa_positivo(tmp_path):
+    """Casos que NO deben disparar (falsos positivos históricos)."""
     texto = _leer_plantilla()
     (tmp_path / "func.sh").write_text(
         _extraer_funcion(texto, "sin_autenticacion"), encoding="utf-8")
-    f = tmp_path / "salida.txt"
-    f.write_text("Tarea completada. 3 archivos modificados.\n", encoding="utf-8")
+    falsos = [
+        "Tarea completada. 3 archivos modificados.",
+        "missing OPENAI_API_KEY en la configuración",  # mención narrativa
+        "run 'codex login' to authenticate",          # mención en log/revisor
+        "El error 401 apareció en el log",            # 401 suelto
+        "unauthorized branch switch",                 # unauthorized suelto
+        "Mi OPENAI_API_KEY es secreta",               # mención de API key
+        "La respuesta fue 401 pero reintentó",        # 401 en narrativa
+        "El log viejo tenía un 401 y una rama unauthorized",  # sueltos
+    ]
+    for salida in falsos:
+        f_out = tmp_path / "salida.txt"
+        f_err = tmp_path / "salida.err"
+        f_out.write_text(salida, encoding="utf-8")
+        f_err.write_text("", encoding="utf-8")
+        r = subprocess.run(
+            ["bash", "-c", '. "$1"; sin_autenticacion "$2" "$3" 0; echo rc=$?',
+             "_", str(tmp_path / "func.sh"), str(f_err), str(f_out)],
+            capture_output=True, text=True, timeout=15)
+        assert "rc=1" in r.stdout, f"falso positivo: {salida}\n{r.stderr}"
+
+
+def test_sin_autenticacion_exige_corroboracion_siempre(tmp_path):
+    """Sin el 3er argumento la detección NO puede dispararse: el argumento es
+    obligatorio y su ausencia equivale a 'sin corroborar'."""
+    texto = _leer_plantilla()
+    (tmp_path / "func.sh").write_text(
+        _extraer_funcion(texto, "sin_autenticacion"), encoding="utf-8")
+    f_out = tmp_path / "salida.txt"
+    f_out.write_text("Error: 401 Unauthorized", encoding="utf-8")
     r = subprocess.run(
-        ["bash", "-c", '. "$1"; sin_autenticacion "$2"; echo rc=$?',
-         "_", str(tmp_path / "func.sh"), str(f)],
+        ["bash", "-c", '. "$1"; sin_autenticacion "$2" "$2"; echo rc=$?',
+         "_", str(tmp_path / "func.sh"), str(f_out)],
         capture_output=True, text=True, timeout=15)
     assert "rc=1" in r.stdout, r.stderr
+
+
+# ---------- corroboración: ¿hubo trabajo en la iteración? ----------
+
+def _harness_sin_trabajo(tmp_path, antes, despues):
+    """Ejecuta iteracion_sin_trabajo() con dos listas BEFORE/AFTER."""
+    texto = _leer_plantilla()
+    (tmp_path / "func.sh").write_text(
+        _extraer_funcion(texto, "iteracion_sin_trabajo"), encoding="utf-8")
+    (tmp_path / "before").write_text("\n".join(antes) + "\n", encoding="utf-8")
+    (tmp_path / "after").write_text("\n".join(despues) + "\n", encoding="utf-8")
+    script = '. "$1"\nBEFORE="$2"\nAFTER="$3"\nCONTROL="' + _CONTROL + '"\n' \
+             'if iteracion_sin_trabajo; then echo r=sin_trabajo; ' \
+             'else echo r=con_trabajo; fi\n'
+    (tmp_path / "run.sh").write_text(script, encoding="utf-8")
+    return subprocess.run(
+        ["bash", str(tmp_path / "run.sh"), str(tmp_path / "func.sh"),
+         str(tmp_path / "before"), str(tmp_path / "after")],
+        capture_output=True, text=True, timeout=15)
+
+
+@pytest.mark.parametrize("nombre,antes,despues,esperado", [
+    # Rama recién creada: árbol limpio, el agente no hizo nada.
+    ("sin_cambios", [], [], "r=sin_trabajo"),
+    # El loop escribe el log y las métricas en cada iteración: NO es trabajo.
+    ("solo_control", [], ["progreso.log", "metrics.jsonl", "plan.md"],
+     "r=sin_trabajo"),
+    # Tracked ya presente en BEFORE que el agente Borra (desaparece del status).
+    ("borrado_de_ya_modificado", ["app.py"], [], "r=con_trabajo"),
+    ("tracked_modificado", [], ["app.py"], "r=con_trabajo"),
+    ("tracked_borrado", [], ["viejo.py"], "r=con_trabajo"),
+    ("untracked_nuevo", [], ["nuevo.py"], "r=con_trabajo"),
+    ("control_y_trabajo", [], ["progreso.log", "app.py"], "r=con_trabajo"),
+    ("cache_ignorado_por_snapshot", [], ["__pycache__/x.pyc"],
+     "r=con_trabajo"),  # snapshot() ya lo habría filtrado
+])
+def test_iteracion_sin_trabajo(tmp_path, nombre, antes, despues, esperado):
+    """La corroboración de auth depende de esto: sólo los archivos CONTROL
+    (que escribe el propio loop) NO cuentan como trabajo del agente."""
+    r = _harness_sin_trabajo(tmp_path, antes, despues)
+    assert r.returncode == 0, r.stderr
+    assert esperado in r.stdout, f"{nombre}: {r.stdout}{r.stderr}"
+
+
+def _harness_auth(tmp_path, despues, salida, stderr):
+    """Sin_autenticacion() alimentado por iteracion_sin_trabajo() real."""
+    texto = _leer_plantilla()
+    (tmp_path / "func.sh").write_text(
+        "\n\n".join([
+            _extraer_funcion(texto, "iteracion_sin_trabajo"),
+            _extraer_funcion(texto, "sin_autenticacion"),
+        ]), encoding="utf-8")
+    (tmp_path / "before").write_text("", encoding="utf-8")
+    (tmp_path / "after").write_text("\n".join(despues) + "\n", encoding="utf-8")
+    (tmp_path / "salida.txt").write_text(salida, encoding="utf-8")
+    (tmp_path / "salida.err").write_text(stderr, encoding="utf-8")
+    return subprocess.run(
+        ["bash", "-c",
+         '. "$1"; BEFORE="$2"; AFTER="$3"; CONTROL="' + _CONTROL + '"; '
+         'iter_sin_trabajo=0; iteracion_sin_trabajo && iter_sin_trabajo=1; '
+         'sin_autenticacion "$4" "$5" "$iter_sin_trabajo"; echo rc=$?',
+         "_", str(tmp_path / "func.sh"), str(tmp_path / "before"),
+         str(tmp_path / "after"), str(tmp_path / "salida.err"),
+         str(tmp_path / "salida.txt")],
+        capture_output=True, text=True, timeout=15)
+
+
+def test_auth_no_aborta_si_la_iteracion_tubo_trabajo(tmp_path):
+    """Regresión: patrón de auth en la salida + cambios REALES del agente no
+    debe abortar (el log puede mencionar 401 al describir lo que corrigió)."""
+    r = _harness_auth(
+        tmp_path, ["app.py"],
+        "Arreglado el manejo de 401 Unauthorized en el cliente.", "")
+    assert "rc=1" in r.stdout, (
+        f"abortó pese a haber trabajo: {r.stdout}{r.stderr}")
+
+
+def test_auth_aborta_aunque_solo_cambiara_el_log(tmp_path):
+    """progreso.log/metrics SIEMPRE cambian, así que no pueden ser la prueba de
+    trabajo: si NO hay ningún otro cambio, la iteración cuenta como sin trabajo
+    y el patrón de auth (incluso en narrativa) confirma el fallo real."""
+    r = _harness_auth(
+        tmp_path, ["progreso.log", "metrics.jsonl"],
+        "Found Authentication Error in the old log entry.",
+        "warning: retrying after 401 Unauthorized")
+    assert "rc=0" in r.stdout, (
+        f"no abortó sin trabajo real: {r.stdout}{r.stderr}")
+
+
+def test_auth_aborta_si_la_iteracion_no_tubo_trabajo(tmp_path):
+    """El caso real: patrón de auth en stderr + árbol sin cambios → aborta."""
+    r = _harness_auth(
+        tmp_path, ["progreso.log"], "Tarea completada.",
+        "Error: not logged in. Please run /login")
+    assert "rc=0" in r.stdout, f"no abortó sin trabajo: {r.stdout}{r.stderr}"
 
 
 # ---------- juez de criterio polivalente ----------

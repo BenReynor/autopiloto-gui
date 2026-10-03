@@ -202,26 +202,47 @@ tokens_agotados() {
         "$archivo" >/dev/null 2>&1
 }
 
-# Detecta si la salida del agente es "no autenticado / sin credenciales".
-# Un CLI instalado pero sin sesión (p. ej. `claude` sin /login) devuelve un
-# mensaje, NO un error de código: el loop lo marcaría [B] en bucle. Se
-# distingue de la cuota agotada (tokens_agotados) para dar un mensaje útil.
+# Detecta si la salida del agente indica falta de autenticación REAL.
+# Estrategia anti-falsos positivos:
+#   1. Examina stderr COMPLETO (donde los CLIs escriben errores reales).
+#   2. Examina solo las ÚLTIMAS 40 líneas de stdout (narrativa del agente
+#      suele ser larga; los errores reales de CLI aparecen al final).
+#   3. Patrones de ALTA CONFIANZA, anclados:
+#        - "Please run .* login", "run .* auth login"
+#        - "Authentication Error", "authentication_error"
+#        - "invalid_api_key", "missing_api_key"
+#        - "401 Unauthorized" / "HTTP 401" (NO "401" solo)
+#   4. NO casan: "401" suelto, "unauthorized" suelto, "OPENAI_API_KEY" en
+#      narrativa, menciones en logs antiguos, etc.
+#   5. CORROBORACIÓN: aborta SOLO si hay sospecha Y la iteración no produjo
+#      ningún cambio (sin trabajo = fallo real; con trabajo = falso positivo).
+# Uso: sin_autenticacion <stderr_file> <stdout_file> <iteracion_sin_trabajo>
+#   iteracion_sin_trabajo: OBLIGATORIO. 1 = la iteración no cambió nada
+#   (ver iteracion_sin_trabajo), 0 = la iteración produjo trabajo real.
+#   Sin corroboración (0) NUNCA se aborta: el patrón se considera narrativa.
 sin_autenticacion() {
-    local archivo="$1"
-    grep -qiE \
-        -e "not logged in" \
-        -e "please run /login" \
-        -e "not authenticated" \
-        -e "unauthorized" \
-        -e "401" \
-        -e "authentication_error" \
-        -e "invalid.?api.?key" \
-        -e "missing.?api.?key" \
-        -e "OPENAI_API_KEY" \
-        -e "ANTHROPIC_API_KEY" \
-        -e "please set your api key" \
-        -e "run .codex login" \
-        "$archivo" >/dev/null 2>&1
+    local stderr_file="$1" stdout_file="$2" corroborar="$3"
+    # Patrones de ALTA CONFIANZA (anclados, no sueltos):
+    # - "Please run .../login" o "Please run ... login"
+    # - "run ... auth login"
+    # - "Authentication Error", "authentication_error"
+    # - "invalid.?api.?key", "missing.?api.?key" (con o sin guiones/espacios)
+    # - "401 Unauthorized", "HTTP 401" (NO "401" solo)
+    # - "Please set your api key"
+    local patron='(Please run .*/login|Please run .* login|run .* auth login|Authentication Error|authentication_error|invalid[ _.-]?api[ _.-]?key|missing[ _.-]?api[ _.-]?key|401 Unauthorized|HTTP 401|Please set your api key)'
+    local detectado=0
+    # 1. stderr completo
+    if [ -f "$stderr_file" ] && grep -qiE "$patron" "$stderr_file"; then
+        detectado=1
+    fi
+    # 2. últimas 40 líneas de stdout
+    if [ $detectado -eq 0 ] && [ -f "$stdout_file" ] && tail -40 "$stdout_file" | grep -qiE "$patron"; then
+        detectado=1
+    fi
+    # CORROBORACIÓN: solo aborta si hay patrón Y corroborar=1 (iteración sin
+    # trabajo). Con corroborar=0 (iteración con trabajo) el patrón solo es
+    # narrativa del agente → falso positivo → no aborta.
+    [ "$detectado" = "1" ] && [ "$corroborar" = "1" ]
 }
 
 # Detecta el primer agente disponible (opencode -> codex -> claude).
@@ -298,12 +319,13 @@ run_agente() {
     [ -n "$bin" ] || { echo "[autopiloto] ✗ agente desconocido: $agente" | tee -a "$LOG"; return 1; }
     local t0 t1 dur rc=0
     t0=$(ahora_ms)
+    local salida_err="${salida}.err"
     case "$agente" in
         opencode)
             if [ -n "$modelo" ]; then
-                timeout "$TIMEOUT_POR_TAREA" "$bin" run --agent "${OPENCODE_AGENT_TAREA:-build}" --model "$modelo" "$@" > "$salida" 2>&1
+                timeout "$TIMEOUT_POR_TAREA" "$bin" run --agent "${OPENCODE_AGENT_TAREA:-build}" --model "$modelo" "$@" > "$salida" 2> "$salida_err"
             else
-                timeout "$TIMEOUT_POR_TAREA" "$bin" run --agent "${OPENCODE_AGENT_TAREA:-build}" "$@" > "$salida" 2>&1
+                timeout "$TIMEOUT_POR_TAREA" "$bin" run --agent "${OPENCODE_AGENT_TAREA:-build}" "$@" > "$salida" 2> "$salida_err"
             fi
             rc=$?
             ;;
@@ -314,14 +336,14 @@ run_agente() {
             local -a flags=()
             [ -n "${CODEX_FLAGS:-}" ] && read -r -a flags <<< "$CODEX_FLAGS"
             timeout "$TIMEOUT_POR_TAREA" "$bin" exec --skip-git-repo-check \
-                ${flags[@]+"${flags[@]}"} "$@" > "$salida" 2>&1
+                ${flags[@]+"${flags[@]}"} "$@" > "$salida" 2> "$salida_err"
             rc=$?
             ;;
         claude)
             local -a flags=()
             [ -n "${CLAUDE_FLAGS:-}" ] && read -r -a flags <<< "$CLAUDE_FLAGS"
             timeout "$TIMEOUT_POR_TAREA" "$bin" -p --output-format text \
-                ${flags[@]+"${flags[@]}"} "$@" > "$salida" 2>&1
+                ${flags[@]+"${flags[@]}"} "$@" > "$salida" 2> "$salida_err"
             rc=$?
             ;;
         *)
@@ -386,17 +408,18 @@ MODELOS: Modulo.servicio"
     [ -n "$bin" ] || return 1
     local t0 t1 dur rc=0
     t0=$(ahora_ms)
+    local salida_err="${salida}.err"
     case "$agente" in
         opencode)
-            timeout "$TIMEOUT_NAVEGADOR" "$bin" run --agent "${OPENCODE_AGENT_NAV:-navigate}" --model "$modelo" "$prompt" > "$salida" 2>&1
+            timeout "$TIMEOUT_NAVEGADOR" "$bin" run --agent "${OPENCODE_AGENT_NAV:-navigate}" --model "$modelo" "$prompt" > "$salida" 2> "$salida_err"
             rc=$?
             ;;
         codex)
-            timeout "$TIMEOUT_NAVEGADOR" "$bin" exec --skip-git-repo-check "$prompt" > "$salida" 2>&1
+            timeout "$TIMEOUT_NAVEGADOR" "$bin" exec --skip-git-repo-check "$prompt" > "$salida" 2> "$salida_err"
             rc=$?
             ;;
         claude)
-            timeout "$TIMEOUT_NAVEGADOR" "$bin" -p --output-format text "$prompt" > "$salida" 2>&1
+            timeout "$TIMEOUT_NAVEGADOR" "$bin" -p --output-format text "$prompt" > "$salida" 2> "$salida_err"
             rc=$?
             ;;
         *)
@@ -475,10 +498,16 @@ Evalúa SOLO: (1) la tarea satisface su criterio, (2) no rompe nada obvio del pr
 (3) sin secretos, (4) sin scope creep (cambios ajenos a la tarea).
 Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERDICT: PASS o VERDICT: FAIL"
     run_agente "$rev" "$rev_out" "$MODELO_REVISOR" "$PROMPT_REV"
-    cat "$rev_out" >> "$LOG"
+    # Ya no volcamos la salida del revisor en progreso.log: contaminaba
+    # la detección de auth con palabras sueltas ("unauthorized", "401", etc.)
+    # que el revisor podía mencionar al evaluar el diff.
 
-    # El revisor sin sesión: mismo criterio que el agente de tarea.
-    if sin_autenticacion "$rev_out"; then
+    # El revisor sin sesión: si no hay VERDICT en la salida, es que no
+    # pudo revisar (posible falta de auth). Si HAY veredicto, el revisor
+    # funcionó y cualquier mención de auth es falso positivo (narrativa).
+    local rev_sin_veredicto=0
+    grep -q "VERDICT:" "$rev_out" || rev_sin_veredicto=1
+    if sin_autenticacion "${rev_out}.err" "$rev_out" "$rev_sin_veredicto"; then
         echo "[autopiloto] ✗✗ revisor ($rev) no está autenticado — deteniendo loop" | tee -a "$LOG"
         logx "ABORTADO: revisor sin autenticacion ($rev)"
         alerta "El revisor no está autenticado"
@@ -496,7 +525,7 @@ Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERD
     if grep -q "VERDICT: PASS" "$rev_out"; then
         echo "[autopiloto] ✔ revisor ($rev): PASS"
         grep -iE "VERDICT:" "$rev_out" | tail -1
-        rm -f "$rev_out"
+        rm -f "$rev_out" "${rev_out}.err"
         REVISOR_FEEDBACK=""
         return 0
     fi
@@ -506,7 +535,7 @@ Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERD
     echo "$veredicto_linea"
     # Extraer feedback (todo lo que está antes del VERDICT)
     REVISOR_FEEDBACK="$(sed -n '1,/VERDICT:/p' "$rev_out" | sed '$d' | sed '/^[[:space:]]*$/d' | paste -sd ' ' -)"
-    rm -f "$rev_out"
+    rm -f "$rev_out" "${rev_out}.err"
     return 1
 }
 
@@ -514,11 +543,31 @@ snapshot() {
     # Excluye compilados/caches (pág. .gitignore) para que nunca entren en el
     # diff ni se commiteen aunque el proyecto no tenga .gitignore.
     # core.quotepath=false evita que git status --porcelain entrecomille
-    # nombres con espacios, que luego rompen revertir().
+    # caracteres NO-ASCII (acentos, ñ) en los nombres.
+    # OJO: los ESPACIOS sí se entrecomillan en porcelain v1 aunque el flag esté
+    # puesto ("mi modulo.py"); revertir() los normaliza quitando las comillas.
     git -C "$PROYECTO" -c core.quotepath=false status --porcelain \
         | sed 's/^...//' \
         | grep -vE '(^|/)(__pycache__|\.pytest_cache|\.mypy_cache|node_modules|\.venv|venv)/|\.pyc$|\.pyo$' \
         | sort > "$1"
+}
+
+# ¿La iteración actual no produjo trabajo real?
+# Compara los snapshots BEFORE (antes del agente) y AFTER (después).
+# Los archivos CONTROL (plan.md, progreso.log, metrics.jsonl, gate...) se
+# excluyen en AMBOS lados: el propio loop los escribe en cada iteración, así que
+# sin filtrarlos NUNCA se detectaría ausencia de trabajo y la comprobación de
+# autenticación abortaría siempre ante cualquier patrón (falso positivo).
+# La comparación es SIMÉTRICA: altas (comm -13) y bajas (comm -23). Un archivo
+# que desaparece del status del agente también es trabajo (lo borró).
+# Devuelve 0 (true) si NO hubo trabajo, 1 (false) si hubo cambios.
+iteracion_sin_trabajo() {
+    local antes despues nuevos borrados
+    antes="$(grep -vE "^($CONTROL)$" "$BEFORE" | sort -u)"
+    despues="$(grep -vE "^($CONTROL)$" "$AFTER" | sort -u)"
+    nuevos="$(comm -13 <(printf '%s\n' "$antes") <(printf '%s\n' "$despues"))"
+    borrados="$(comm -23 <(printf '%s\n' "$antes") <(printf '%s\n' "$despues"))"
+    [ -z "$nuevos" ] && [ -z "$borrados" ]
 }
 
 revertir() {
@@ -855,12 +904,14 @@ while (( iter < MAX_ITER )); do
         if [ "$NAVEGADOR" = "1" ] && agente_ok "$AGENTE_TAREA" && [ -n "$MODELO_NAVEGADOR" ]; then
             NAV_OUT="$(mktemp)"
             run_navegador "$NAV_OUT" "$MODELO_NAVEGADOR" "$TAREA" "$AGENTE_TAREA"
+            # El navegador no debe abortar el loop por auth: su output es solo contexto.
+            # Si falla por auth, simplemente no hay contexto.
             if [ -s "$NAV_OUT" ]; then
                 NAV_CONTEXTO="$(cat "$NAV_OUT")"
             else
                 NAV_CONTEXTO=""
             fi
-            rm -f "$NAV_OUT"
+            rm -f "$NAV_OUT" "${NAV_OUT}.err"
         else
             NAV_CONTEXTO=""
         fi
@@ -896,10 +947,20 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         cat "$OUT" >> "$LOG"
         cat "$OUT"
 
+        # Snapshot del árbol tras el agente. Va ANTES de la comprobación de
+        # autenticación porque la corroboración necesita saber si el agente
+        # cambió algo; y se usa después para revertir este intento si el
+        # revisor dual o la revisión manual lo rechazan.
+        snapshot "$AFTER"
+
         # Agente instalado pero SIN sesión: no es un fallo de la tarea, es
         # configuración. Sin este corte el loop marcaría cada tarea [B] y
         # seguiría gastando iteraciones sin poder trabajar nunca.
-        if sin_autenticacion "$OUT"; then
+        # CORROBORACIÓN: solo aborta si hay sospecha de auth Y la iteración no
+        # cambió nada (sin trabajo = fallo real; con trabajo = falso positivo).
+        local iter_sin_trabajo=0
+        iteracion_sin_trabajo && iter_sin_trabajo=1
+        if sin_autenticacion "${OUT}.err" "$OUT" "$iter_sin_trabajo"; then
             echo "[autopiloto] ✗✗ $AGENTE_TAREA no está autenticado (CLI instalado, sin sesión)." \
                  "Haz login del agente y relanza (opencode: 'opencode auth login' · claude: '/login' · codex: 'codex login')." | tee -a "$LOG"
             logx "ABORTADO: agente sin autenticacion ($AGENTE_TAREA)"
@@ -914,10 +975,6 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
             alerta "Tokens agotados, se detiene el autopiloto"
             exit 5
         fi
-
-        # Snapshot del árbol tras el agente: permite revertir este intento
-        # si el revisor dual o la revisión manual lo rechazan.
-        snapshot "$AFTER"
 
         if [ "$(git -C "$PROYECTO" branch --show-current)" != "$RAMA_TAREA" ]; then
             echo "[autopiloto] ✗✗ el agente cambió de rama. Abortando: requiere revisión humana." | tee -a "$LOG"
@@ -1048,7 +1105,7 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
     logx "Costo estimado acumulado: $COSTO_TOTAL USD"
     echo "[autopiloto] 💰 Costo estimado acumulado: ${COSTO_TOTAL} USD"
 
-    rm -f "$BEFORE" "$AFTER" "$OUT"
+    rm -f "$BEFORE" "$AFTER" "$OUT" "${OUT}.err"
 done
 
 # --- Integrar el trabajo en la rama destino (--trabajo distinta de la run) ---
