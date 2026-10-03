@@ -1,0 +1,12 @@
+# Los .sh se copian a otros proyectos y se ejecutan con bash: con CRLF el
+# shebang "bash" se vuelve "bash\r" y el script deja de arrancar (típico al
+# clonar en Windows con core.autocrlf=true).
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.desktop text eol=lf
+
+# Binarios que no deben tocar los finales de línea.
+*.png binary
+*.ico binary
+*.icns binary

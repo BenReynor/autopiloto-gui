@@ -101,6 +101,27 @@ Los scripts `autopiloto.sh`, `gate.sh`, `mapear.sh` se copian automáticamente a
 
 ---
 
+## 🖥️ Compatibilidad
+
+| SO | Estado |
+|----|--------|
+| **Linux** | ✅ Funciona. Es el entorno de referencia y donde corre CI. |
+| **macOS** | ⚠️ Parcial. Las plantillas ya no usan construcciones exclusivas de GNU (`seq`, `date +%3N`, `head -n -1`, `find -printf`, `${VAR^^}`, `ping -W`), pero **todavía falla** por: `timeout` (no viene en macOS), `sed -i "0,/…/"` (extensión GNU: el marcado `[x]/[B]` del plan no se aplica) y `/sys/class/thermal` en el sensor. |
+| **Windows** | ❌ No. Las plantillas son bash puro y la GUI las lanza con `bash`. Haría falta WSL2/Git Bash. Además la GUI concatena el PATH con `:` en vez de `os.pathsep` y busca los CLI sin `.exe`. |
+
+Lo que sí es independiente del SO desde ya: los finales de línea de los `.sh`
+(`.gitattributes` fuerza `eol=lf`, un `clone` en Windows con `autocrlf` ya no
+rompe el shebang) y el formato numérico (`LC_ALL=C`: con un locale español,
+`awk`/`printf` escribían `0,500000` y `metrics.jsonl` quedaba como JSON
+inválido).
+
+`tests/test_portabilidad.py` es el guardarraíl: falla si alguien reintroduce una
+construcción no portable, y un job de CI en `macos-latest` ejecuta ese lint
+contra los binutils de BSD de verdad. La allowlist de bloqueos pendientes
+(sólo macOS/Windows) está al final de ese fichero, con el motivo de cada uno.
+
+---
+
 ## 🔧 Variables del loop (env)
 
 `autopiloto.sh` se configura por variables de entorno (la GUI las rellena desde
@@ -183,7 +204,7 @@ autopiloto_gui/
 │   ├── autopiloto.sh
 │   ├── gate.sh
 │   └── mapear.sh
-└── tests/              # 108 tests (plan, métricas, navegador, plantillas, webhooks, GUI, log/revisión, agentes, net, sensor, proceso, config)
+└── tests/              # 165 tests (plan, métricas, navegador, plantillas, webhooks, GUI, log/revisión, agentes, net, sensor, proceso, config, portabilidad)
 ```
 
 ---

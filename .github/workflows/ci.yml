@@ -44,3 +44,39 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python -m pytest tests/
+
+  # Las plantillas shell se copian a proyectos de otros usuarios, que pueden
+  # estar en macOS. Este job corre en BSD de verdad: lo que funciona aquí, sus
+  # binutils/date/sed/find son los de macOS. NO se lanza la suite completa
+  # (PySide6 y los tests con commits git no son fiables en ese runner): sólo el
+  # lint de portabilidad, que no importa nada del paquete.
+  portabilidad:
+    name: portabilidad (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sintaxis de las plantillas
+        run: |
+          # git ls-files incluye las de gate_checks y los lanzadores de la raíz.
+          git ls-files '*.sh' | while read -r f; do
+            echo "--- $f"
+            bash -n "$f" || exit 1
+          done
+
+      - name: Lint de portabilidad
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest ruff
+          python -m ruff check tests/test_portabilidad.py
+          python -m pytest tests/test_portabilidad.py -q
+
+      - name: Sondeo de red con el ping de BSD
+        # `ping -W` son segundos en GNU y milisegundos en BSD: si el flag se
+        # colara mal, el runner de macOS se quedaría 2000 s colgado.
+        run: |
+          /usr/bin/time -p ping -c1 -W2000 8.8.8.8 || echo "sin red (esperado en CI)"

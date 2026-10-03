@@ -39,7 +39,10 @@ if [ -n "${BACKEND_DIR:-}" ] && [ -d "$BACKEND_DIR" ]; then
             [[ "$app" == "venv" || "$app" == "__pycache__" ]] && continue
             tests=""
             if [ -d "$dir/tests" ]; then
-                tests="$(find "$dir/tests" -maxdepth 1 -name 'test_*.py' -printf '%f ' 2>/dev/null)"
+                # `find -printf` es sólo GNU; glob + basename funciona en BSD.
+                for tf in "$dir"/tests/test_*.py; do
+                    [ -f "$tf" ] && tests="$tests$(basename "$tf") "
+                done
             fi
             [ -f "$dir/tests.py" ] && tests="${tests}tests.py "
             if [ -n "${tests// /}" ]; then

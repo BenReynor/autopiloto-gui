@@ -40,10 +40,12 @@ eval "$SERVE_CMD" >/dev/null 2>&1 &
 BPID=$!
 trap 'kill $BPID 2>/dev/null; wait $BPID 2>/dev/null' EXIT
 
-# Esperar a que responda (hasta 15 s)
+# Esperar a que responda (hasta 15 s). `seq` no existe en BSD/macOS.
 BASE_URL="${SERVE_URL:-http://localhost:8000}"
-for _ in $(seq 1 15); do
+_espera=0
+while [ "$_espera" -lt 15 ]; do
     curl -s "$BASE_URL/" >/dev/null 2>&1 && break
+    _espera=$((_espera + 1))
     sleep 1
 done
 if ! curl -s "$BASE_URL/" >/dev/null 2>&1; then

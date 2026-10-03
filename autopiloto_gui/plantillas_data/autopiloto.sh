@@ -61,6 +61,14 @@
 # autopiloto.sh a la raíz de cualquier proyecto.
 set -uo pipefail
 
+# Este script escribe JSON (metrics.jsonl) y hace aritmética con decimales, así
+# que NO debe depender del locale del usuario: con es_ES, bash y awk imprimen
+# "0,500000" y "printf" rechaza "0.500000" ("número no válido"), lo que dejaba
+# metrics.jsonl como JSON inválido y el tope de coste sin contar.
+# LC_ALL=C no cambia ningún formato que usemos (fechas numéricas) y hace
+# comparables los `sort` de listas de ficheros.
+export LC_ALL=C
+
 PROYECTO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GATE="$PROYECTO/gate.sh"
 MAPEAR="$PROYECTO/mapear.sh"
@@ -92,6 +100,45 @@ PUSH=""
 HASTA=""
 CONTROL="plan\.md|lecciones\.md|progreso\.log|gate\.sh|autopiloto\.sh|mapear\.sh|mapeo\.txt|endpoints\.txt|metrics\.jsonl|gate_checks(/.*)?|\.autopiloto_review(/.*)?"
 
+# ---------------------------------------------------------------------------
+# Utilidades POSIX (funcionan igual en GNU/Linux y en BSD/macOS)
+# ---------------------------------------------------------------------------
+
+# awk con locale C para formatear decimales. Necesario aunque el script ya
+# exporte LC_ALL=C: si el script se sourcea desde otro proceso con su propio
+# LC_ALL, la precedencia se invierte. OJO: `export LC_NUMERIC=C` NO sirve,
+# porque LC_ALL tiene prioridad sobre LC_NUMERIC en los procesos hijos.
+num() { LC_ALL=C awk "$@"; }
+
+# Epoch en milisegundos. GNU `date +%s%3N` da nanosegundos; el date de BSD no
+# conoce %N y devuelve el literal "%3N", así que se detecta y se degrada a
+# perl (Time::HiRes) o a segundos con sufijo de ceros.
+ahora_ms() {
+    local ns
+    ns="$(date +%s%3N 2>/dev/null || true)"
+    case "$ns" in
+        ''|*%N*) ns="" ;;
+    esac
+    if [ -n "$ns" ]; then printf '%s\n' "$ns"; return 0; fi
+    if command -v perl >/dev/null 2>&1; then
+        perl -MTime::HiRes=time -e 'printf "%d\n", time * 1000' 2>/dev/null && return 0
+    fi
+    printf '%s000\n' "$(date +%s)"
+}
+
+# `ping -W` significa SEGUNDOS en GNU y MILISEGUNDOS en BSD: se decide una vez
+# según el SO para no dejar un ping colgado 2000 s en Linux.
+PING_FLAGS="-c1 -W2"
+case "$(uname -s 2>/dev/null || echo unknown)" in
+    Darwin) PING_FLAGS="-c1 -W2000" ;;
+esac
+
+un_ping() {
+    command -v ping >/dev/null 2>&1 || return 1
+    # shellcheck disable=SC2086
+    ping $PING_FLAGS 8.8.8.8 >/dev/null 2>&1
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --hasta) HASTA="${2:-}"; shift 2 ;;
@@ -109,7 +156,7 @@ RAMA_RUN="autopiloto/$FECHA"
 RAMA_TRABAJO="${RAMA_TRABAJO:-}"
 
 # Marca de inicio del run (epoch ms) para la limpieza de sesiones de opencode.
-INICIO_MS="$(date +%s%3N)"
+INICIO_MS="$(ahora_ms)"
 SESIONES_LIMPIADAS=0
 
 logx() { echo "[$(date '+%F %H:%M:%S')] $*" >> "$LOG"; }
@@ -118,7 +165,12 @@ hora_limite() { [[ -n "$HASTA" && "$(date +%H:%M)" > "$HASTA" ]]; }
 hay_internet() {
     local i
     for i in 1 2 3; do
-        if ping -c1 -W2 8.8.8.8 >/dev/null 2>&1; then return 0; fi
+        un_ping && return 0
+        # Si no hay binario `ping` (o está capado por permisos), probar HTTP.
+        if ! command -v ping >/dev/null 2>&1; then
+            command -v curl >/dev/null 2>&1 \
+                && curl -s -m 3 https://1.1.1.1 >/dev/null 2>&1 && return 0
+        fi
         sleep 2
     done
     return 1
@@ -245,7 +297,7 @@ run_agente() {
     bin="$(cli_agente "$agente")"
     [ -n "$bin" ] || { echo "[autopiloto] ✗ agente desconocido: $agente" | tee -a "$LOG"; return 1; }
     local t0 t1 dur rc=0
-    t0=$(date +%s%3N)
+    t0=$(ahora_ms)
     case "$agente" in
         opencode)
             if [ -n "$modelo" ]; then
@@ -277,7 +329,7 @@ run_agente() {
             return 1
             ;;
     esac
-    t1=$(date +%s%3N)
+    t1=$(ahora_ms)
     dur=$((t1 - t0))
     _registrar_metrica "$agente" "$modelo" "$dur" "$rc" "$salida"
     return $rc
@@ -310,10 +362,10 @@ _registrar_metrica() {
             ;;
     esac
     case "$modelo" in
-        *opus*|*sonnet*|*haiku*) costo=$(awk -v ti="$tokens_in" -v to="$tokens_out" 'BEGIN{printf "%.6f", (ti*15 + to*75)/1000000}') ;;
-        *gpt-4*|*gpt-4o*) costo=$(awk -v ti="$tokens_in" -v to="$tokens_out" 'BEGIN{printf "%.6f", (ti*30 + to*60)/1000000}') ;;
-        *gpt-3.5*) costo=$(awk -v ti="$tokens_in" -v to="$tokens_out" 'BEGIN{printf "%.6f", (ti*0.5 + to*1.5)/1000000}') ;;
-        *) costo=$(awk -v ti="$tokens_in" -v to="$tokens_out" 'BEGIN{printf "%.6f", (ti*1 + to*3)/1000000}') ;;
+        *opus*|*sonnet*|*haiku*) costo=$(num -v ti="$tokens_in" -v to="$tokens_out" 'BEGIN{printf "%.6f", (ti*15 + to*75)/1000000}') ;;
+        *gpt-4*|*gpt-4o*) costo=$(num -v ti="$tokens_in" -v to="$tokens_out" 'BEGIN{printf "%.6f", (ti*30 + to*60)/1000000}') ;;
+        *gpt-3.5*) costo=$(num -v ti="$tokens_in" -v to="$tokens_out" 'BEGIN{printf "%.6f", (ti*0.5 + to*1.5)/1000000}') ;;
+        *) costo=$(num -v ti="$tokens_in" -v to="$tokens_out" 'BEGIN{printf "%.6f", (ti*1 + to*3)/1000000}') ;;
     esac
     printf '{"ts":"%s","iter":%s,"agente":"%s","modelo":"%s","dur_ms":%d,"rc":%d,"tokens_in":%d,"tokens_out":%d,"costo_usd":%.6f,"tarea":"%s"}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${iter:-0}" "$agente" "${modelo:-default}" "$dur_ms" "$rc" "$tokens_in" "$tokens_out" "$costo" "${TAREA:-}" \
@@ -333,7 +385,7 @@ MODELOS: Modulo.servicio"
     bin="$(cli_agente "$agente")"
     [ -n "$bin" ] || return 1
     local t0 t1 dur rc=0
-    t0=$(date +%s%3N)
+    t0=$(ahora_ms)
     case "$agente" in
         opencode)
             timeout "$TIMEOUT_NAVEGADOR" "$bin" run --agent "${OPENCODE_AGENT_NAV:-navigate}" --model "$modelo" "$prompt" > "$salida" 2>&1
@@ -351,7 +403,7 @@ MODELOS: Modulo.servicio"
             return 1
             ;;
     esac
-    t1=$(date +%s%3N)
+    t1=$(ahora_ms)
     dur=$((t1 - t0))
     _registrar_metrica "$agente" "$modelo" "$dur" "$rc" "$salida"
     return $rc
@@ -437,7 +489,7 @@ Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERD
     veredicto_linea="$(grep -iE "VERDICT:" "$rev_out" | tail -1)"
     echo "$veredicto_linea"
     # Extraer feedback (todo lo que está antes del VERDICT)
-    REVISOR_FEEDBACK="$(sed -n '1,/VERDICT:/p' "$rev_out" | head -n -1 | sed '/^\s*$/d' | paste -sd ' ' -)"
+    REVISOR_FEEDBACK="$(sed -n '1,/VERDICT:/p' "$rev_out" | sed '$d' | sed '/^[[:space:]]*$/d' | paste -sd ' ' -)"
     rm -f "$rev_out"
     return 1
 }
@@ -614,8 +666,10 @@ fi
 # Antes de lanzar el loop: si el binario del agente no existe, abortar ya.
 if ! agente_ok "$AGENTE_TAREA"; then
     BIN="$(cli_agente "$AGENTE_TAREA")"
+    # ${VAR^^} es bash 4+; el /bin/bash de macOS es 3.2. `tr` es POSIX.
+    CLI_ENV="$(printf '%s' "$AGENTE_TAREA" | tr '[:lower:]' '[:upper:]')"
     echo "[autopiloto] ✗✗ agente '$AGENTE_TAREA' no encontrado (busqué '$BIN')." \
-         "Instálalo o configura el PATH (o CLI_${AGENTE_TAREA^^}) y relanza." | tee -a "$LOG"
+         "Instálalo o configura el PATH (o CLI_${CLI_ENV}) y relanza." | tee -a "$LOG"
     logx "ABORTADO: agente no disponible ($AGENTE_TAREA)"
     exit 2
 fi
@@ -700,7 +754,7 @@ while (( iter < MAX_ITER )); do
         alerta "Hora límite alcanzada"
         break
     fi
-    if [ "$MAX_COSTO" -gt 0 ] && awk -v t="$COSTO_TOTAL" -v m="$MAX_COSTO" 'BEGIN{exit !(t>=m)}'; then
+    if [ "$MAX_COSTO" -gt 0 ] && num -v t="$COSTO_TOTAL" -v m="$MAX_COSTO" 'BEGIN{exit !(t>=m)}'; then
         logx "Presupuesto agotado (${COSTO_TOTAL}/${MAX_COSTO} USD)."
         echo "[autopiloto] 💸 Presupuesto agotado (${COSTO_TOTAL}/${MAX_COSTO} USD)."
         alerta "Presupuesto agotado"
@@ -739,10 +793,14 @@ while (( iter < MAX_ITER )); do
     snapshot "$BEFORE"
 
     hecho=0
-    for intento in $(seq 1 "$MAX_REINTENTOS"); do
+    # `seq` no existe en BSD/macOS. El contador sube al ENTRAR del bucle para
+    # que un `continue` siga avanzando la intento.
+    intento=0
+    while [ "$intento" -lt "$MAX_REINTENTOS" ]; do
+        intento=$((intento + 1))
         PRE=""
         [ "$intento" -gt 1 ] && PRE="El intento anterior no pasó la verificación: no repitas tu cambio, corrígelo. "
-        COSTO_ITER_ACTUAL="$(awk -v t="$COSTO_ITER_ACTUAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a}')"
+        COSTO_ITER_ACTUAL="$(num -v t="$COSTO_ITER_ACTUAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a}')"
 
         # --- MEMORIA DEL PROYECTO (corrección única de errores) ---
         LECCIONES_CONTEXTO=""
@@ -844,7 +902,7 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         # tee: la salida del gate se ve en vivo Y se guarda para el feedback
         if bash "$GATE" 2>&1 | tee "$GATE_OUT"; then
             if [ "$REVISION_DUAL" = "1" ] && [ -n "$REVISOR" ]; then
-                COSTO_ITER_ACTUAL="$(awk -v t="$COSTO_ITER_ACTUAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a/2}')"
+                COSTO_ITER_ACTUAL="$(num -v t="$COSTO_ITER_ACTUAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a/2}')"
                 if revisar_diff "$REVISOR"; then
                     # Gate dual pasó, ahora verificar revisión manual si está activada
                     esperar_revision_manual
@@ -943,7 +1001,7 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         logx "lección registrada en lecciones.md (tarea bloqueada)"
     fi
 
-    COSTO_TOTAL="$(awk -v t="$COSTO_TOTAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a}')"
+    COSTO_TOTAL="$(num -v t="$COSTO_TOTAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a}')"
     logx "Costo estimado acumulado: $COSTO_TOTAL USD"
     echo "[autopiloto] 💰 Costo estimado acumulado: ${COSTO_TOTAL} USD"
 
