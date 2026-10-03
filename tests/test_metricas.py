@@ -188,6 +188,66 @@ def test_coste_por_iteracion():
         os.unlink(log_path)
 
 
+def test_iteraciones_con_criterio_no_se_pierden():
+    """El sufijo " | criterio: ..." no debe esconder la iteración.
+
+    Este es el formato REAL que emite autopiloto.sh:781 siempre que la tarea
+    del plan.md trae criterio, que la plantilla exige. El regex exigía ") =="
+    justo tras la rama, así que no casaba con ninguna iteración normal: la
+    iteración se quedaba abierta, las líneas de cierre se ignoraban y el
+    panel mostraba menos iteraciones de las que hubo (y coste 0).
+    """
+    log = """[2025-01-15 10:00:00] == Iteración 1: Tarea A (rama autopiloto/tareas/2025-01-15/t1) | criterio: pytest test_a en verde ==
+[2025-01-15 10:02:00] Costo iteración 1: 1.00 USD
+[2025-01-15 10:02:00] ✔ commit: Tarea A
+[2025-01-15 10:05:00] == Iteración 2: Tarea B (rama autopiloto/tareas/2025-01-15/t2) | criterio: pytest test_b en verde y flake8 limpio ==
+[2025-01-15 10:07:00] Costo iteración 2: 0.50 USD
+[2025-01-15 10:07:00] ✗ tarea bloqueada tras 2 intentos. Marcada [B] en plan.md
+"""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
+        f.write(log)
+        log_path = f.name
+
+    try:
+        result = parsear_log(log_path)
+        iters = result["iteraciones"]
+        assert [it["iter"] for it in iters] == [1, 2], (
+            f"iteraciones perdidas: {[it['iter'] for it in iters]}")
+        # El criterio NO debe colarse en el nombre de la tarea
+        assert iters[0]["tarea"] == "Tarea A", iters[0]["tarea"]
+        assert iters[1]["tarea"] == "Tarea B", iters[1]["tarea"]
+        # Estados y contadores
+        assert iters[0]["estado"] == "hecha", iters[0]["estado"]
+        assert iters[1]["estado"] == "bloqueada", iters[1]["estado"]
+        assert result["resumen"]["total"] == 2, result["resumen"]
+        assert result["resumen"]["hechas"] == 1, result["resumen"]
+        assert result["resumen"]["bloqueadas"] == 1, result["resumen"]
+        # Y el coste se contabiliza
+        assert iters[0]["coste_usd"] == 1.00
+        assert result["resumen"]["coste_total"] == 1.50
+        assert len(result["series"]["coste_acum"]) == 2
+    finally:
+        os.unlink(log_path)
+
+
+def test_iteraciones_legadas_siguen_parseando():
+    """Sin criterio (formato antiguo) y con rama legacy: no se rompe nada."""
+    log = """[2025-01-15 10:00:00] == Iteración 1: Sin criterio (rama autopiloto/tareas/2025-01-15/t1) ==
+[2025-01-15 10:01:00] ✔ commit: Sin criterio
+[2025-01-15 10:05:00] == Iteración 2: Rama legacy (rama autopiloto/2025-01-15/t2) ==
+[2025-01-15 10:06:00] ✔ commit: Rama legacy
+"""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
+        f.write(log)
+        log_path = f.name
+    try:
+        result = parsear_log(log_path)
+        assert [it["iter"] for it in result["iteraciones"]] == [1, 2]
+        assert result["resumen"]["hechas"] == 2, result["resumen"]
+    finally:
+        os.unlink(log_path)
+
+
 if __name__ == "__main__":
     test_parsear_log_basico()
     test_parsear_log_vacio()

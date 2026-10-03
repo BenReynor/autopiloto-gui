@@ -15,9 +15,14 @@ TIMESTAMP_RE = r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]"
 
 # Formato real del script: [TS] == Iteración N: TAREA (rama autopiloto/.../tN) ==
 # La rama puede ser autopiloto/FECHA/tN (legado) o autopiloto/tareas/FECHA/tN.
+# Y el script añade " | criterio: <texto>" cuando la tarea del plan.md lo trae
+# (obligatorio según la plantilla). Ese sufijo es opcional aquí: sin él, el
+# regex exigía ") ==" justo tras la rama, NO casaba con ninguna iteración
+# normal y el panel perdía el total, las hechas y el coste.
 LINEA_ITER_NUEVO = re.compile(
     TIMESTAMP_RE
-    + r" == Iteración (\d+): (.+?) \(rama autopiloto/(?:tareas/)?\d{4}-\d{2}-\d{2}/t(\d+)\) =="
+    + r" == Iteración (\d+): (.+?) \(rama autopiloto/(?:tareas/)?\d{4}-\d{2}-\d{2}/t(\d+)\)"
+    + r"(?: \| criterio:.*?)? =="
 )
 # Formato alternativo tolerado: [TS] [N/MAX] TAREA -> autopiloto/.../tN
 LINEA_ITER_LEGACY = re.compile(
