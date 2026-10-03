@@ -513,18 +513,45 @@ Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERD
 snapshot() {
     # Excluye compilados/caches (pág. .gitignore) para que nunca entren en el
     # diff ni se commiteen aunque el proyecto no tenga .gitignore.
-    git -C "$PROYECTO" status --porcelain \
+    # core.quotepath=false evita que git status --porcelain entrecomille
+    # nombres con espacios, que luego rompen revertir().
+    git -C "$PROYECTO" -c core.quotepath=false status --porcelain \
         | sed 's/^...//' \
         | grep -vE '(^|/)(__pycache__|\.pytest_cache|\.mypy_cache|node_modules|\.venv|venv)/|\.pyc$|\.pyo$' \
         | sort > "$1"
 }
 
 revertir() {
-    comm -13 <(sort "$1") <(sort "$2") \
-        | grep -vE "^($CONTROL)$" \
-        | while IFS= read -r f; do
-            git -C "$PROYECTO" checkout -- "$f" 2>/dev/null
-            rm -rf "$f" 2>/dev/null
+    # Revert all working-tree changes on the task branch back to the base commit.
+    # The task branch was created from the base, so HEAD == base commit.
+    # Use git status --porcelain (v1 format). Parse: first 3 chars = status,
+    # rest = path (may be quoted if it contains spaces).
+    # Change types:
+    #   ??  untracked (new file by agent) → remove
+    #    D / D  deleted in worktree → restore from HEAD
+    #    M / M  / T / etc. modified → restore from HEAD
+    # Skip CONTROL files (plan.md, progreso.log, etc.)
+    git -C "$PROYECTO" status --porcelain \
+        | grep -vE "^.. ($CONTROL)$" \
+        | while IFS= read -r line; do
+            status="${line:0:2}"
+            file="${line:3}"
+            # Strip surrounding double quotes if present (git quotes paths with spaces)
+            file="${file#\"}"; file="${file%\"}"
+            case "$status" in
+                "??")
+                    # Nuevo archivo creado por el agente (untracked): borrarlo
+                    rm -rf "$PROYECTO/$file" 2>/dev/null
+                    ;;
+                " D"|"D "|"D")
+                    # Archivo borrado por el agente: restaurar desde HEAD
+                    git -C "$PROYECTO" checkout -- "$file" 2>/dev/null
+                    ;;
+                *)
+                    # Cualquier otra modificación en worktree (M, T, etc.): restaurar
+                    git -C "$PROYECTO" checkout -- "$file" 2>/dev/null
+                    ;;
+            esac
         done
 }
 
