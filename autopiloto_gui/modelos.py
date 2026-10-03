@@ -11,6 +11,7 @@ de models.dev (la misma fuente que usa opencode), cacheado en disco.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -182,10 +183,86 @@ def agentes_instalados(preferidos=None):
     return [a for a in orden if a in cfg.AGENTES_DISPONIBLES and ruta_binario(a)]
 
 
+def agentes_operativos(preferidos=None):
+    """Agentes instalados con los que se puede trabajar de verdad.
+
+    Deja fuera los que tienen el binario instalado pero ninguna sesión: elegir
+    uno abortaría el loop en la primera iteración. Los de sesión desconocida
+    se conservan (no se descarta un agente sólo por no haberlo podido probar).
+    """
+    return [a for a in agentes_instalados(preferidos)
+            if sesion_agente(a) is not False]
+
+
 def agente_por_defecto():
     """Agente a usar cuando el usuario deja el selector en 'auto'."""
-    instalados = agentes_instalados()
-    return instalados[0] if instalados else ""
+    operativos = agentes_operativos()
+    return operativos[0] if operativos else ""
+
+
+# ---------- Sesión de los CLIs ----------
+
+# Mismos indicios que detecta autopiloto.sh al leer la salida del agente: si el
+# CLI se queja de credenciales, no hay sesión con la que trabajar.
+PATRONES_SIN_SESION = (
+    r"not logged in", r"please run /login", r"not authenticated",
+    r"unauthorized", r"\b401\b", r"authentication_error",
+    r"invalid.?api.?key", r"missing.?api.?key",
+    r"OPENAI_API_KEY", r"ANTHROPIC_API_KEY", r"please set your api key",
+    r"run .?codex login",
+)
+
+# Sonda de sesión por agente. opencode se consulta sin inferencia (listar
+# credenciales); codex y claude no exponen un estado de sesión fiable, así que
+# se les manda un prompt mínimo: si no hay sesión fallan antes de inferir.
+SONDA_SESION = {
+    "opencode": (["auth", "list"], 8),
+    "codex": (["exec", "--skip-git-repo-check", "ping"], 20),
+    "claude": (["-p", "--output-format", "text", "ping"], 20),
+}
+
+_sesiones = {}
+
+
+def sesion_agente(nombre):
+    """True/False si el agente tiene sesión; None si no se puede saber.
+
+    False = instalado pero sin login (no se debe ofrecer para trabajar).
+    None = desconocido: se ofrece igual, porque descartarlo sería peor.
+    El resultado se cachea durante la sesión (invalidar_cache() lo borra).
+    """
+    if nombre in _sesiones:
+        return _sesiones[nombre]
+    _sesiones[nombre] = None
+    if not ruta_binario(nombre) or nombre not in SONDA_SESION:
+        return _sesiones[nombre]
+    args, timeout = SONDA_SESION[nombre]
+    try:
+        r = subprocess.run([ruta_binario(nombre)] + args, capture_output=True,
+                           text=True, timeout=timeout)
+    except (subprocess.TimeoutExpired, OSError):
+        return _sesiones[nombre]
+    salida = f"{r.stdout}\n{r.stderr}"
+    if re.search("|".join(PATRONES_SIN_SESION), salida, re.I):
+        _sesiones[nombre] = False
+    elif nombre == "opencode":
+        # `opencode auth list` responde 0 siempre. Sólo hay sesión si lista
+        # alguna credencial o variable de entorno; si no, es desconocido.
+        _sesiones[nombre] = None
+    elif r.returncode == 0 or salida.strip():
+        _sesiones[nombre] = True
+    return _sesiones[nombre]
+
+
+def estado_agentes(preferidos=None):
+    """Ficha de cada agente: instalado, ruta y estado de sesión."""
+    return [{
+        "nombre": a,
+        "ruta": ruta_binario(a),
+        "instalado": bool(ruta_binario(a)),
+        "sesion": sesion_agente(a),
+    } for a in (preferidos or cfg.AGENTES_PREFERIDOS)
+        if a in cfg.AGENTES_CONOCIDOS]
 
 
 def invalidar_cache():
@@ -194,6 +271,7 @@ def invalidar_cache():
     _modelos = None
     _proveedores = None
     _modelos_por_proveedor.clear()
+    _sesiones.clear()
 
 
 def sugerido(modelos):

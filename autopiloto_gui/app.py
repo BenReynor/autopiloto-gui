@@ -127,6 +127,7 @@ class Ventana(QMainWindow):
         self._aplicar_tema(self.tema)
         self._cargar_proyecto()
         self._cargar_modelos_en_fondo()
+        self._sondear_sesiones_en_fondo()
         self._iniciar_vigilancia()
         self._comprobar_net()
         self.timer_net.start(cfg.TIMER_NET_MS)
@@ -156,6 +157,23 @@ class Ventana(QMainWindow):
 
     def _refrescar_lecciones(self):
         self.pan_lecciones._recargar_si_cambio()
+
+    def _sondear_sesiones_en_fondo(self):
+        """Consulta en segundo plano si cada CLI instalado tiene sesión.
+
+        Los agentes sin login se marcan en el combo en vez de fallar en la
+        primera iteración del loop. El resultado se cachea en modelos.
+        """
+        modelos.invalidar_cache()
+        w = Trabajo(modelos.estado_agentes)
+        w.conectar(self._sesiones_agentes_sondeadas)
+        w.liberar(self, "_worker_sesiones")
+        w.start()
+        self._worker_sesiones = w
+
+    def _sesiones_agentes_sondeadas(self, _estado):
+        """Repinta los combos cuando llega el sondeo de sesión."""
+        self.pan_ejec.refrescar_agentes()
 
     def _cargar_modelos_en_fondo(self):
         """Consulta opencode/models.dev sin bloquear el arranque."""
@@ -603,6 +621,8 @@ class Ventana(QMainWindow):
         self.pan_ejec.agregar_catalogo(nuevos)
         self.pan_ejec.info_modelos(
             len(nuevos), len(modelos.nombres_proveedores()))
+        # invalidar_cache() también olvidó el sondeo de sesión: se relanza.
+        self.pan_ejec.refrescar_agentes()
         self._aplicar_sel_modelos()
         self.estado.setText("Modelos refrescados")
         self._guardar_sel_modelos()
@@ -666,26 +686,29 @@ class Ventana(QMainWindow):
         # Un selector en "auto" no es el nombre del agente: lo resolvemos aquí
         # con la misma lista de preferencia que usa autopiloto.sh, para que el
         # log de la GUI y el motivo de lanzamiento coincidan con lo ejecutado.
-        detectados = modelos.agentes_instalados()
-        detectado_auto = detectados[0] if detectados else "opencode"
+        detectados = modelos.agentes_operativos()
+        if not detectados:
+            self.estado.setText(
+                "No se detectó ningún agente CLI con sesión (opencode, codex o claude)")
+            panel = self.pan_logs.panel_loop
+            panel.clear()
+            panel.appendPlainText(
+                "> bash autopiloto.sh  (sin agentes utilizables: instala o "
+                "inicia sesión en opencode, codex o claude)")
+            self.pan_ejec.b_iniciar.setEnabled(True)
+            return
+
+        detectado_auto = detectados[0]
         agente_tarea = (detectado_auto if conf['agente_cli'] == "auto"
                         else conf['agente_cli'])
         agente_revisor = (detectado_auto if conf['revisor_cli'] == "auto"
                           else conf['revisor_cli'])
-        if not detectados:
-            self.estado.setText(
-                "No se detectó ningún agente CLI (opencode, codex o claude)")
-            panel = self.pan_logs.panel_loop
-            panel.clear()
-            panel.appendPlainText(
-                "> bash autopiloto.sh  (sin agentes CLI instalados: "
-                "instala opencode, codex o claude para usar el autopiloto)")
-            self.pan_ejec.b_iniciar.setEnabled(True)
-            return
-
         env["MAX_ITER"] = str(conf['iteraciones'])
         env["AGENTE_TAREA"] = agente_tarea
         env["AGENTE_REVISOR"] = agente_revisor
+        # AGENTES_PREFERIDOS sólo con agentes utilizables: si el revisor está
+        # en "auto", autopiloto.sh busca otro en esta lista, y no debe caer en
+        # un CLI instalado pero sin sesión (abortaría el loop).
         env["AGENTES_PREFERIDOS"] = " ".join(detectados)
         # El juez sigue al agente de la tarea salvo elección explícita.
         env["AGENTE_JUEZ"] = agente_tarea

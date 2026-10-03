@@ -60,6 +60,112 @@ def _cli_falso(directorio, nombre, cuerpo):
     return ruta
 
 
+# ---------- estado de sesión (login) ----------
+
+def _monkey_cli(monkeypatch, modelos, tmp_path, disponibles, cuerpos):
+    """Fakea `which` y el contenido de cada CLI para sondear su sesión."""
+    d = str(tmp_path)
+    for nombre in disponibles:
+        _cli_falso(d, nombre, cuerpos[nombre])
+    monkeypatch.setattr(modelos.shutil, "which", lambda n: (
+        os.path.join(d, n) if n in disponibles else None))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    modelos.invalidar_cache()
+
+
+def test_sesion_detecta_sin_login(monkeypatch, tmp_path):
+    from autopiloto_gui import modelos
+
+    _monkey_cli(monkeypatch, modelos, tmp_path, {"claude"},
+                {"claude": 'echo "Not logged in · Please run /login"\n'})
+    assert modelos.sesion_agente("claude") is False
+
+
+def test_sesion_detecta_login_correcto(monkeypatch, tmp_path):
+    from autopiloto_gui import modelos
+
+    _monkey_cli(monkeypatch, modelos, tmp_path, {"claude"},
+                {"claude": 'echo "pong"\n'})
+    assert modelos.sesion_agente("claude") is True
+
+
+def test_sesion_opencode_es_desconocida_sin_credenciales(monkeypatch, tmp_path):
+    """`opencode auth list` responde 0 siempre: 0 credenciales no es prueba de
+    que no sirva (los modelos free del catálogo no necesitan key)."""
+    from autopiloto_gui import modelos
+
+    _monkey_cli(monkeypatch, modelos, tmp_path, {"opencode"},
+                {"opencode": 'echo "0 credentials"\n'})
+    assert modelos.sesion_agente("opencode") is None
+
+
+def test_sesion_timeout_es_desconocida(monkeypatch, tmp_path):
+    from autopiloto_gui import modelos
+
+    _monkey_cli(monkeypatch, modelos, tmp_path, {"claude"},
+                {"claude": "sleep 30\n"})
+    modelos.SONDA_SESION["claude"] = (["-p", "ping"], 1)
+    try:
+        assert modelos.sesion_agente("claude") is None
+    finally:
+        modelos.SONDA_SESION["claude"] = (
+            ["-p", "--output-format", "text", "ping"], 20)
+
+
+def test_sesion_se_cachea(monkeypatch, tmp_path):
+    from autopiloto_gui import modelos
+
+    _monkey_cli(monkeypatch, modelos, tmp_path, {"claude"},
+                {"claude": 'echo "Not logged in"\n'})
+    assert modelos.sesion_agente("claude") is False
+    # Segunda llamada: no vuelve a lanzar el CLI (quedaría cacheado False).
+    modelos.shutil.which = lambda n: (_ for _ in ()).throw(
+        AssertionError("no debe volver a sondear"))
+    assert modelos.sesion_agente("claude") is False
+
+
+def test_agentes_operativos_excluye_sin_login(monkeypatch, tmp_path):
+    """El agente sin sesión se detecta pero no se ofrece para trabajar."""
+    from autopiloto_gui import modelos
+
+    _monkey_cli(monkeypatch, modelos, tmp_path, {"opencode", "claude"},
+                {"opencode": 'echo "0 credentials"\n',
+                 "claude": 'echo "Not logged in · Please run /login"\n'})
+    assert modelos.agentes_instalados() == ["opencode", "claude"]
+    assert modelos.agentes_operativos() == ["opencode"]
+    assert modelos.agente_por_defecto() == "opencode"
+
+
+def test_agentes_operativos_con_dos_con_sesion(monkeypatch, tmp_path):
+    from autopiloto_gui import modelos
+
+    _monkey_cli(monkeypatch, modelos, tmp_path, {"codex", "claude"},
+                {"codex": 'echo "pong"\n', "claude": 'echo "pong"\n'})
+    assert modelos.agentes_operativos() == ["codex", "claude"]
+
+
+def test_agentes_operativos_ignora_no_instalado(monkeypatch, tmp_path):
+    from autopiloto_gui import modelos
+
+    _monkey_cli(monkeypatch, modelos, tmp_path, {"claude"},
+                {"claude": 'echo "Not logged in"\n'})
+    assert modelos.agentes_operativos() == []
+    assert modelos.agente_por_defecto() == ""
+
+
+def test_estado_agentes_tecnifica(monkeypatch, tmp_path):
+    from autopiloto_gui import modelos
+
+    _monkey_cli(monkeypatch, modelos, tmp_path, {"claude"},
+                {"claude": 'echo "Not logged in"\n'})
+    por_nombre = {e["nombre"]: e for e in modelos.estado_agentes()}
+    assert por_nombre["opencode"]["instalado"] is False
+    assert por_nombre["codex"]["instalado"] is False
+    assert por_nombre["claude"]["instalado"] is True
+    assert por_nombre["claude"]["sesion"] is False
+    assert por_nombre["claude"]["ruta"].endswith("claude")
+
+
 # ---------- detección de agentes instalados (Python / GUI) ----------
 
 def test_agentes_instalados_respeta_preferencia(tmp_path):

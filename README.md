@@ -139,6 +139,13 @@ que no exista.
 - Si el CLI está instalado pero sin sesión (`Not logged in`, 401, API key
   inválida), el loop se detiene con un aviso claro en lugar de marcar tareas
   como fallidas por un error de autenticación.
+- Al arrancar, la GUI sondea en segundo plano si cada CLI tiene sesión: los que
+  no la tienen aparecen como `claude (sin login)` y no se pueden seleccionar.
+  El sondeo se cachea y no bloquea la interfaz; el botón de refrescar modelos
+  vuelve a lanzarlo.
+- Para `opencode` la sesión no se puede determinar sin ambigüedad (responde
+  siempre 0 y sus modelos de catálogo no necesitan credenciales), así que se
+  considera utilizable y se marca como "sesión no verificada".
 
 ---
 
@@ -176,7 +183,7 @@ autopiloto_gui/
 │   ├── autopiloto.sh
 │   ├── gate.sh
 │   └── mapear.sh
-└── tests/              # 97 tests (plan, métricas, navegador, plantillas, webhooks, GUI, log/revisión, agentes, net, sensor, proceso, config)
+└── tests/              # 108 tests (plan, métricas, navegador, plantillas, webhooks, GUI, log/revisión, agentes, net, sensor, proceso, config)
 ```
 
 ---

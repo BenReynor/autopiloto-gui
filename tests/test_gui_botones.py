@@ -341,6 +341,47 @@ def test_ejecucion_botones_emiten_senales(app, proyecto_git):
     assert "agente" in conf and "revisor" in conf
 
 
+def test_ejecucion_marca_agente_sin_login(app, proyecto_git, monkeypatch):
+    """Un CLI instalado pero sin sesión se muestra marcado y no se puede elegir."""
+    from autopiloto_gui import modelos, paneles
+
+    monkeypatch.setattr(modelos.shutil, "which", lambda n: (
+        "/usr/bin/opencode" if n == "opencode" else
+        "/usr/bin/claude" if n == "claude" else None))
+    monkeypatch.setattr(modelos, "sesion_agente", lambda n: (
+        False if n == "claude" else None))
+    monkeypatch.setenv("HOME", str(proyecto_git))
+    modelos.invalidar_cache()
+
+    p = paneles.PanelEjecucion()
+    textos = [p.cmb_agente_cli.itemText(i)
+              for i in range(p.cmb_agente_cli.count())]
+    assert "claude (sin login)" in textos
+
+    idx_claude = textos.index("claude (sin login)")
+    assert not p.cmb_agente_cli.model().item(idx_claude).isEnabled()
+    # opencode sí es elegible y es el que marca "auto"
+    idx_oc = textos.index("opencode")
+    assert p.cmb_agente_cli.model().item(idx_oc).isEnabled()
+    assert p.cmb_agente_cli.itemText(0) == "auto → opencode"
+
+
+def test_ejecucion_auto_sin_agente_operativo(app, proyecto_git, monkeypatch):
+    """Si el único CLI no tiene sesión, no se ofrece como auto."""
+    from autopiloto_gui import modelos, paneles
+
+    monkeypatch.setattr(modelos.shutil, "which", lambda n: (
+        "/usr/bin/claude" if n == "claude" else None))
+    monkeypatch.setattr(modelos, "sesion_agente", lambda n: (
+        False if n == "claude" else None))
+    monkeypatch.setenv("HOME", str(proyecto_git))
+    modelos.invalidar_cache()
+
+    p = paneles.PanelEjecucion()
+    assert "sin agentes con sesión" in p.cmb_agente_cli.itemText(0)
+    assert p.modelos_seleccion()["agente_cli"] == "auto"
+
+
 def test_ejecucion_config_roundtrip(app, proyecto_git):
     from autopiloto_gui.paneles import PanelEjecucion
     p = PanelEjecucion()
@@ -363,7 +404,9 @@ def test_ejecucion_combo_agente_solo_ofrece_instalados(
 
     monkeypatch.setattr(modelos.shutil, "which", lambda n: (
         "/usr/bin/claude" if n == "claude" else None))
+    monkeypatch.setattr(modelos, "sesion_agente", lambda n: None)
     monkeypatch.setenv("HOME", str(proyecto_git))
+    modelos.invalidar_cache()
 
     p = paneles.PanelEjecucion()
     etiquetas = [p.cmb_agente_cli.itemText(i)
@@ -380,7 +423,9 @@ def test_ejecucion_auto_usa_current_data(app, proyecto_git, monkeypatch):
 
     monkeypatch.setattr(modelos.shutil, "which", lambda n: (
         "/usr/bin/claude" if n == "claude" else None))
+    monkeypatch.setattr(modelos, "sesion_agente", lambda n: None)
     monkeypatch.setenv("HOME", str(proyecto_git))
+    modelos.invalidar_cache()
 
     p = paneles.PanelEjecucion()
     assert p.modelos_seleccion()["agente_cli"] == "auto"

@@ -1035,6 +1035,46 @@ class PanelEjecucion(QWidget):
                 widget.setPlaceholderText(placeholder)
             g.addWidget(widget, row, 1)
 
+        def _llenar_combo_agente(cmb_cli):
+            """Rellena el combo con lo que hay en la máquina ahora mismo.
+
+            Un agente instalado pero SIN SESIÓN se muestra marcado y
+            deshabilitado: elegirlo abortaría el loop en la primera iteración.
+            """
+            operativo = modelos.agentes_operativos()
+            detectados = modelos.agentes_instalados()
+            previo = cmb_cli.currentData()
+            cmb_cli.blockSignals(True)
+            cmb_cli.clear()
+            if operativo:
+                cmb_cli.addItem(f"auto → {operativo[0]}", "auto")
+                for a in detectados:
+                    sin_sesion = modelos.sesion_agente(a) is False
+                    etiqueta = f"{a} (sin login)" if sin_sesion else a
+                    cmb_cli.addItem(etiqueta, a)
+                    idx = cmb_cli.count() - 1
+                    if sin_sesion:
+                        # Deshabilitar sólo el ítem: el combo sigue siendo
+                        # utilizable, pero ese agente no se puede elegir.
+                        cmb_cli.model().item(idx).setEnabled(False)
+                        cmb_cli.setItemData(
+                            idx, f"{a}: instalado pero sin sesión iniciada",
+                            Qt.ToolTipRole)
+                cmb_cli.setCurrentIndex(0)
+            else:
+                cmb_cli.addItem("auto (sin agentes con sesión)", "auto")
+            cmb_cli.setToolTip(
+                "Instalados: " + (", ".join(detectados) or "ninguno")
+                + "\nCon sesión: " + (", ".join(operativo) or "ninguno")
+                + "\nModelos: sólo para opencode")
+            cmb_cli.blockSignals(False)
+            # Respetar la selección si sigue existiendo tras el rellenado.
+            if previo and previo != "auto":
+                idx = cmb_cli.findData(previo)
+                if idx > 0 and cmb_cli.model().item(idx).isEnabled():
+                    cmb_cli.setCurrentIndex(idx)
+            return cmb_cli
+
         def contenedor_agente(selector):
             """Fila agente=combo CLI + selector de modelo en un mismo widget.
 
@@ -1045,21 +1085,8 @@ class PanelEjecucion(QWidget):
             h = QHBoxLayout()
             h.setSpacing(8)
             cmb_cli = QComboBox()
-            instalados = modelos.agentes_instalados()
-            if instalados:
-                detectado = instalados[0]
-                cmb_cli.addItem(f"auto → {detectado}")
-                cmb_cli.setItemData(0, "auto")
-                for a in instalados:
-                    cmb_cli.addItem(a, a)
-                cmb_cli.setCurrentIndex(0)
-            else:
-                cmb_cli.addItem("auto (sin agentes)")
-                cmb_cli.setItemData(0, "auto")
-            cmb_cli.setToolTip(
-                "Agentes detectados: " + (", ".join(instalados) or "ninguno")
-                + "\nModelos: sólo para opencode")
-            cmb_cli.setMinimumWidth(150)
+            _llenar_combo_agente(cmb_cli)
+            cmb_cli.setMinimumWidth(170)
             cmb_cli.currentIndexChanged.connect(
                 lambda _i, s=selector, c=cmb_cli: _sincronizar_modelo(s, c))
             h.addWidget(cmb_cli, 0)
@@ -1068,6 +1095,7 @@ class PanelEjecucion(QWidget):
             w.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             w.setLayout(h)
             _sincronizar_modelo(selector, cmb_cli)
+            self._llenar_agente = _llenar_combo_agente
             return w, cmb_cli
 
         add_field(0, "Hasta (HH:MM, vacío = sin límite):",
@@ -1302,6 +1330,17 @@ class PanelEjecucion(QWidget):
             self.cmb_agente_cli.setCurrentText(seleccion["agente_cli"])
         if seleccion.get("revisor_cli"):
             self.cmb_revisor_cli.setCurrentText(seleccion["revisor_cli"])
+
+    def refrescar_agentes(self):
+        """Vuelve a listar los agentes (tras el sondeo de sesión en segundo plano).
+
+        Conserva la selección actual si el agente sigue siendo utilizable y, si
+        no lo es, deja el combo en "auto".
+        """
+        for combo, modelo in ((self.cmb_agente_cli, self.cmb_agente),
+                              (self.cmb_revisor_cli, self.cmb_revisor)):
+            self._llenar_agente(combo)
+            _sincronizar_modelo(modelo, combo)
 
     def modelos_seleccion(self):
         return {
