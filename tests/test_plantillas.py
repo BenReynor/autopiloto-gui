@@ -1,13 +1,86 @@
 #!/usr/bin/env python3
 """Tests para plantillas.py - creación de lecciones.md (memoria del proyecto)."""
 
+import glob
 import os
+import re
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from autopiloto_gui import plantillas
+
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PYPROJECT = os.path.join(RAIZ, "pyproject.toml")
+
+
+def _globs_de_package_data():
+    """Extrae los globs de [tool.setuptools.package-data] sin depender de tomli.
+
+    Se lee el texto a propósito: así el test funciona con Python 3.10, donde
+    tomllib no existe (requires-python del proyecto es >=3.10).
+    """
+    with open(PYPROJECT, encoding="utf-8") as f:
+        texto = f.read()
+    m = re.search(
+        r"^\[tool\.setuptools\.package-data\][^\[]*?autopiloto_gui\s*=\s*\[(.*?)\]",
+        texto,
+        re.S | re.M,
+    )
+    assert m, "no se encontró [tool.setuptools.package-data] en pyproject.toml"
+    return re.findall(r'"([^"]+)"', m.group(1))
+
+
+def _lo_que_instala_en_runtime():
+    """Los nombres que instalar() copia sin condición desde PLANTILLA_DIR.
+
+    Refleja plantillas.instalar(): list(ARCHIVOS) + list(GATE_CHECKS) +
+    [".gitignore"]. Si esto crece sin tocar package-data, el paquete deja de
+    ser instalable de forma no editable.
+    """
+    return list(plantillas.ARCHIVOS) + list(plantillas.GATE_CHECKS) + [
+        ".gitignore"
+    ]
+
+
+def test_package_data_cubre_lo_que_instala():
+    """pyproject.toml debe empaquetar TODO lo que instalar() copia.
+
+    Sin esto, `pip install .` produce un paquete al que le falta
+    plantillas_data/.gitignore; instalar() hace shutil.copy2 sin try y revienta
+    con FileNotFoundError al agregar el primer proyecto. Los tests no lo
+    detectaban porque la CI instala siempre con `-e`.
+    """
+    patrones = _globs_de_package_data()
+    base = os.path.join(RAIZ, "autopiloto_gui")
+    cubiertos = set()
+    for patron in patrones:
+        cubiertos.update(os.path.relpath(p, base) for p in glob.glob(
+            os.path.join(base, patron)
+        ))
+
+    sin_cubrir = [
+        nombre
+        for nombre in _lo_que_instala_en_runtime()
+        if os.path.join("plantillas_data", nombre) not in cubiertos
+    ]
+    assert not sin_cubrir, (
+        "pyproject.toml no empaqueta estos ficheros que instalar() copia "
+        f"incondicionalmente: {sin_cubrir}. Añade su glob a "
+        "[tool.setuptools.package-data] (recuerda: `*` no hace match con "
+        "ficheros que empiezan por punto)."
+    )
+
+
+def test_package_data_no_declara_ficheros_inexistentes():
+    """Los globs no deben apuntar a nada: globs fantasma promoción a bugs."""
+    base = os.path.join(RAIZ, "autopiloto_gui")
+    for patron in _globs_de_package_data():
+        assert glob.glob(os.path.join(base, patron)), (
+            f"[tool.setuptools.package-data] declara {patron!r} pero no "
+            "coincide con ningún fichero del paquete"
+        )
 
 
 def _proyecto_tmp():

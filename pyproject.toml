@@ -22,11 +22,17 @@ dev = [
 include = ["autopiloto_gui*"]
 
 [tool.setuptools.package-data]
+# Debe cubrir EXACTAMENTE lo que plantillas.py copia en runtime. Con
+# `pip install -e .` los tests pasan igual, pero con `pip install .` un fichero
+# ausente aquí provoca FileNotFoundError al agregar el primer proyecto.
+# OJO: los globs `*` NO hacen match con ficheros que empiezan por punto, así
+# que .gitignore necesita su propia entrada. Lo vigila
+# tests/test_plantillas.py::test_package_data_cubre_lo_que_instala.
 autopiloto_gui = [
     "plantillas_data/*.sh",
     "plantillas_data/*.md",
+    "plantillas_data/.gitignore",
     "plantillas_data/gate_checks/*.sh",
-    "plantillas_data/gate_checks/*.md",
     "icono.svg",
     "acceso.sh",
 ]
