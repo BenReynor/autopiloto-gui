@@ -117,6 +117,7 @@ class Ventana(QMainWindow):
         self._lanzamiento = dict(cfg.LAUNCH_DEFECTO)
         self._inicio_loop_ts = None
         self._iter_actual = 0
+        self._worker_sesiones_limpieza = None
 
         # Webhook manager
         self.webhook = WebhookManager(self.webhooks_config)
@@ -764,16 +765,25 @@ class Ventana(QMainWindow):
             "modelo_revisor": conf['revisor'],
         })
 
-    def _limpiar_sesiones_proyecto(self, ruta_proyecto):
+    def _limpiar_sesiones_proyecto(self, ruta_proyecto, desde_ms):
         """Borra las sesiones de opencode que el loop creó en el proyecto.
 
         Criterio: directory == proyecto y creadas después del inicio del run.
         Nota: autopiloto.sh también limpia al salir (trap EXIT); esto cubre
         la detención manual (la GUI manda SIGTERM; sólo si no termina en unos
         segundos pasa a SIGKILL, y entonces el trap bash no llega a correr).
+
+        Se ejecuta dentro de un `Trabajo` porque son `subprocess.run` con
+        timeout=120 s: uno para listar y uno por cada sesión a borrar, así que
+        con 10 sesiones eran hasta 22 min. En el hilo de la UI congelaba la
+        ventana justo después de pulsar Detener, y los botones seguían
+        deshabilitados hasta terminar.
+
+        Devuelve cuántas borró y NO toca ningún widget: el texto del log lo
+        escribe `_limpiar_sesiones_hecho`, que ya corre en el hilo de la UI.
         """
         if not ruta_proyecto:
-            return
+            return 0
         binario = ""
         for cand in ("opencode",):
             ruta = shutil.which(cand)
@@ -785,8 +795,7 @@ class Ventana(QMainWindow):
                 binario = candidata
                 break
         if not binario:
-            return
-        desde_ms = int(self._inicio_loop_ts * 1000) if self._inicio_loop_ts else 0
+            return 0
 
         def _ejecutar(*args):
             try:
@@ -800,11 +809,11 @@ class Ventana(QMainWindow):
 
         res = _ejecutar("session", "list", "--format", "json")
         if not res or res.returncode != 0:
-            return
+            return 0
         try:
             sesiones = json.loads(res.stdout or "[]")
         except json.JSONDecodeError:
-            return
+            return 0
         ids = [
             s["id"] for s in sesiones
             if s.get("directory") == ruta_proyecto
@@ -812,14 +821,36 @@ class Ventana(QMainWindow):
         ]
         for id_ in ids:
             _ejecutar("session", "delete", id_)
-        if ids:
+        return len(ids)
+
+    def _limpiar_sesiones_hecho(self, borradas):
+        """Slot de UI: refleja en el log lo que borró el hilo de limpieza."""
+        if borradas:
             self.pan_logs.panel_loop.appendPlainText(
-                f"[autopiloto] 🧹 Sesiones opencode eliminadas: {len(ids)}")
+                f"[autopiloto] 🧹 Sesiones opencode eliminadas: {borradas}")
+
+    def _programar_limpiar_sesiones(self, ruta_proyecto):
+        """Lanza la limpieza de sesiones en segundo plano.
+
+        `desde_ms` se calcula aquí, en el hilo de la UI, para que sea el
+        instante real de la parada y no el momento en que el hilo llegue a
+        leerlo.
+        """
+        if not ruta_proyecto:
+            return
+        if self._worker_sesiones_limpieza is not None \
+                and self._worker_sesiones_limpieza.isRunning():
+            return
+        desde_ms = int(self._inicio_loop_ts * 1000) if self._inicio_loop_ts else 0
+        worker = Trabajo(
+            lambda: self._limpiar_sesiones_proyecto(ruta_proyecto, desde_ms))
+        worker.conectar(self._limpiar_sesiones_hecho)
+        worker.liberar(self, "_worker_sesiones_limpieza")
+        worker.start()
+        self._worker_sesiones_limpieza = worker
 
     def _loop_fin(self):
         p = self._proyecto_actual()
-        if p:
-            self._limpiar_sesiones_proyecto(p[1])
         self.pan_ejec.b_iniciar.setEnabled(True)
         self.pan_ejec.b_detener.setEnabled(False)
         if p:
@@ -868,12 +899,27 @@ class Ventana(QMainWindow):
                 "duracion_min": round(duracion_min, 1),
             })
 
+        # La limpieza de sesiones va la última y en segundo plano: el bucle de
+        # eventos debe quedar repintado y usable antes de lanzarla.
+        if p:
+            self._programar_limpiar_sesiones(p[1])
+
     def _detener_loop(self):
         if self.loop and self.loop.state() == QProcess.Running:
             self.pan_logs.panel_loop.appendPlainText("[manual] deteniendo el loop…")
             self.loop.terminate()
-            if not self.loop.waitForFinished(5000):
-                self.loop.kill()
+            # No `waitForFinished(5000)`: bloquea el hilo de la UI cinco
+            # segundos en el botón que el usuario acaba de pulsar. El escalado
+            # a SIGKILL lo hace el timer.
+            if self.loop.state() != QProcess.NotRunning:
+                QTimer.singleShot(5000, self._loop_forzar_kill)
+
+    def _loop_forzar_kill(self):
+        """Sube a SIGKILL si el loop no respeta el SIGTERM del temporizador."""
+        if self.loop and self.loop.state() == QProcess.Running:
+            self.pan_logs.panel_loop.appendPlainText(
+                "[manual] el loop no responde a SIGTERM; forzando con SIGKILL…")
+            self.loop.kill()
 
     def _tail_log(self):
         p = self._proyecto_actual()

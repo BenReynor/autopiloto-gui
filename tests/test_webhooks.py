@@ -61,7 +61,8 @@ def test_envios_simultaneos_no_se_pisan(app, monkeypatch):
     assert len(wm._workers) == 3
     assert wm._pendientes() == 3
 
-    assert _esperar(app, lambda: wm._pendientes() == 0), "los envíos no terminaron"
+    assert _esperar(app, lambda: wm._pendientes() == 0 and not wm._workers), (
+        "los envíos no terminaron o quedaron referencias sin liberar")
 
     assert len(cuerpos) == 3, f"se esperaban 3 peticiones y hubo {len(cuerpos)}"
     assert any("Loop iniciado" in c for c in cuerpos)
@@ -95,7 +96,7 @@ def test_envio_unico_deja_referencia_y_la_libera(app, monkeypatch):
     wm.enviar("bloqueada", {"proyecto": "p1", "tarea": "tarea rota"})
     assert len(wm._workers) == 1
 
-    assert _esperar(app, lambda: wm._pendientes() == 0)
+    assert _esperar(app, lambda: wm._pendientes() == 0 and not wm._workers)
     assert wm._workers == set()
 
 
