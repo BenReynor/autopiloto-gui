@@ -49,7 +49,9 @@ from .paneles import (
 from .paneles_metricas import PanelMetricas
 from .proceso import Proceso, Trabajo
 from .proyectos import (
+    RegistroCorrupto,
     cargar,
+    descartar_registro_corrupto,
     guardar,
     guardar_config_proyecto,
     leer_config_proyecto,
@@ -58,6 +60,7 @@ from .proyectos import (
     leer_sidebar_ancho,
     leer_tema,
     leer_webhooks,
+    verificar_registro,
 )
 from .temas import NOMBRES, inicializar_temas, obtener_temas
 from .webhooks import WebhookManager
@@ -1151,8 +1154,49 @@ class Ventana(QMainWindow):
         if p:
             self.pan_git.cargar(p[1])
 
+def _resolver_registro_corrupto(exc):
+    """Pregunta al usuario qué hacer con un registro corrupto.
+
+    Devuelve True si debemos seguir arrancando (ha aceptado empezar de cero,
+    con los datos a salvo en la copia .corrupto), False si debe salir.
+    """
+    caja = QMessageBox()
+    caja.setIcon(QMessageBox.Critical)
+    caja.setWindowTitle("Registro de proyectos dañado")
+    caja.setText(
+        f"No se pudo leer el registro de proyectos:\n{exc.ruta}"
+    )
+    caja.setInformativeText(
+        "Puede estar truncado o editado a mano. Se ha guardado una copia "
+        f"íntegra en:\n{exc.copia}\n\n"
+        "Si sales ahora, el archivo se queda donde está y podrás repararlo "
+        "o restaurarlo a mano. Si prefieres continuar, la lista de proyectos "
+        "empezará vacía (tus datos siguen en la copia)."
+    )
+    salir = caja.addButton("Salir y repararlo a mano", QMessageBox.RejectRole)
+    seguir = caja.addButton(
+        "Empezar de cero (copia conservada)", QMessageBox.DestructiveRole
+    )
+    caja.setDefaultButton(salir)
+    caja.exec()
+    return caja.clickedButton() is seguir
+
+
 def main():
     app = QApplication(sys.argv)
+
+    # El registro de proyectos es el estado completo del usuario (proyectos,
+    # tema, webhooks, modelos). Si su JSON está corrupto hay que PARAR aquí:
+    # Ventana.__init__ carga el registro y, si sale vacío, lo vuelve a guardar,
+    # así que un JSON roto se convertía en "todos los proyectos borrados" de
+    # forma silenciosa en el arranque.
+    try:
+        verificar_registro()
+    except RegistroCorrupto as exc:
+        if not _resolver_registro_corrupto(exc):
+            return
+        descartar_registro_corrupto()
+
     inicializar_temas()
     icono = os.path.join(os.path.dirname(__file__), "icono.svg")
     if os.path.exists(icono):

@@ -1,13 +1,101 @@
 """Registro de proyectos, tema y protección térmica del panel autopiloto.
 
 Se guarda en ~/.config/autopiloto/proyectos.json y es compartido por todos
-los proyectos que gestiones desde el panel.
+los proyectos quegestion es desde el panel.
+
+Integridad: el registro se escribe SIEMPRE de forma atómica (escribir en un
+fichero temporal y os.replace), de modo que un cierre abrupto a mitad de
+guardado no pueda truncarlo. Y si el JSON llegara a estar corrupto, main()
+FALLA ANTES de arrancar en vez de tragar el error y sobrescribirlo con un
+registro vacío (que era como se perdían todos los proyectos del usuario).
 """
 
 import json
 import os
+import shutil
 
 from . import configuracion as cfg
+
+
+class RegistroCorrupto(Exception):
+    """El registro de proyectos no es JSON válido.
+
+    Lleva la ruta del fichero original y la de la copia .corrupto de
+    seguridad. El original NO se borra al detectarlo: sólo cuando el usuario
+    acepta empezar de cero (descartar_registro_corrupto).
+    """
+
+    def __init__(self, ruta, copia):
+        super().__init__(f"registro de proyectos corrupto: {ruta}")
+        self.ruta = ruta
+        self.copia = copia
+
+
+def _copia_de_seguridad(corrupto):
+    """Copia el registro a <registro>.corrupto sin pisar la anterior.
+
+    Devuelve la ruta de la copia creada. Los sufijos son .corrupto,
+    .corrupto.2, .corrupto.3... para no perder ni la primera versión.
+    """
+    n = 1
+    while True:
+        sufijo = "" if n == 1 else f".{n}"
+        cand = f"{corrupto}.corrupto{sufijo}"
+        if not os.path.exists(cand):
+            shutil.copy2(corrupto, cand)
+            return cand
+        n += 1
+
+
+def verificar_registro():
+    """Valida el registro ANTES de arrancar. Lanza RegistroCorrupto si no es
+    JSON válido, dejando antes una copia .corrupto de los datos.
+
+    No modifica el original a propósito: si el usuario cierra la app y la
+    vuelve a abrir, el aviso se repite en vez de perder el registro en
+    silencio al primer guardado.
+    """
+    if not os.path.exists(cfg.REGISTRO):
+        return
+    try:
+        with open(cfg.REGISTRO, encoding="utf-8") as f:
+            json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RegistroCorrupto(cfg.REGISTRO, _copia_de_seguridad(cfg.REGISTRO)) from exc
+
+
+def descartar_registro_corrupto():
+    """Borra el registro corrupto (sus datos quedan en la copia .corrupto)."""
+    try:
+        os.remove(cfg.REGISTRO)
+    except FileNotFoundError:
+        pass
+
+
+def _escribir(datos):
+    """Escribe el registro de forma atómica.
+
+    json.dump va primero al temporal y sólo después se os.replace() sobre el
+    destino: replace es atómico en el mismo sistema de ficheros, así que un
+    corte de luz o un kill a mitad de escritura deja el registro anterior
+    intacto en lugar de un JSON truncado e ilegible.
+    """
+    os.makedirs(cfg.CONFIG_DIR, exist_ok=True)
+    tmp = f"{cfg.REGISTRO}.{os.getpid()}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(datos, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, cfg.REGISTRO)
+    except BaseException:
+        # Incluye TypeError/ValueError de json.dump con datos no serializables:
+        # el temporal ya creado debe irse igual o se acumula basura en ~/.config.
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _leer_archivo():
@@ -52,9 +140,7 @@ def guardar_sidebar_ancho(ancho: int):
     """Guarda el ancho del sidebar."""
     datos = _leer_archivo()
     datos["sidebar_ancho"] = ancho
-    os.makedirs(cfg.CONFIG_DIR, exist_ok=True)
-    with open(cfg.REGISTRO, "w", encoding="utf-8") as f:
-        json.dump(datos, f, indent=2, ensure_ascii=False)
+    _escribir(datos)
 
 
 def leer_config_proyecto(nombre):
@@ -78,9 +164,7 @@ def guardar_config_proyecto(proyectos, nombre, config):
     datos = _leer_archivo()
     datos["proyectos"] = proyectos
     proyectos.setdefault(nombre, {})["config"] = config
-    os.makedirs(cfg.CONFIG_DIR, exist_ok=True)
-    with open(cfg.REGISTRO, "w", encoding="utf-8") as f:
-        json.dump(datos, f, indent=2, ensure_ascii=False)
+    _escribir(datos)
 
 
 def guardar(proyectos, tema=None, seguridad=None, webhooks=None, modelos=None):
@@ -94,6 +178,4 @@ def guardar(proyectos, tema=None, seguridad=None, webhooks=None, modelos=None):
         datos["webhooks"] = webhooks
     if modelos is not None:
         datos["modelos"] = modelos
-    os.makedirs(cfg.CONFIG_DIR, exist_ok=True)
-    with open(cfg.REGISTRO, "w", encoding="utf-8") as f:
-        json.dump(datos, f, indent=2, ensure_ascii=False)
+    _escribir(datos)

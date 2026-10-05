@@ -12,23 +12,37 @@ import os
 import sys
 import tempfile
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from autopiloto_gui import configuracion as cfg
 from autopiloto_gui import proyectos
 
 
-def _config_aislada():
-    """Redirige CONFIG_DIR/REGISTRO a un temp y devuelve la ruta del registro."""
+def _config_aislada(contenido=None):
+    """Redirige CONFIG_DIR/REGISTRO a un temp y devuelve la ruta del registro.
+
+    Por defecto escribe un registro válido y vacío; pasando `contenido` se
+    puede sembrar cualquier texto (incluido JSON inválido).
+    """
     tmp = tempfile.mkdtemp()
     reg = os.path.join(tmp, "proyectos.json")
     cfg.CONFIG_DIR = tmp
     cfg.REGISTRO = reg
     proyectos.cfg.CONFIG_DIR = tmp
     proyectos.cfg.REGISTRO = reg
+    if contenido is None:
+        contenido = json.dumps({"proyectos": {}}, ensure_ascii=False)
     with open(reg, "w", encoding="utf-8") as f:
-        json.dump({"proyectos": {}}, f, ensure_ascii=False)
+        f.write(contenido)
     return reg
+
+
+def _limpiar(reg):
+    import shutil
+
+    shutil.rmtree(os.path.dirname(reg), ignore_errors=True)
 
 
 def test_guardar_config_no_reañade_proyecto_quitado():
@@ -73,6 +87,134 @@ def test_guardar_config_sigue_guardando_proyectos_existentes():
         import shutil
 
         shutil.rmtree(os.path.dirname(reg), ignore_errors=True)
+
+
+# ---------- integridad del registro ----------
+#
+# Regresión grave: _leer_archivo() se tragaba el JSONDecodeError y devolvía {},
+# así que Ventana.__init__ (app.py:78) veía "sin proyectos" y llamaba a
+# guardar(), que volvía a escribir un registro VACÍO sobre el corrupto. Un
+# registro dañado = todos los proyectos del usuario borrados en el arranque
+# siguiente, sin ningún aviso.
+
+
+def test_registro_corrupto_no_se_sobreescribe():
+    """verificar_registro() debe lanzar Y dejar el original intacto."""
+    reg = _config_aislada(contenido='{"proyectos": {"A": {"ruta": "/tmp/a"')
+    try:
+        with pytest.raises(proyectos.RegistroCorrupto) as exc:
+            proyectos.verificar_registro()
+
+        assert os.path.exists(reg), "el original no debe tocarse al detectar"
+        with open(reg, encoding="utf-8") as f:
+            assert f.read() == '{"proyectos": {"A": {"ruta": "/tmp/a"'
+        assert exc.value.copia and os.path.exists(exc.value.copia)
+    finally:
+        _limpiar(reg)
+
+
+def test_registro_corrupto_hace_copia_de_seguridad():
+    """La copia .corrupto conserva los datos para que el usuario los recupere."""
+    reg = _config_aislada(contenido='{"proyectos": {"A": {"ruta": "/tmp/a"')
+    try:
+        with pytest.raises(proyectos.RegistroCorrupto) as exc:
+            proyectos.verificar_registro()
+        with open(exc.value.copia, encoding="utf-8") as f:
+            assert '"A"' in f.read()
+    finally:
+        _limpiar(reg)
+
+
+def test_registro_corrupto_bloquea_en_cada_arranque():
+    """Mientras el usuario no decida, el aviso se repite: no se pierde el
+    registro en silencio por haber cerrado y reabierto la app."""
+    reg = _config_aislada(contenido="no soy json")
+    try:
+        for _ in range(2):
+            with pytest.raises(proyectos.RegistroCorrupto):
+                proyectos.verificar_registro()
+        with open(reg, encoding="utf-8") as f:
+            assert f.read() == "no soy json"
+    finally:
+        _limpiar(reg)
+
+
+def test_copia_corrupta_no_pisa_la_anterior():
+    """Dos corrompidos seguidos = dos copias distintas."""
+    reg = _config_aislada(contenido="basura1")
+    try:
+        with pytest.raises(proyectos.RegistroCorrupto) as c1:
+            proyectos.verificar_registro()
+        with open(reg, "w", encoding="utf-8") as f:
+            f.write("basura2")
+        with pytest.raises(proyectos.RegistroCorrupto) as c2:
+            proyectos.verificar_registro()
+
+        assert c1.value.copia != c2.value.copia
+        with open(c1.value.copia, encoding="utf-8") as f:
+            assert f.read() == "basura1"
+        with open(c2.value.copia, encoding="utf-8") as f:
+            assert f.read() == "basura2"
+    finally:
+        _limpiar(reg)
+
+
+def test_descartar_registro_permite_arrancar_vacio():
+    """Con el consentimiento del usuario, se borra el corrupto y guardar()
+    reconstruye un registro válido; la copia se conserva."""
+    reg = _config_aislada(contenido="basura")
+    try:
+        with pytest.raises(proyectos.RegistroCorrupto) as exc:
+            proyectos.verificar_registro()
+
+        proyectos.descartar_registro_corrupto()
+        assert not os.path.exists(reg)
+
+        proyectos.verificar_registro()  # ya no lanza
+
+        proyectos.guardar({"B": {"ruta": "/tmp/b"}}, "Oscuro")
+        with open(reg, encoding="utf-8") as f:
+            datos = json.load(f)
+        assert datos["proyectos"]["B"]["ruta"] == "/tmp/b"
+        assert datos["tema"] == "Oscuro"
+        assert os.path.exists(exc.value.copia), "la copia debe sobrevivir"
+    finally:
+        _limpiar(reg)
+
+
+def test_escribir_es_atomico_y_no_deja_temporales():
+    """Nada de .tmp huérfanos: replace() sustituye de golpe."""
+    reg = _config_aislada()
+    try:
+        proyectos.guardar({"A": {"ruta": "/tmp/a"}}, "Oscuro")
+        proyectos.guardar_sidebar_ancho(320)
+
+        assert not [f for f in os.listdir(os.path.dirname(reg)) if ".tmp" in f]
+        with open(reg, encoding="utf-8") as f:
+            assert json.load(f)["sidebar_ancho"] == 320
+    finally:
+        _limpiar(reg)
+
+
+def test_escribir_no_deja_el_registro_roto_si_falla_la_serializacion():
+    """Si json.dump revienta a media escritura, el registro bueno anterior
+    debe seguir legible (por eso se escribe a un temporal y no in situ)."""
+    reg = _config_aislada()
+    try:
+        proyectos.guardar({"A": {"ruta": "/tmp/a"}}, "Oscuro")
+
+        class Inserializable:
+            pass
+
+        with pytest.raises(TypeError):
+            proyectos._escribir({"proyectos": {"A": Inserializable()}})
+
+        with open(reg, encoding="utf-8") as f:
+            datos = json.load(f)
+        assert datos["proyectos"]["A"]["ruta"] == "/tmp/a"
+        assert not [f for f in os.listdir(os.path.dirname(reg)) if ".tmp" in f]
+    finally:
+        _limpiar(reg)
 
 
 if __name__ == "__main__":
