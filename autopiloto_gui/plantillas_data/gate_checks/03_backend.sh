@@ -11,19 +11,58 @@
 # Si existe endpoints.txt en la raíz, tiene prioridad sobre ENDPOINTS.
 set -uo pipefail
 
+# `ok` la define gate.sh al cargarnos con `source`. Si este check se ejecuta
+# suelto (a mano, o desde otro script) no la tiene y `ok` sería "orden no
+# encontrada" (rc=127); como aquí no hay `set -e`, el check seguiría y
+# terminaría con exit 0, es decir, verde sin haber comprobado nada.
+if ! command -v ok >/dev/null 2>&1; then
+    ok() { echo "[GATE] ✓ $1"; }
+fi
+
 # endpoints.txt de la raíz manda
 EPS=()
-if [ -f "$PROYECTO/endpoints.txt" ]; then
+if [ -f "${PROYECTO:-}/endpoints.txt" ]; then
     while IFS= read -r e; do [ -n "$e" ] && EPS+=("$e"); done < "$PROYECTO/endpoints.txt"
 else
     # ENDPOINTS viene de _env.sh separado por espacios
-    for e in $ENDPOINTS; do EPS+=("$e"); done
+    for e in ${ENDPOINTS:-}; do EPS+=("$e"); done
 fi
 
-if [ -z "$SERVE_CMD" ]; then
+if [ -z "${SERVE_CMD:-}" ]; then
     echo "[GATE] ⚠ SERVE_CMD no configurado, se omite el check de backend"
     exit 0
 fi
+
+# --- HTTP con diagnóstico -------------------------------------------------
+# `curl -s` devuelve 0 aunque la respuesta sea 404 o 500, así que sin mirar el
+# código el check daba verde con el backend roto. Tampoco sirve poner -f a
+# pelo: aborta con "HTTP 404" y tira el cuerpo, que es justo donde FastAPI y
+# Django explican el motivo real ("detail": "no encontrado").
+#
+# _http <args de curl...> deja en HTTP_CODE el código y en HTTP_BODY el cuerpo.
+# Un 000 significa que no hubo respuesta HTTP (conexión rechazada, timeout...).
+HTTP_CODE="000"
+HTTP_BODY=""
+_http() {
+    local salida
+    salida="$(curl -s -w $'\n%{http_code}' "$@" 2>/dev/null)"
+    HTTP_CODE="${salida##*$'\n'}"
+    HTTP_BODY="${salida%$'\n'*}"
+    [ -n "$HTTP_CODE" ] || HTTP_CODE="000"
+}
+
+# Cuerpo en una línea y recortado, para que el diagnóstico quepa en el log.
+_resumen() {
+    printf '%s' "${1:-}" | tr '\n' ' ' | cut -c1-200
+}
+
+# ¿Respondió el backend? Vale cualquier respuesta HTTP (200, 401, 404...):
+# un 404 en la raíz es un servidor sano que sólo no tiene ruta "/", que es lo
+# más normal en FastAPI/Express. Lo que indica que no arrancó es un 000.
+_responde() {
+    _http "$1"
+    [ "$HTTP_CODE" != "000" ]
+}
 
 # Liberar el puerto de SERVE_URL si está ocupado por otro proceso del gate
 PUERTO="$(echo "$SERVE_URL" | sed -E 's|.*:([0-9]+).*|\1|')"
@@ -44,11 +83,11 @@ trap 'kill $BPID 2>/dev/null; wait $BPID 2>/dev/null' EXIT
 BASE_URL="${SERVE_URL:-http://localhost:8000}"
 _espera=0
 while [ "$_espera" -lt 15 ]; do
-    curl -s "$BASE_URL/" >/dev/null 2>&1 && break
+    _responde "$BASE_URL/" && break
     _espera=$((_espera + 1))
     sleep 1
 done
-if ! curl -s "$BASE_URL/" >/dev/null 2>&1; then
+if ! _responde "$BASE_URL/"; then
     echo "[GATE] ✗ backend no responde en $BASE_URL"
     exit 1
 fi
@@ -57,20 +96,22 @@ ok "backend responde en $BASE_URL"
 # Token (si hay TOKEN_URL configurado)
 TOKEN=""
 CONTENT_TYPE="application/json"
-if [ -n "$TOKEN_URL" ]; then
+if [ -n "${TOKEN_URL:-}" ]; then
     BODY="{}"
-    if [ -n "$USUARIO" ]; then
-        BODY="{\"username\":\"$USUARIO\",\"password\":\"$CLAVE\"}"
+    if [ -n "${USUARIO:-}" ]; then
+        BODY="{\"username\":\"$USUARIO\",\"password\":\"${CLAVE:-}\"}"
     fi
-    TOKEN="$(curl -s -X POST "$TOKEN_URL" -H "Content-Type: $CONTENT_TYPE" -d "$BODY" \
-        | ( "$PY_BACKEND" -c "import sys,json
+    _http -X POST "$TOKEN_URL" -H "Content-Type: $CONTENT_TYPE" -d "$BODY"
+    TOKEN="$(printf '%s' "$HTTP_BODY" | ( ${PY_BACKEND:-python3} -c "import sys,json
 try:
     d=json.load(sys.stdin)
     print(d.get('access') or d.get('token') or d.get('token_type',''))
 except Exception:
     print('')" 2>/dev/null ) )"
     if [ -z "$TOKEN" ]; then
-        echo "[GATE] ✗ no se obtuvo token en $TOKEN_URL"
+        # Un 401 aquí significa normalmente credenciales malas: el cuerpo lo dice.
+        echo "[GATE] ✗ no se obtuvo token en $TOKEN_URL (HTTP $HTTP_CODE)"
+        [ -n "$HTTP_BODY" ] && echo "[GATE]   respuesta: $(_resumen "$HTTP_BODY")"
         exit 1
     fi
     ok "token JWT en $TOKEN_URL"
@@ -89,11 +130,18 @@ for ep in "${EPS[@]}"; do
         *) url="$BASE_URL/api/$ep" ;;
     esac
     if [ -n "$TOKEN" ]; then
-        curl -s -H "Authorization: Bearer $TOKEN" "$url" >/dev/null 2>&1 && ok "$url" \
-            || { echo "[GATE] ✗ $url"; ERR=1; }
+        _http -H "Authorization: Bearer $TOKEN" "$url"
     else
-        curl -s "$url" >/dev/null 2>&1 && ok "$url" \
-            || { echo "[GATE] ✗ $url"; ERR=1; }
+        _http "$url"
+    fi
+    # Sólo 2xx es un endpoint sano. 3xx suele ser una ruta mal escrita (falta la
+    # barra final) y 4xx/5xx es un endpoint roto: en ambos casos, rojo.
+    if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+        ok "$url"
+    else
+        echo "[GATE] ✗ $url (HTTP $HTTP_CODE)"
+        [ -n "$HTTP_BODY" ] && echo "[GATE]   respuesta: $(_resumen "$HTTP_BODY")"
+        ERR=1
     fi
 done
 [ "$ERR" -eq 1 ] && exit 1

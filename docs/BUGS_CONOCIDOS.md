@@ -50,6 +50,29 @@ Consecuencia conocida: `kill $BPID` (línea 41) no mata a los nietos que arranqu
 servidor, que pueden quedar con el socket abierto. El siguiente `lsof` los encuentra y
 los mata con `kill -9`.
 
+**El `kill -9` por puerto mata a quien tenga el socket, sea o no del gate.** Se
+comprobó de forma involuntariamente directa al escribir los tests del check: el puerto lo
+deduce de `SERVE_URL`, así que si el servidor de test escucha ahí, `lsof -ti` devuelve
+el propio PID de pytest y el check se mataba a sí mismo (el runner moría con SIGKILL
+y sin rastro, porque el pipe a `tail` se llevaba el buffer). Por eso
+`tests/test_gate_backend.py` pone un `lsof` de stub en el `PATH`: así el `kill -9`
+queda fuera de los tests y no depende de un comportamiento que mata procesos
+arbitrarios.
+
+---
+
+## 2b. Un 3xx en los endpoints ahora es fallo
+
+**Riesgo activo: cosmético, con diagnóstico.**
+
+Al endurecer la comprobación HTTP, un endpoint que responde 307/308 (típico por una
+barra final que falta) pasó a ser rojo, antes verde. El mensaje incluye el código, así
+que la causa es evidente: se corrige añadiendo la barra final al endpoint en
+`endpoints.txt` o en `ENDPOINTS`.
+
+No se usa `curl -L` a propósito: seguir redirecciones automáticamente podría dar un
+falso 2xx sobre una ruta mal escrita.
+
 ---
 
 ## 3. `proyectos.json` no tiene versionado de esquema
