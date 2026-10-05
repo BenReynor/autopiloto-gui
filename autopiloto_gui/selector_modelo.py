@@ -93,8 +93,12 @@ class SelectorModelo(QWidget):
             else:
                 prov, idm = valor, ""
             self.cmb_proveedor.setCurrentText(prov)
+            # Siempre hay que repoblar: con las señales bloqueadas,
+            # cmb_proveedor no dispara _cargar_modelos(), y el combo de modelos
+            # se quedaba con los del proveedor anterior. Sin esto,
+            # setCurrentText("google") devolvía "google/gpt-4o-mini".
+            self._cargar_modelos(prov)
             if idm:
-                self._cargar_modelos(prov)
                 self.cmb_modelo.setCurrentText(idm)
         self.blockSignals(False)
         self._emitir()
