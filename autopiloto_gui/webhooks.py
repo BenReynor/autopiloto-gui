@@ -8,7 +8,7 @@ import json
 import urllib.request
 from typing import Any
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 
 from .proceso import Trabajo
 
@@ -30,7 +30,7 @@ class WebhookManager(QObject):
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__()
         self.config = config or {}
-        self._worker: Trabajo | None = None
+        self._workers: set[Trabajo] = set()
 
     def configurar(self, config: dict[str, Any]):
         self.config = config
@@ -60,17 +60,33 @@ class WebhookManager(QObject):
         ])
 
     def enviar(self, evento: str, datos: dict[str, Any]):
-        """Envía notificación de forma asíncrona (no bloquea UI)."""
+        """Envía notificación de forma asíncrona (no bloquea UI).
+
+        Cada envío es un QThread independiente y TODOS se mantienen referenciados
+        en `self._workers` hasta que terminan. Con un único atributo compartido,
+        dos eventos solapados (p. ej. `inicio` y `fin`, cada uno con hasta 3
+        peticiones HTTP de 10 s) se pisaban: el segundo `send()` reasignaba el
+        atributo y el primer QThread se quedaba sin referencia de Python. Como
+        `Trabajo` se crea con `parent=None`, el recolector podía liberarlo en
+        caliente y la aplicación abortaba con
+        "QThread: Destroyed while thread is still running".
+        """
         if not self.esta_activo(evento):
             return
 
         texto = self._formatear(evento, datos)
 
-        # Ejecutar en hilo de fondo
-        self._worker = Trabajo(lambda: self._enviar_todas(texto))
-        self._worker.conectar(lambda _: None)
-        self._worker.liberar(self, "_worker")
-        self._worker.start()
+        worker = Trabajo(lambda: self._enviar_todas(texto))
+        self._workers.add(worker)
+        worker.finished.connect(
+            lambda w=worker: self._workers.discard(w),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.start()
+
+    def _pendientes(self) -> int:
+        """Número de envíos aún en vuelo (diagnóstico y tests)."""
+        return sum(1 for w in self._workers if w.isRunning())
 
     def _formatear(self, evento: str, datos: dict[str, Any]) -> str:
         plantilla = self.PLANTILLAS.get(evento, "{evento}: {datos}")

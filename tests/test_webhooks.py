@@ -1,12 +1,123 @@
 #!/usr/bin/env python3
-"""Tests para webhooks.py - formateo y envío"""
+"""Tests para webhooks.py - formateo, envío y concurrencia"""
 
 import os
 import sys
+import threading
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from autopiloto_gui.webhooks import WebhookManager
+
+
+def test_envios_simultaneos_no_se_pisan(app, monkeypatch):
+    """Varios eventos a la vez deben usar hilos independientes y todos completarse.
+
+    Regresión del bug: `enviar()` guardaba el QThread en un único atributo
+    `self._worker`, así que un segundo envío reasignaba el atributo y el primer
+    hilo quedaba sin referencia de Python. Al crearse con `parent=None`, el
+    recolector podía destruirlo en caliente y abortar la aplicación con
+    "QThread: Destroyed while thread is still running".
+
+    El `Barrier` fuerza el solape real: el primer envío no puede terminar hasta
+    que los tres hayan entrado en urlopen. Con la implementación antigua sólo
+    habría un hilo, el barrier expiraría y el test fallaría.
+    """
+    enviados = []
+    barrera = threading.Barrier(3, timeout=15)
+    cuerpos = []
+
+    class _Respuesta:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def _urlopen_falso(req, timeout=None):
+        cuerpos.append(req.data.decode("utf-8"))
+        barrera.wait()
+        enviados.append("OK")
+        return _Respuesta()
+
+    monkeypatch.setattr("urllib.request.urlopen", _urlopen_falso)
+
+    wm = WebhookManager({
+        "telegram_token": "tok-secreto",
+        "telegram_chat_id": "12345",
+        "eventos": {"inicio": True, "fin": True, "tokens": True},
+    })
+
+    wm.enviar("inicio", {"proyecto": "p1", "modelo_tarea": "m1", "modelo_revisor": "m2"})
+    wm.enviar("fin", {"proyecto": "p1", "hechas": 3, "total": 3,
+                      "coste": 1.25, "duracion_min": 4.0})
+    wm.enviar("tokens", {"proyecto": "p1"})
+
+    # Los tres hilos están referenciados y vivos a la vez: el invariante que
+    # el atributo compartido incumplía.
+    assert len(wm._workers) == 3
+    assert wm._pendientes() == 3
+
+    assert _esperar(app, lambda: wm._pendientes() == 0), "los envíos no terminaron"
+
+    assert len(cuerpos) == 3, f"se esperaban 3 peticiones y hubo {len(cuerpos)}"
+    assert any("Loop iniciado" in c for c in cuerpos)
+    assert any("Loop finalizado" in c for c in cuerpos)
+    assert any("Tokens" in c for c in cuerpos)
+    assert len(enviados) == 3
+
+    # Sin fuga de referencias: el set queda vacío al terminar.
+    assert wm._workers == set()
+
+
+def test_envio_unico_deja_referencia_y_la_libera(app, monkeypatch):
+    """Un envío aislado se referencia mientras corre y se descarta al acabar."""
+    class _Respuesta:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=None: _Respuesta())
+
+    wm = WebhookManager({
+        "telegram_token": "tok",
+        "telegram_chat_id": "123",
+        "eventos": {"bloqueada": True},
+    })
+
+    wm.enviar("bloqueada", {"proyecto": "p1", "tarea": "tarea rota"})
+    assert len(wm._workers) == 1
+
+    assert _esperar(app, lambda: wm._pendientes() == 0)
+    assert wm._workers == set()
+
+
+def test_evento_no_habilitado_no_lanza_hilo():
+    """Sin evento habilitado ni credenciales, `enviar` no crea ningún trabajo."""
+    wm = WebhookManager({"eventos": {"inicio": True}})
+    wm.enviar("inicio", {"proyecto": "p1", "modelo_tarea": "m", "modelo_revisor": "m"})
+    wm.enviar("fin", {"proyecto": "p1"})
+    assert wm._workers == set()
+    assert wm._pendientes() == 0
+
+
+def _esperar(app, condicion, timeout=20.0):
+    """Bombea el bucle de eventos hasta que `condicion` sea cierta."""
+    limite = time.time() + timeout
+    while time.time() < limite:
+        app.processEvents()
+        if condicion():
+            return True
+        time.sleep(0.01)
+    app.processEvents()
+    return bool(condicion())
 
 
 def test_formateo_plantillas():
@@ -141,4 +252,5 @@ if __name__ == "__main__":
     test_eventos_activos()
     test_whatsapp_config()
     test_probar_configurada()
+    test_evento_no_habilitado_no_lanza_hilo()
     print("\n🎉 Todos los tests de webhooks.py PASARON")
