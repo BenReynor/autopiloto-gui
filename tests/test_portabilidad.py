@@ -20,7 +20,11 @@ import pytest
 RAIZ = Path(__file__).resolve().parent.parent
 SH_DIRS = [RAIZ / "autopiloto_gui", RAIZ]
 _IGNORAR = {".git", ".mypy_cache", ".pytest_cache", ".ruff_cache",
-            "venv", ".venv", "__pycache__", "node_modules"}
+            "venv", ".venv", "__pycache__", "node_modules",
+            # `pip install .` / `pip wheel` dejan build/lib/ con una copia de
+            # las plantillas: sin esto, un build local duplicaba los 12 .sh y
+            # la suite de portabilidad reportaba 48 tests de más.
+            "build", "dist", "autopiloto_gui.egg-info"}
 
 # (regex, motivo, funciones donde el uso es legítimo)
 PROHIBIDOS: list[tuple[str, str, tuple[str, ...]]] = [

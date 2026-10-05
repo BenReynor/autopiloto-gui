@@ -19,7 +19,7 @@ source venv/bin/activate
 pip install -e .
 # o manual: pip install PySide6 pyqtgraph
 
-# Dependencias de desarrollo (tests/lint/types)
+# Dependencias de desarrollo (tests/lint)
 pip install -e ".[dev]"
 
 # Ejecutar
@@ -80,6 +80,47 @@ Guarda en `~/.config/autopiloto/proyectos.json`:
 - Webhooks
 - Modelos seleccionados
 - **Ancho del sidebar** (`sidebar_ancho`)
+
+Dos datos de la ventana no van aquí, sino en el `QSettings` de Qt
+(`~/.config/autopiloto-gui/panel.conf`): la geometría de la ventana y el
+proyecto que estaba activo.
+
+El registro se escribe de forma atómica (temporal + `os.replace()`), así que
+un corte de luz a mitad de escritura no lo deja a medias. Aun así, si el
+JSON llegara a estar corrupto, la app **no arranca**: te dice dónde está el
+problema, deja una copia `proyectos.json.corrupto` (nunca pisa una anterior) y
+ofrece dos salidas:
+
+- **Salir y repararlo a mano** (por defecto): el original queda intacto y, si
+  reabres, vuelve a avisarte en vez de perder el registro en silencio.
+- **Empezar de cero**: sólo entonces se descarta el original, y la copia se
+  conserva por si hay que recuperar algo a mano.
+
+---
+
+## 📂 Agregar un proyecto que ya tiene contenido
+
+El selector de carpeta admite cualquier directorio existente, no sólo uno
+vacío. Conviene saber qué toca la app en cada caso:
+
+| | Qué hace |
+|---|---|
+| Ficheros que faltan (`plan.md`, `lecciones.md`, `.gitignore`, scripts) | Los copia de la plantilla. **Nunca pisa un fichero que ya exista.** |
+| `plan.md`, `lecciones.md`, `gate_checks/*.sh` | Son contenido tuyo. No se comparan ni se sobrescriben nunca. |
+| `autopiloto.sh`, `gate.sh`, `mapear.sh` | **Sí se sobrescriben** al abrir el proyecto si difieren de la plantilla. Si los editaste a mano, haz commit antes. |
+| Directorio sin repo git | Hace `git init -b master` y un commit inicial con lo que haya (`git add -A`). |
+
+O sea: tu código y tus documentos están a salvo; los tres scripts del
+framework se consideran código de soporte y se renuevan solos.
+
+---
+
+## 🌐 Catálogo de modelos (models.dev)
+
+Los modelos salen de `https://models.dev/api.json`, y el catálogo se cachea
+**7 días** (`modelos.CATALOGO_HORAS`). Cambiar de proveedor relanza la
+consulta; el resto de la sesión va sobre la caché, así que refrescar la GUI no
+toca la red. Si no hay red, se sirve lo cacheado y se avisa en el log.
 
 ---
 
@@ -180,11 +221,19 @@ pip install -e ".[dev]"
 QT_QPA_PLATFORM=offscreen python -m pytest tests/ -q
 
 # Lint
-python -m ruff check autopiloto_gui/
+python -m ruff check autopiloto_gui/ tests/
+
+# Smoke de instalación NO editable (la que de verdad importa: con
+# `pip install -e .` los ficheros ausentes en package-data no se notan)
+python -m pip wheel --no-deps -w /tmp/wheel . && python -m zipfile -l /tmp/wheel/*.whl
 
 # Boot test (headless)
 QT_QPA_PLATFORM=offscreen python -c "from autopiloto_gui.app import main; main()" &
 ```
+
+`[project.optional-dependencies] dev` trae `pytest` y `ruff`, nada más: no
+hay type checker en el proyecto, así que no configures mypy esperando que
+haga nada.
 
 ---
 
@@ -200,15 +249,19 @@ autopiloto_gui/
 ├── plan.py             # Modelo plan.md
 ├── proyectos.py        # Persistencia JSON (~/.config/autopiloto/)
 ├── plantillas.py       # Scaffold proyectos
-├── plantillas_data/    # Scripts .sh template
-│   ├── autopiloto.sh
-│   ├── gate.sh
-│   └── mapear.sh
-└── tests/              # 165 tests (plan, métricas, navegador, plantillas, webhooks, GUI, log/revisión, agentes, net, sensor, proceso, config, portabilidad)
+├── plantillas_data/    # Scripts .sh template + memoria inicial
+│   ├── autopiloto.sh   # loop principal
+│   ├── gate.sh         # gate de calidad
+│   ├── mapear.sh       # mapeo del repo
+│   ├── plan.md         # memoria inicial (NO se sobreescribe)
+│   ├── lecciones.md
+│   ├── .gitignore      # excluye el framework del repo del usuario
+│   └── gate_checks/    # 8 checks (db, migrations, backend, imports, tests…)
+└── tests/              # plan, métricas, plantillas, webhooks, GUI, log/revisión, agentes, net, sensor, proceso, config, portabilidad, temas/selector
 ```
 
 ---
 
 ## 📝 Licencia
 
-MIT
+MIT — texto completo en [LICENSE](LICENSE).
