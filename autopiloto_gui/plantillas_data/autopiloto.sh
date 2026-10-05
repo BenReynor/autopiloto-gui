@@ -1173,7 +1173,14 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         if [ -n "$CHANGED" ]; then
             # Subject corto (<50 chars, pág. git) + cuerpo con la tarea completa
             SUBJETO="autopiloto: $(printf '%s' "$TAREA" | cut -c1-40)"
-            if ( cd "$PROYECTO" && git add -- $CHANGED && git commit -q -m "$SUBJETO" -m "$TAREA" ); then
+            # $CHANGED puede contener saltos de línea y espacios: usar array para
+            # proteger rutas con espacios y evitar word-splitting.
+            # mapfile es bash 4+; usamos while portable.
+            changed_arr=()
+            while IFS= read -r line; do
+                [ -n "$line" ] && changed_arr+=("$line")
+            done <<< "$CHANGED"
+            if ( cd "$PROYECTO" && git add -- "${changed_arr[@]}" && git commit -q -m "$SUBJETO" -m "$TAREA" ); then
                 logx "commit en $RAMA_TAREA: $SUBJETO"
                 echo "[autopiloto] ✔ commit: $SUBJETO"
             fi
@@ -1181,16 +1188,25 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
             logx "tarea completada sin cambios nuevos"
             echo "[autopiloto] ✔ tarea completada sin cambios nuevos"
         fi
+        # Solo si el merge --ff-only tiene éxito se marca [x] y se borra la rama.
+        # Si falla, se mantiene la rama para diagnóstico y se marca [B] con lección.
         if git -C "$PROYECTO" checkout -q "$RAMA_RUN" \
             && git -C "$PROYECTO" merge -q --ff-only "$RAMA_TAREA" 2>/dev/null; then
             git -C "$PROYECTO" branch -q -d "$RAMA_TAREA"
             logx "mergeada $RAMA_TAREA -> $RAMA_RUN"
             # Actualizar mapeo.txt automáticamente tras tarea completada
             bash "$MAPEAR" > "$MAPA" 2>/dev/null && logx "mapeo.txt actualizado tras $TAREA"
+            sed -i "0,/^- \[ \]/s//- [x]/" "$PLAN"
         else
-            echo "[autopiloto] ⚠ no se pudo fusionar $RAMA_TAREA; sigue creada." | tee -a "$LOG"
+            echo "[autopiloto] ⚠ merge fallido; rama $RAMA_TAREA conservada y tarea marcada [B]." | tee -a "$LOG"
+            sed -i "0,/^- \[ \]/s//- [B]/" "$PLAN"
+            registrar_leccion \
+                "Merge fallido: ${TAREA}" \
+                "git merge --ff-only $RAMA_TAREA -> $RAMA_RUN falló; rama conservada." \
+                "La rama de la tarea sigue en $RAMA_TAREA; revisar conflictos o historial." \
+                "Resolver el merge manualmente o ajustar la base si es necesario."
+            logx "lección registrada (merge fallido)"
         fi
-        sed -i "0,/^- \[ \]/s//- [x]/" "$PLAN"
     else
         git -C "$PROYECTO" checkout -q "$RAMA_RUN"
         git -C "$PROYECTO" branch -q -D "$RAMA_TAREA"
