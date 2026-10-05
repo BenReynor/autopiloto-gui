@@ -262,6 +262,13 @@ autopiloto_gui/
 
 ---
 
+## 🐛 Bugs conocidos pendientes
+
+Defectos detectados y decididos no arreglar ahora, con su motivo y referencia al
+código: [`docs/BUGS_CONOCIDOS.md`](docs/BUGS_CONOCIDOS.md).
+
+---
+
 ## 📝 Licencia
 
 MIT — texto completo en [LICENSE](LICENSE).
