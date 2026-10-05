@@ -278,6 +278,96 @@ agente_ok() {
     [ -n "$bin" ] && command -v "$bin" >/dev/null 2>&1
 }
 
+# PID del proceso que se está esperando ahora mismo (el agente, el gate...).
+# Lo necesitan los traps para matarlo: si no, el SIGTERM de la GUI sólo llega al
+# shell y el opencode de abajo sigue gastando tokens hasta TIMEOUT_POR_TAREA.
+AGENTE_PID=""
+
+# Fichero con ese mismo PID. El gate se ejecuta como lado izquierdo de un pipe
+# (`ejecutar_esperando bash "$GATE" | tee ...`), y eso corre en un subshell donde
+# AGENTE_PID no se propaga al padre. Con el fichero, _matar_hijo lo encuentra
+# igual en los dos casos.
+#
+# Se calcula aquí, en el nivel superior, y no bajo demanda dentro de una función:
+# una asignación hecha dentro de `$(...)` se pierde en el subshell, y entonces el
+# padre no sabría ni el nombre del fichero para borrarlo al salir. `$$` es el pid
+# del script original también dentro de los subshells, así que todos coinciden.
+PID_HIJO="${TMPDIR:-/tmp}/autopiloto_hijo.$$.pid"
+
+# Mata el proceso que se está esperando y a sus nietos.
+#
+# El hijo directo es `timeout`, y el agente cuelga de él. Por eso se matan
+# también los hijos: si sólo matamos a `timeout`, el agente queda huérfano
+# siguiendo con el socket y el token. Se da un margen para el apagado limpio y
+# luego SIGKILL a quien siga vivo.
+_matar_hijo() {
+    local pid="$AGENTE_PID" kids="" i
+    if [ -z "$pid" ] && [ -r "$PID_HIJO" ]; then
+        pid="$(cat "$PID_HIJO" 2>/dev/null || true)"
+    fi
+    # Sin un pid numérico no hay nada que matar (evita `kill` con basura).
+    case "$pid" in ''|*[!0-9]*) return 0 ;; esac
+    if command -v pgrep >/dev/null 2>&1; then
+        kids="$(pgrep -P "$pid" 2>/dev/null || true)"
+    fi
+    [ -n "$kids" ] && kill -TERM $kids 2>/dev/null
+    kill -TERM "$pid" 2>/dev/null
+    for i in 1 2 3 4 5; do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        [ -n "$kids" ] && kill -KILL $kids 2>/dev/null
+        kill -KILL "$pid" 2>/dev/null
+    fi
+    AGENTE_PID=""
+    : > "$PID_HIJO"
+    return 0
+}
+
+# Ejecuta un comando en segundo plano y espera a que termine.
+#
+# Es el punto clave del bug: con el hijo en PRIMER PLANO, bash aplaza el trap
+# hasta que el hijo acaba (así lo hace un shell no interactivo), de modo que el
+# handler del SIGTERM no se ejecutaba hasta minutos después, cuando opencode ya
+# había terminado. En segundo plano `wait` sí se interrumpe por la señal, así
+# que el trap corre al instante y puede cerrar todo el árbol de procesos.
+ejecutar_esperando() {
+    local rc
+    "$@" &
+    AGENTE_PID=$!
+    printf '%s' "$AGENTE_PID" > "$PID_HIJO"
+    wait "$AGENTE_PID"
+    rc=$?
+    AGENTE_PID=""
+    : > "$PID_HIJO"
+    return "$rc"
+}
+
+# Para el loop ante SIGTERM/SIGINT: mata lo que esté corriendo, limpia las
+# sesiones una sola vez y sale con el código convencional (128+señal).
+#
+# Antes: `trap limpiar_sesiones EXIT TERM INT`. Dos fallos en una línea:
+#   1. Un trap no detiene el script. Bash ejecuta el handler y sigue con el
+#      bucle, así que la GUI tenía que recurrir a SIGKILL a los 5 s.
+#   2. Con EXIT y TERM/INT juntas, la limpieza se ejecutaba DOS veces por una
+#      sola señal (una en el trap de la señal y otra al salir).
+# `trap - ... EXIT` evita que el handler se reentre y que la limpieza se duplique.
+_terminar() {
+    trap - TERM INT EXIT
+    _matar_hijo
+    _cerrar
+    exit "${1:-143}"
+}
+
+# Cierre common a las dos salidas: fin de bucle, break, error o señal.
+_cerrar() {
+    trap - EXIT
+    limpiar_sesiones
+    [ -n "$PID_HIJO" ] && rm -f "$PID_HIJO"
+    return 0
+}
+
 # Limpia las sesiones de opencode que este run haya creado en el proyecto.
 # Criterio: directory == PROYECTO y time_created >= INICIO_MS del run.
 # Se ejecuta al salir (loop completo, break, error o detención manual).
@@ -287,19 +377,27 @@ limpiar_sesiones() {
     [ -n "$bin" ] || return 0
     command -v "$bin" >/dev/null 2>&1 || return 0
     command -v jq >/dev/null 2>&1 || return 0
-    ids="$("$bin" session list --format json 2>/dev/null | jq -r \
+    # `timeout` porque esta función está en el camino de parada: si la CLI se
+    # queda colgada, el script no podría ni limpiar ni salir, y "Detener" desde
+    # la GUI dejaría de responder. Perder la limpieza es mejor que no salir.
+    ids="$(timeout 20 "$bin" session list --format json 2>/dev/null | jq -r \
         --arg dir "$PROYECTO" --argjson desde "$INICIO_MS" \
         '.[] | select(.directory == $dir and .created >= $desde) | .id')"
     [ -n "$ids" ] || return 0
     while IFS= read -r id; do
         [ -z "$id" ] && continue
-        "$bin" session delete "$id" >/dev/null 2>&1
+        timeout 20 "$bin" session delete "$id" >/dev/null 2>&1
         n=$((n + 1))
     done <<< "$ids"
     SESIONES_LIMPIADAS=$n
     [ "$n" -gt 0 ] && echo "[autopiloto] 🧹 Sesiones opencode eliminadas: $n" | tee -a "$LOG"
+    return 0
 }
-trap limpiar_sesiones EXIT TERM INT
+# El código va dentro de la cadena porque `trap` no admite argumentos: el
+# handler se ejecuta tal cual, así que _terminar recibe 143/130 como $1.
+trap '_terminar 143' TERM
+trap '_terminar 130' INT
+trap _cerrar EXIT
 
 # Ejecuta una tarea con cualquier agente. Devuelve su exit code.
 #   $1 = agente (opencode|codex|claude)
@@ -323,9 +421,13 @@ run_agente() {
     case "$agente" in
         opencode)
             if [ -n "$modelo" ]; then
-                timeout "$TIMEOUT_POR_TAREA" "$bin" run --agent "${OPENCODE_AGENT_TAREA:-build}" --model "$modelo" "$@" > "$salida" 2> "$salida_err"
+                ejecutar_esperando timeout "$TIMEOUT_POR_TAREA" "$bin" run \
+                    --agent "${OPENCODE_AGENT_TAREA:-build}" --model "$modelo" "$@" \
+                    > "$salida" 2> "$salida_err"
             else
-                timeout "$TIMEOUT_POR_TAREA" "$bin" run --agent "${OPENCODE_AGENT_TAREA:-build}" "$@" > "$salida" 2> "$salida_err"
+                ejecutar_esperando timeout "$TIMEOUT_POR_TAREA" "$bin" run \
+                    --agent "${OPENCODE_AGENT_TAREA:-build}" "$@" \
+                    > "$salida" 2> "$salida_err"
             fi
             rc=$?
             ;;
@@ -335,14 +437,14 @@ run_agente() {
             # prompt, dejando el prompt real como segundo posicional.
             local -a flags=()
             [ -n "${CODEX_FLAGS:-}" ] && read -r -a flags <<< "$CODEX_FLAGS"
-            timeout "$TIMEOUT_POR_TAREA" "$bin" exec --skip-git-repo-check \
+            ejecutar_esperando timeout "$TIMEOUT_POR_TAREA" "$bin" exec --skip-git-repo-check \
                 ${flags[@]+"${flags[@]}"} "$@" > "$salida" 2> "$salida_err"
             rc=$?
             ;;
         claude)
             local -a flags=()
             [ -n "${CLAUDE_FLAGS:-}" ] && read -r -a flags <<< "$CLAUDE_FLAGS"
-            timeout "$TIMEOUT_POR_TAREA" "$bin" -p --output-format text \
+            ejecutar_esperando timeout "$TIMEOUT_POR_TAREA" "$bin" -p --output-format text \
                 ${flags[@]+"${flags[@]}"} "$@" > "$salida" 2> "$salida_err"
             rc=$?
             ;;
@@ -411,15 +513,19 @@ MODELOS: Modulo.servicio"
     local salida_err="${salida}.err"
     case "$agente" in
         opencode)
-            timeout "$TIMEOUT_NAVEGADOR" "$bin" run --agent "${OPENCODE_AGENT_NAV:-navigate}" --model "$modelo" "$prompt" > "$salida" 2> "$salida_err"
+            ejecutar_esperando timeout "$TIMEOUT_NAVEGADOR" "$bin" run \
+                --agent "${OPENCODE_AGENT_NAV:-navigate}" --model "$modelo" "$prompt" \
+                > "$salida" 2> "$salida_err"
             rc=$?
             ;;
         codex)
-            timeout "$TIMEOUT_NAVEGADOR" "$bin" exec --skip-git-repo-check "$prompt" > "$salida" 2> "$salida_err"
+            ejecutar_esperando timeout "$TIMEOUT_NAVEGADOR" "$bin" exec \
+                --skip-git-repo-check "$prompt" > "$salida" 2> "$salida_err"
             rc=$?
             ;;
         claude)
-            timeout "$TIMEOUT_NAVEGADOR" "$bin" -p --output-format text "$prompt" > "$salida" 2> "$salida_err"
+            ejecutar_esperando timeout "$TIMEOUT_NAVEGADOR" "$bin" -p \
+                --output-format text "$prompt" > "$salida" 2> "$salida_err"
             rc=$?
             ;;
         *)
@@ -1000,7 +1106,7 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         logx "GATE: ejecutando gate.sh (intento $intento)"
         GATE_OUT="$(mktemp)"
         # tee: la salida del gate se ve en vivo Y se guarda para el feedback
-        if bash "$GATE" 2>&1 | tee "$GATE_OUT"; then
+        if ejecutar_esperando bash "$GATE" 2>&1 | tee "$GATE_OUT"; then
             if [ "$REVISION_DUAL" = "1" ] && [ -n "$REVISOR" ]; then
                 COSTO_ITER_ACTUAL="$(num -v t="$COSTO_ITER_ACTUAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a/2}')"
                 if revisar_diff "$REVISOR"; then

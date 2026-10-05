@@ -48,6 +48,23 @@ def _leer_plantilla():
         return f.read()
 
 
+# run_agente depende de ejecutar_esperando y de las variables AGENTE_PID/
+# PID_HIJO. Cualquier harness que lo extraiga debe incluir estas piezas, o
+# obtendrá "command not found" (rc=127) en vez del código de salida real.
+_PRELUPIO_RUN_AGENTE = (
+    'AGENTE_PID=""\nPID_HIJO="${TMPDIR:-/tmp}/harness_agente.$$.pid"\n'
+    + _extraer_funcion(_leer_plantilla(), "ejecutar_esperando") + "\n\n"
+)
+
+
+def _extraer_run_agente(texto, *extras):
+    """Bloque listo para `run_agente` con sus dependencias."""
+    partes = [_PRELUPIO_RUN_AGENTE]
+    partes += [_extraer_funcion(texto, n) for n in extras]
+    partes.append(_extraer_funcion(texto, "run_agente"))
+    return "\n\n".join(partes)
+
+
 def _valor_control():
     """Saca el valor real de CONTROL= de la plantilla para no duplicarlo."""
     for linea in _leer_plantilla().splitlines():
@@ -390,6 +407,12 @@ def _harness_run_agente(tmp_path, agent_stub_body, modelo="", metrica_real=True)
         _extraer_funcion(texto, "detectar_agente"),
         _extraer_funcion(texto, "cli_agente"),
         _extraer_funcion(texto, "agente_ok"),
+        # run_agente llama a ejecutar_esperando, que es la que pone al hijo en
+        # segundo plano para que un SIGTERM no espere a que termine. Sin ella
+        # aquí, el harness daría 127 (command not found) y los asserts de los
+        # tests pasarían a comprobar el error equivocado.
+        'AGENTE_PID=""\nPID_HIJO="${TMPDIR:-/tmp}/harness_agente.$$.pid"\n',
+        _extraer_funcion(texto, "ejecutar_esperando"),
         _extraer_funcion(texto, "run_agente"),
         metricas,
         "logx() { :; }\n"
@@ -433,7 +456,7 @@ def test_claude_usa_modo_print_y_sin_modelo(tmp_path):
     texto = _leer_plantilla()
     (tmp_path / "func.sh").write_text("\n\n".join([
         _extraer_funcion(texto, "cli_agente"),
-        _extraer_funcion(texto, "run_agente"),
+        _extraer_run_agente(texto),
         "_registrar_metrica() { :; }\n",
     ]), encoding="utf-8")
     d = tmp_path / "bin"
@@ -464,7 +487,7 @@ def test_claude_no_recibe_argumento_vacio(tmp_path):
     texto = _leer_plantilla()
     (tmp_path / "func.sh").write_text("\n\n".join([
         _extraer_funcion(texto, "cli_agente"),
-        _extraer_funcion(texto, "run_agente"),
+        _extraer_run_agente(texto),
         "_registrar_metrica() { :; }\n",
     ]), encoding="utf-8")
     d = tmp_path / "bin"
@@ -493,7 +516,7 @@ def test_codex_recibe_flags_sin_argumentos_vacios(tmp_path):
     texto = _leer_plantilla()
     (tmp_path / "func.sh").write_text("\n\n".join([
         _extraer_funcion(texto, "cli_agente"),
-        _extraer_funcion(texto, "run_agente"),
+        _extraer_run_agente(texto),
         "_registrar_metrica() { :; }\n",
     ]), encoding="utf-8")
     d = tmp_path / "bin"
