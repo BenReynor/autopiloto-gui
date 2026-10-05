@@ -4,6 +4,7 @@ import filecmp
 import os
 import shutil
 import subprocess
+from datetime import datetime
 
 PLANTILLA_DIR = os.path.join(os.path.dirname(__file__), "plantillas_data")
 SCRIPTS = ("autopiloto.sh", "gate.sh", "mapear.sh")
@@ -192,12 +193,23 @@ def quitar_framework_del_git(ruta):
 
 
 def actualizar(ruta):
-    """Sobrescribe plantillas que difieren. Devuelve lista de actualizados."""
+    """Sobrescribe plantillas que difieren. Devuelve lista de actualizados.
+
+    Antes de sobrescribir cada script, crea un backup timestamped
+    (p.ej. autopiloto.sh.bak.20261005_123456) para poder revertir manualmente
+    si la actualización rompe algo.
+    """
     actualizados = []
     for nombre in _desactualizados(ruta):
-        shutil.copy2(os.path.join(PLANTILLA_DIR, nombre), os.path.join(ruta, nombre))
+        dst = os.path.join(ruta, nombre)
+        # Backup timestamped antes de sobrescribir
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup = f"{dst}.bak.{ts}"
+        shutil.copy2(dst, backup)
+        # Copia la plantilla nueva
+        shutil.copy2(os.path.join(PLANTILLA_DIR, nombre), dst)
         if nombre.endswith(".sh"):
-            os.chmod(os.path.join(ruta, nombre), 0o755)
+            os.chmod(dst, 0o755)
         actualizados.append(nombre)
     return actualizados
 
