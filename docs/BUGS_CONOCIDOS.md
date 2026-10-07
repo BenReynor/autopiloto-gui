@@ -114,6 +114,8 @@ git -C <proyecto> branch --delete --force <rama>
 [README](../README.md#-compatibilidad).
 
 - Linux es la plataforma de referencia y la única con verificación completa.
-- macOS es parcial: las plantillas usan `sed -i` y `timeout` con sintaxis GNU, así que
-  requieren GNU coreutils (`gsed`, `gtimeout`) en macOS.
+- macOS ya no exige GNU coreutils: `timeout` → `_timeout` (GNU/gtimeout/respaldo
+  bash) y `sed -i "0,/…/"` → `marcar_plan` (awk+cat), con tests que impiden
+  regresiones. Falta verificar en un Mac real y empaquetar el `.dmg`; el sensor
+  térmico (`/sys/class/thermal`) no existe allí y degrada a "sin dato".
 - Windows no tiene soporte: el backend es un script bash y los agentes CLI son Unix.

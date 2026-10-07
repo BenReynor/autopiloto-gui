@@ -147,7 +147,7 @@ Los scripts `autopiloto.sh`, `gate.sh`, `mapear.sh` se copian automáticamente a
 | SO | Estado |
 |----|--------|
 | **Linux** | ✅ Funciona. Es el entorno de referencia y donde corre CI. |
-| **macOS** | ⚠️ Parcial. Las plantillas ya no usan construcciones exclusivas de GNU (`seq`, `date +%3N`, `head -n -1`, `find -printf`, `${VAR^^}`, `ping -W`), pero **todavía falla** por: `timeout` (no viene en macOS), `sed -i "0,/…/"` (extensión GNU: el marcado `[x]/[B]` del plan no se aplica) y `/sys/class/thermal` en el sensor. |
+| **macOS** | ⚠️ Parcial. Ya no exige GNU coreutils: `timeout` → `_timeout` (GNU/gtimeout/respaldo bash que devuelve 124) y `sed -i "0,/…/"` → `marcar_plan` (awk+cat, conserva permisos), con tests que impiden regresiones. Queda el sensor térmico (`/sys/class/thermal`, sólo Linux; degrada a "sin dato") y la verificación en un Mac real + el `.dmg`. |
 | **Windows** | ❌ No. Las plantillas son bash puro y la GUI las lanza con `bash`. Haría falta WSL2/Git Bash. Además la GUI concatena el PATH con `:` en vez de `os.pathsep` y busca los CLI sin `.exe`. |
 
 Lo que sí es independiente del SO desde ya: los finales de línea de los `.sh`
@@ -159,7 +159,8 @@ inválido).
 `tests/test_portabilidad.py` es el guardarraíl: falla si alguien reintroduce una
 construcción no portable, y un job de CI en `macos-latest` ejecuta ese lint
 contra los binutils de BSD de verdad. La allowlist de bloqueos pendientes
-(sólo macOS/Windows) está al final de ese fichero, con el motivo de cada uno.
+(sólo Windows; la de macOS quedó vacía al portar `timeout` y el marcado del
+plan) está al final de ese fichero, con el motivo de cada uno.
 
 ---
 

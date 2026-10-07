@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -24,7 +25,11 @@ _IGNORAR = {".git", ".mypy_cache", ".pytest_cache", ".ruff_cache",
             # `pip install .` / `pip wheel` dejan build/lib/ con una copia de
             # las plantillas: sin esto, un build local duplicaba los 12 .sh y
             # la suite de portabilidad reportaba 48 tests de más.
-            "build", "dist", "autopiloto_gui.egg-info"}
+            "build", "dist", "autopiloto_gui.egg-info",
+            # build_linux.sh desempaqueta en packaging/out/ copias de los .sh
+            # del build anterior: analizan el fichero viejo y fallan (ningún
+            # .sh del repo vive bajo un directorio llamado `out`).
+            "out"}
 
 # (regex, motivo, funciones donde el uso es legítimo)
 PROHIBIDOS: list[tuple[str, str, tuple[str, ...]]] = [
@@ -39,6 +44,11 @@ PROHIBIDOS: list[tuple[str, str, tuple[str, ...]]] = [
     (r"\$\{[A-Za-z_][A-Za-z_0-9]*\^\^?\}", "expansión ^ es bash 4+; usa tr", ()),
     (r"\$\{[A-Za-z_][A-Za-z_0-9]*,[^}]*\}", "expansión {a,b} es bash 4+", ()),
     (r"readarray|mapfile", "readarray/mapfile son bash 4+", ()),
+    # Resueltos para macOS: pasan a PROHIBIDOS para que no vuelvan.
+    (r"\btimeout\s+[0-9]",
+     "`timeout` no existe en macOS (BSD); usa _timeout()", ()),
+    (r"sed -i \"0,/",
+     "`sed 0,/re/` es extensión GNU; usa marcar_plan()", ()),
 ]
 
 
@@ -112,13 +122,12 @@ def test_ejecutable(path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Pendientes conocidos: bloquean macOS/Windows y aún NO están resueltos.
+# Pendientes conocidos: bloquean Windows y aún NO están resueltos.
 # Si desaparecen, bórralos de aquí (el lint de arriba impide que vuelvan).
+# macOS ya está resuelto: `timeout` y `sed 0,/` tienen alternativas portables
+# (_timeout y marcar_plan) y ahora están en PROHIBIDOS, no aquí.
 # ---------------------------------------------------------------------------
-PENDIENTES_MACOS = {
-    "timeout": "`timeout` no viene en macOS ni en Windows nativo (autopiloto.sh, 98_criterio.sh)",
-    'sed -i "0,/': "`sed -i 0,/x/` es extensión GNU: el marcado [x]/[B] del plan no se aplica en BSD",
-}
+PENDIENTES_MACOS: set[str] = set()
 PENDIENTES_WINDOWS = {
     "bash": "las plantillas son bash: en Windows hace falta WSL2 o Git Bash",
     "QProcess(\"bash\")": "la GUI lanza `bash`: en Windows requiere bash.exe en el PATH",
@@ -129,14 +138,14 @@ PENDIENTES_WINDOWS = {
 def test_pendientes_documentados_no_ocultan_nada_nuevo():
     """Guardarraíl: la allowlist de pendientes debe existir y ser explícita,
     para que quede a la vista lo que aún impide macOS/Windows."""
-    assert set(PENDIENTES_MACOS) == {"timeout", 'sed -i "0,/'}
+    assert PENDIENTES_MACOS == set(), (
+        "macOS quedó resuelto: timeout/sed ya no deben estar en pendientes")
     assert set(PENDIENTES_WINDOWS) == {
         "bash", 'QProcess("bash")', "os.pathsep"}
-    # `timeout` y `sed -i 0,/` están permitidos a propósito: NO deben estar
-    # en PROHIBIDOS hasta que se resuelvan.
+    # Resueltos: ahora están PROHIBIDOS para que no se reintroduzcan.
     prohibidos = " | ".join(p for p, _, _ in PROHIBIDOS)
-    assert "timeout" not in prohibidos
-    assert r"sed -i \"0,/" not in prohibidos
+    assert "timeout" in prohibidos
+    assert r"sed -i \"0,/" in prohibidos
 
 
 def test_gitattributes_fuerza_lf_para_sh():
@@ -250,3 +259,104 @@ def test_registrar_metrica_falla_sin_lc_all_c(tmp_path):
     assert r.returncode != 0, (
         "el printf de bash aceptó el punto: revisa que el locale de es_ES "
         "siga.teniendo coma decimal")
+
+
+# ---------------------------------------------------------------------------
+# Helpers portables: _timeout y marcar_plan (macOS base no trae GNU)
+# ---------------------------------------------------------------------------
+
+def _extraer_bloque(nombre: str) -> str:
+    texto = _AUTOPILOTO.read_text(encoding="utf-8")
+    ini = texto.index(f"{nombre}() {{")
+    fin = texto.index("\n}", ini) + 2
+    return texto[ini:fin]
+
+
+@pytest.mark.parametrize("marca,esperado", [
+    ("x", "- [x] #1 primera"),
+    ("B", "- [B] #1 primera"),
+])
+def test_marcar_plan_portable(tmp_path, marca, esperado):
+    """Sustituye a `sed -i "0,/^- \\[ \\]/s//- [x]/"` (GNU) con awk+cat (POSIX):
+    marca SOLO la primera tarea pendiente y conserva los permisos del plan."""
+    plan = tmp_path / "plan.md"
+    plan.write_text(
+        "# PLAN\n\n- [x] #0 ya hecha\n- [ ] #1 primera\ncriterio: ok\n"
+        "- [ ] #2 segunda\n", encoding="utf-8")
+    os.chmod(plan, 0o644)
+    prog = "\n".join([
+        f'PLAN="{plan}"',
+        _extraer_bloque("marcar_plan"),
+        f"marcar_plan {marca}",
+    ])
+    r = subprocess.run(["bash", "-c", prog], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    lineas = plan.read_text(encoding="utf-8").splitlines()
+    assert esperado in lineas, lineas
+    assert "- [ ] #2 segunda" in lineas, "no debe tocar la tarea siguiente"
+    # la fixture ya tiene #0 hecha: `x` suma una, `B` no suma `[x]` ninguna
+    esperadas = 2 if marca == "x" else 1
+    assert sum(1 for ln in lineas if ln.startswith("- [x]")) == esperadas
+    assert plan.stat().st_mode & 0o777 == 0o644, (
+        "`cat > fichero` debe conservar los permisos del plan")
+
+
+def test_marcar_plan_con_plan_vacio_no_revienta(tmp_path):
+    plan = tmp_path / "plan.md"
+    plan.write_text("# PLAN\n\n- [x] #0 ya todo hecho\n", encoding="utf-8")
+    prog = "\n".join([
+        f'PLAN="{plan}"',
+        _extraer_bloque("marcar_plan"),
+        "marcar_plan x",
+        "echo rc=$?",
+    ])
+    r = subprocess.run(["bash", "-c", prog], capture_output=True, text=True)
+    assert "rc=0" in r.stdout, r.stderr
+    assert plan.read_text(encoding="utf-8").count("- [x]") == 1
+
+
+def test_timeout_con_gnu_devuelve_124_y_completa(tmp_path):
+    """Rama GNU (Linux/CI): idéntico al `timeout` de antes, 124 al colgarse."""
+    prog = "\n".join([
+        _extraer_bloque("_timeout"),
+        "_timeout 1 sleep 30",
+        'echo "rc=$?"',
+        "_timeout 10 true",
+        'echo "ok=$?"',
+    ])
+    r = subprocess.run(["bash", "-c", prog], capture_output=True, text=True,
+                       timeout=30)
+    assert "rc=124" in r.stdout, r.stdout + r.stderr
+    assert "ok=0" in r.stdout, r.stdout + r.stderr
+
+
+def test_timeout_fallback_de_124_y_mata_al_hijo(tmp_path):
+    """Sin `timeout` ni `gtimeout` en el PATH (macOS base): respaldo en bash
+    puro que debe devolver 124 y dejar al hijo muerto, como GNU."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    sleep_real = shutil.which("sleep")
+    assert sleep_real, "el runner no tiene sleep"
+    (bin_dir / "sleep").symlink_to(sleep_real)
+    dormir = bin_dir / "dormir"
+    dormir.write_text(
+        '#!/bin/bash\n'
+        'echo $$ > "$PIDF"\n'
+        'exec sleep 30\n', encoding="utf-8")
+    os.chmod(dormir, 0o755)
+    pidf = tmp_path / "pid.txt"
+    prog = "\n".join([
+        f'PATH="{bin_dir}"',  # ni timeout ni gtimeout se encuentran
+        f'PIDF="{pidf}"',
+        "export PIDF",
+        _extraer_bloque("_timeout"),
+        "_timeout 1 dormir",
+        'echo "rc=$?"',
+    ])
+    r = subprocess.run(["bash", "-c", prog], capture_output=True, text=True,
+                       timeout=30)
+    assert "rc=124" in r.stdout, r.stdout + r.stderr
+    assert pidf.is_file(), "el hijo ni siquiera arrancó"
+    pid = int(pidf.read_text().strip())
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)

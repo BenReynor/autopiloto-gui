@@ -2,6 +2,9 @@
 INFORME COMPLETO — autopiloto-gui
 Estado del proyecto tras los arreglos A–F
 Fecha: 2026-10-06
+Nota (2026-10-07): informe congelado en su fecha. El estado vivo (portabilidad
+macOS resuelta, seguridad endurecida, packaging Linux) está en README.md
+(Compatibilidad) y docs/BUGS_CONOCIDOS.md.
 ================================================================================
 
 1. RESUMEN EJECUTIVO

@@ -53,6 +53,10 @@ def _leer_plantilla():
 # obtendrá "command not found" (rc=127) en vez del código de salida real.
 _PRELUPIO_RUN_AGENTE = (
     'AGENTE_PID=""\nPID_HIJO="${TMPDIR:-/tmp}/harness_agente.$$.pid"\n'
+    # run_agente envuelve al agente en _timeout (portable); sin ella en el
+    # harness, `"$@" &` daría 127 (command not found) y no se probaría el
+    # código real.
+    + _extraer_funcion(_leer_plantilla(), "_timeout") + "\n\n"
     + _extraer_funcion(_leer_plantilla(), "ejecutar_esperando") + "\n\n"
 )
 
@@ -412,6 +416,8 @@ def _harness_run_agente(tmp_path, agent_stub_body, modelo="", metrica_real=True)
         # aquí, el harness daría 127 (command not found) y los asserts de los
         # tests pasarían a comprobar el error equivocado.
         'AGENTE_PID=""\nPID_HIJO="${TMPDIR:-/tmp}/harness_agente.$$.pid"\n',
+        # run_agente envuelve al agente en _timeout (portable, ver _PRELUPIO).
+        _extraer_funcion(texto, "_timeout"),
         _extraer_funcion(texto, "ejecutar_esperando"),
         _extraer_funcion(texto, "run_agente"),
         metricas,

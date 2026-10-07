@@ -325,6 +325,72 @@ _matar_hijo() {
     return 0
 }
 
+# `timeout` con portabilidad: GNU timeout > gtimeout (coreutils de Homebrew)
+# > respaldo en bash puro. macOS no trae `timeout` (BSD), y sin esto TODO
+# lanzamiento de agente saldría con rc=127 allí.
+#
+# El respaldo lanza el comando en segundo plano y lo mata pasados los
+# segundos, devolviendo 124 como hace GNU timeout (el script detecta ese
+# código para avisar de la tarea colgada).
+#
+# OJO con el `exec` de la rama GNU: ejecutar_esperando() llama a esto como
+# `"$@" &`, así que el subshell queda REEMPLAZADO por timeout y el árbol de
+# procesos es idéntico al de antes (AGENTE_PID apunta a timeout, no a un
+# wrapper intermedio que escondería al agente de _matar_hijo). Por eso sólo
+# se hace exec cuando estamos en subshell ($BASHPID != $$): una llamada en
+# primer plano no debe reemplazar al script.
+_timeout() {
+    local segs="$1" pid i=0 j
+    shift
+    if command -v timeout >/dev/null 2>&1; then
+        if [ "$BASHPID" != "$$" ]; then
+            exec timeout "$segs" "$@"
+        fi
+        timeout "$segs" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        if [ "$BASHPID" != "$$" ]; then
+            exec gtimeout "$segs" "$@"
+        fi
+        gtimeout "$segs" "$@"
+    else
+        "$@" &
+        pid=$!
+        while kill -0 "$pid" 2>/dev/null; do
+            if [ "$i" -ge "$segs" ]; then
+                kill -TERM "$pid" 2>/dev/null || true
+                j=0
+                while kill -0 "$pid" 2>/dev/null && [ "$j" -lt 1 ]; do
+                    sleep 1
+                    j=$((j + 1))
+                done
+                kill -KILL "$pid" 2>/dev/null || true
+                wait "$pid" 2>/dev/null || true
+                return 124
+            fi
+            i=$((i + 1))
+            sleep 1
+        done
+        wait "$pid"
+        return $?
+    fi
+}
+
+# Marca la primera tarea pendiente del plan.md con la marca dada ([x] o [B]).
+#
+# `sed -i "0,/patrón/"` es una extensión GNU: en macOS (BSD sed) ni compila,
+# y el marcado de tareas caería en silencio. awk + cat hace lo mismo con
+# POSIX, y `cat > fichero` (en vez de mv del temporal) conserva el inode y
+# los permisos del plan.md del usuario.
+marcar_plan() {
+    local marca="$1" tmp
+    tmp="$(mktemp)" || return 1
+    awk -v nueva="- [$marca]" '
+        !hecho && $0 ~ /^- \[ \]/ { sub(/^- \[ \]/, nueva); hecho = 1 }
+        { print }
+    ' "$PLAN" > "$tmp" && cat "$tmp" > "$PLAN"
+    rm -f "$tmp"
+}
+
 # Ejecuta un comando en segundo plano y espera a que termine.
 #
 # Es el punto clave del bug: con el hijo en PRIMER PLANO, bash aplaza el trap
@@ -377,16 +443,17 @@ limpiar_sesiones() {
     [ -n "$bin" ] || return 0
     command -v "$bin" >/dev/null 2>&1 || return 0
     command -v jq >/dev/null 2>&1 || return 0
-    # `timeout` porque esta función está en el camino de parada: si la CLI se
-    # queda colgada, el script no podría ni limpiar ni salir, y "Detener" desde
-    # la GUI dejaría de responder. Perder la limpieza es mejor que no salir.
-    ids="$(timeout 20 "$bin" session list --format json 2>/dev/null | jq -r \
+    # `_timeout` (portable) porque esta función está en el camino de parada: si
+    # la CLI se queda colgada, el script no podría ni limpiar ni salir, y
+    # "Detener" desde la GUI dejaría de responder. Perder la limpieza es mejor
+    # que no salir.
+    ids="$(_timeout 20 "$bin" session list --format json 2>/dev/null | jq -r \
         --arg dir "$PROYECTO" --argjson desde "$INICIO_MS" \
         '.[] | select(.directory == $dir and .created >= $desde) | .id')"
     [ -n "$ids" ] || return 0
     while IFS= read -r id; do
         [ -z "$id" ] && continue
-        timeout 20 "$bin" session delete "$id" >/dev/null 2>&1
+        _timeout 20 "$bin" session delete "$id" >/dev/null 2>&1
         n=$((n + 1))
     done <<< "$ids"
     SESIONES_LIMPIADAS=$n
@@ -421,11 +488,11 @@ run_agente() {
     case "$agente" in
         opencode)
             if [ -n "$modelo" ]; then
-                ejecutar_esperando timeout "$TIMEOUT_POR_TAREA" "$bin" run \
+                ejecutar_esperando _timeout "$TIMEOUT_POR_TAREA" "$bin" run \
                     --agent "${OPENCODE_AGENT_TAREA:-build}" --model "$modelo" "$@" \
                     > "$salida" 2> "$salida_err"
             else
-                ejecutar_esperando timeout "$TIMEOUT_POR_TAREA" "$bin" run \
+                ejecutar_esperando _timeout "$TIMEOUT_POR_TAREA" "$bin" run \
                     --agent "${OPENCODE_AGENT_TAREA:-build}" "$@" \
                     > "$salida" 2> "$salida_err"
             fi
@@ -437,14 +504,14 @@ run_agente() {
             # prompt, dejando el prompt real como segundo posicional.
             local -a flags=()
             [ -n "${CODEX_FLAGS:-}" ] && read -r -a flags <<< "$CODEX_FLAGS"
-            ejecutar_esperando timeout "$TIMEOUT_POR_TAREA" "$bin" exec --skip-git-repo-check \
+            ejecutar_esperando _timeout "$TIMEOUT_POR_TAREA" "$bin" exec --skip-git-repo-check \
                 ${flags[@]+"${flags[@]}"} "$@" > "$salida" 2> "$salida_err"
             rc=$?
             ;;
         claude)
             local -a flags=()
             [ -n "${CLAUDE_FLAGS:-}" ] && read -r -a flags <<< "$CLAUDE_FLAGS"
-            ejecutar_esperando timeout "$TIMEOUT_POR_TAREA" "$bin" -p --output-format text \
+            ejecutar_esperando _timeout "$TIMEOUT_POR_TAREA" "$bin" -p --output-format text \
                 ${flags[@]+"${flags[@]}"} "$@" > "$salida" 2> "$salida_err"
             rc=$?
             ;;
@@ -513,18 +580,18 @@ MODELOS: Modulo.servicio"
     local salida_err="${salida}.err"
     case "$agente" in
         opencode)
-            ejecutar_esperando timeout "$TIMEOUT_NAVEGADOR" "$bin" run \
+            ejecutar_esperando _timeout "$TIMEOUT_NAVEGADOR" "$bin" run \
                 --agent "${OPENCODE_AGENT_NAV:-navigate}" --model "$modelo" "$prompt" \
                 > "$salida" 2> "$salida_err"
             rc=$?
             ;;
         codex)
-            ejecutar_esperando timeout "$TIMEOUT_NAVEGADOR" "$bin" exec \
+            ejecutar_esperando _timeout "$TIMEOUT_NAVEGADOR" "$bin" exec \
                 --skip-git-repo-check "$prompt" > "$salida" 2> "$salida_err"
             rc=$?
             ;;
         claude)
-            ejecutar_esperando timeout "$TIMEOUT_NAVEGADOR" "$bin" -p \
+            ejecutar_esperando _timeout "$TIMEOUT_NAVEGADOR" "$bin" -p \
                 --output-format text "$prompt" > "$salida" 2> "$salida_err"
             rc=$?
             ;;
@@ -1196,10 +1263,10 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
             logx "mergeada $RAMA_TAREA -> $RAMA_RUN"
             # Actualizar mapeo.txt automáticamente tras tarea completada
             bash "$MAPEAR" > "$MAPA" 2>/dev/null && logx "mapeo.txt actualizado tras $TAREA"
-            sed -i "0,/^- \[ \]/s//- [x]/" "$PLAN"
+            marcar_plan x
         else
             echo "[autopiloto] ⚠ merge fallido; rama $RAMA_TAREA conservada y tarea marcada [B]." | tee -a "$LOG"
-            sed -i "0,/^- \[ \]/s//- [B]/" "$PLAN"
+            marcar_plan B
             registrar_leccion \
                 "Merge fallido: ${TAREA}" \
                 "git merge --ff-only $RAMA_TAREA -> $RAMA_RUN falló; rama conservada." \
@@ -1211,7 +1278,7 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         git -C "$PROYECTO" checkout -q "$RAMA_RUN"
         git -C "$PROYECTO" branch -q -D "$RAMA_TAREA"
         revertir "$BEFORE" "$AFTER"
-        sed -i "0,/^- \[ \]/s//- [B]/" "$PLAN"
+        marcar_plan B
         logx "tarea BLOQUEADA: $TAREA (rama $RAMA_TAREA descartada)"
         echo "[autopiloto] ✗ tarea bloqueada tras $MAX_REINTENTOS intentos. Marcada [B] en plan.md"
         alerta "Tarea bloqueada: $TAREA"
