@@ -19,11 +19,20 @@ _MEIPASS/autopiloto_gui/.
 """
 
 import os
+import re
+import sys
 from pathlib import Path
 
 SPEC_DIR = Path(SPECPATH).resolve()          # noqa: F821 (inyectado por PyInstaller)
 RAIZ = SPEC_DIR.parent                        # raíz del repo
 PAQUETE = RAIZ / "autopiloto_gui"
+
+# Versión desde pyproject.toml (misma fuente que build_*.sh).
+VERSION = re.search(
+    r'^version\s*=\s*"([^"]+)"',
+    (RAIZ / "pyproject.toml").read_text(encoding="utf-8"),
+    re.M,
+).group(1)
 
 # --- datos del paquete -----------------------------------------------------
 # rglob("*") sí incluye los .gitignore (los globs de package-data de
@@ -70,7 +79,8 @@ exe = EXE(
     exclude_binaries=True,
     name="autopiloto-gui",
     console=False,          # app de escritorio; el log va a progreso.log
-    icon=str(PAQUETE / "icono.svg") if os.name == "nt" else None,
+    # Windows exige .ico (el .svg no sirve); se genera con make_iconos.py.
+    icon=str(SPEC_DIR / "icono.ico") if os.name == "nt" else None,
     disable_windowed_traceback=False,
 )
 
@@ -82,3 +92,20 @@ coll = COLLECT(
     upx=False,              # UPX revienta firmas Qt y antivirus lo marcaban
     name="autopiloto-gui",
 )
+
+# En macOS el artefacto es un .app de verdad (icono icns, identificador y
+# versión para Finder, codesign y notarización). Sólo el onedir suelto no se
+# puede firmar. Se genera además el .dmg en build_macos.sh.
+if sys.platform == "darwin":
+    app = BUNDLE(
+        coll,
+        name="Autopiloto.app",
+        icon=str(SPEC_DIR / "icono.icns"),
+        bundle_identifier="io.github.benreynor.autopiloto",
+        info_plist={
+            "CFBundleShortVersionString": VERSION,
+            "NSHighResolutionCapable": True,
+            "LSApplicationCategoryType": "public.app-category.developer-tools",
+            "NSHumanReadableCopyright": "Copyright (c) 2026 BenReynor",
+        },
+    )

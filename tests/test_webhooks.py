@@ -20,12 +20,16 @@ def test_envios_simultaneos_no_se_pisan(app, monkeypatch):
     recolector podía destruirlo en caliente y abortar la aplicación con
     "QThread: Destroyed while thread is still running".
 
-    El `Barrier` fuerza el solape real: el primer envío no puede terminar hasta
-    que los tres hayan entrado en urlopen. Con la implementación antigua sólo
-    habría un hilo, el barrier expiraría y el test fallaría.
+    El `Barrier` (3 hilos + el principal) fuerza el solape real: los tres deben
+    llegar a urlopen antes de que el test siga. Con la implementación antigua
+    sólo habría un hilo, la barrera expiraría y el test fallaría.
+    `liberar` mantiene los hilos vivos mientras se comprueba el invariante:
+    sin él, los envíos terminan tan pronto como se abre la barrera y el assert
+    de pendientes depende de la velocidad de la máquina (flaky).
     """
     enviados = []
-    barrera = threading.Barrier(3, timeout=15)
+    barrera = threading.Barrier(4, timeout=15)
+    liberar = threading.Event()
     cuerpos = []
 
     class _Respuesta:
@@ -40,6 +44,7 @@ def test_envios_simultaneos_no_se_pisan(app, monkeypatch):
     def _urlopen_falso(req, timeout=None):
         cuerpos.append(req.data.decode("utf-8"))
         barrera.wait()
+        liberar.wait(timeout=15)
         enviados.append("OK")
         return _Respuesta()
 
@@ -56,10 +61,16 @@ def test_envios_simultaneos_no_se_pisan(app, monkeypatch):
                       "coste": 1.25, "duracion_min": 4.0})
     wm.enviar("tokens", {"proyecto": "p1"})
 
+    # Los tres hilos han entrado en urlopen (barrera compartida con el
+    # principal): todos están realmente corriendo, sin depender de tiempos.
+    barrera.wait()
+
     # Los tres hilos están referenciados y vivos a la vez: el invariante que
     # el atributo compartido incumplía.
     assert len(wm._workers) == 3
     assert wm._pendientes() == 3
+
+    liberar.set()
 
     assert _esperar(app, lambda: wm._pendientes() == 0 and not wm._workers), (
         "los envíos no terminaron o quedaron referencias sin liberar")

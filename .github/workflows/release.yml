@@ -58,9 +58,52 @@ jobs:
             packaging/out/SHA256SUMS
           if-no-files-found: error
 
+  macos:
+    name: macOS (.dmg)
+    runs-on: macos-latest
+    # Secretos opcionales: sin ellos el .dmg sale sin firmar (sirve para
+    # probar el pipeline). Con ellos: codesign + notarytool + stapler.
+    env:
+      APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      APPLE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Dependencias de Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install pyinstaller
+
+      - name: Empaquetar (smoke + firma + .dmg + notarización)
+        run: bash packaging/build_macos.sh
+
+      - name: Checksums
+        run: |
+          cd packaging/out
+          shasum -a 256 *.dmg > SHA256SUMS-macos
+          cat SHA256SUMS-macos
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            packaging/out/*.dmg
+            packaging/out/SHA256SUMS-macos
+          if-no-files-found: error
+
   release:
     name: Crear release en GitHub
-    needs: [linux]
+    needs: [linux, macos]
     # Sólo al etiquetar un v*: el workflow_dispatch no publica nada.
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
