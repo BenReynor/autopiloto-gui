@@ -11,8 +11,18 @@
 # ~/Documentos y ~. Re-ejecutable cuando quieras.
 set -euo pipefail
 
-# Ubicación real de este script (sigue symlinks), esté donde esté.
-ORIGEN="$(readlink -f -- "${BASH_SOURCE[0]:-$0}")"
+# Ubicación real de este script, esté donde esté y aunque sea un symlink.
+# `readlink -f` es GNU: en macOS (BSD) no existe, así que resolvemos los
+# symlinks a mano y terminamos con ruta absoluta.
+ORIGEN="${BASH_SOURCE[0]:-$0}"
+while [ -L "$ORIGEN" ]; do
+    _dest="$(readlink "$ORIGEN")"
+    case "$_dest" in
+        /*) ORIGEN="$_dest" ;;
+        *) ORIGEN="$(cd "$(dirname "$ORIGEN")" && pwd)/$_dest" ;;
+    esac
+done
+ORIGEN="$(cd "$(dirname "$ORIGEN")" && pwd)/$(basename "$ORIGEN")"
 PAQUETE="$(dirname "$ORIGEN")"
 PROYECTO="$(dirname "$PAQUETE")"
 

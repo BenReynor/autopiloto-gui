@@ -6,7 +6,17 @@
 # renombrar la carpeta y al cambio de intérprete de Python.
 set -euo pipefail
 
-ORIGEN="$(readlink -f -- "${BASH_SOURCE[0]:-$0}")"
+# Ubicación real de este script. `readlink -f` es GNU: en macOS (BSD) no
+# existe, así que resolvemos los symlinks a mano y terminamos con ruta absoluta.
+ORIGEN="${BASH_SOURCE[0]:-$0}"
+while [ -L "$ORIGEN" ]; do
+    _dest="$(readlink "$ORIGEN")"
+    case "$_dest" in
+        /*) ORIGEN="$_dest" ;;
+        *) ORIGEN="$(cd "$(dirname "$ORIGEN")" && pwd)/$_dest" ;;
+    esac
+done
+ORIGEN="$(cd "$(dirname "$ORIGEN")" && pwd)/$(basename "$ORIGEN")"
 PROYECTO="$(dirname "$ORIGEN")"
 
 # ── Busca un Python con PySide6 (el primero que sirva gana) ──────────────

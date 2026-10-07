@@ -49,6 +49,8 @@ PROHIBIDOS: list[tuple[str, str, tuple[str, ...]]] = [
      "`timeout` no existe en macOS (BSD); usa _timeout()", ()),
     (r"sed -i \"0,/",
      "`sed 0,/re/` es extensión GNU; usa marcar_plan()", ()),
+    (r"readlink -f",
+     "`readlink -f` es GNU; resuelve symlinks con el bucle while -L", ()),
 ]
 
 
@@ -146,6 +148,7 @@ def test_pendientes_documentados_no_ocultan_nada_nuevo():
     prohibidos = " | ".join(p for p, _, _ in PROHIBIDOS)
     assert "timeout" in prohibidos
     assert r"sed -i \"0,/" in prohibidos
+    assert "readlink -f" in prohibidos
 
 
 def test_gitattributes_fuerza_lf_para_sh():
@@ -360,3 +363,31 @@ def test_timeout_fallback_de_124_y_mata_al_hijo(tmp_path):
     pid = int(pidf.read_text().strip())
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)
+
+
+def test_auto_localizacion_sin_readlink_f(tmp_path):
+    """El bloque de auto-localización de lanzar.sh/acceso.sh debe dar la ruta
+    real del proyecto también con symlinks absolutos, relativos y en cadena
+    (readlink -f no existe en macOS)."""
+    texto = (RAIZ / "lanzar.sh").read_text(encoding="utf-8")
+    ini = texto.index('ORIGEN="${BASH_SOURCE')
+    fin = texto.index('PROYECTO="$(dirname "$ORIGEN")"', ini)
+    fin += len('PROYECTO="$(dirname "$ORIGEN")"')
+    bloque = texto[ini:fin]
+    assert "readlink -f" not in bloque
+
+    proy = tmp_path / "proy"
+    proy.mkdir()
+    script = proy / "lanzar.sh"
+    script.write_text("set -euo pipefail\n" + bloque
+                      + '\necho "P=$PROYECTO"\n', encoding="utf-8")
+    enlace = tmp_path / "directo.sh"
+    enlace.symlink_to(script)
+    relativo = tmp_path / "rel.sh"
+    relativo.symlink_to(Path("proy") / "lanzar.sh")
+
+    for entrada in (script, enlace, relativo):
+        r = subprocess.run(["bash", str(entrada)], capture_output=True,
+                           text=True, cwd=tmp_path)
+        assert r.returncode == 0, (entrada, r.stderr)
+        assert f"P={proy}" in r.stdout, (entrada, r.stdout)
