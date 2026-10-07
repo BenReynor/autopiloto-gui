@@ -83,3 +83,47 @@ jobs:
         # colara mal, el runner de macOS se quedaría 2000 s colgado.
         run: |
           /usr/bin/time -p ping -c1 -W2000 8.8.8.8 || echo "sin red (esperado en CI)"
+
+  # El registro de proyectos guarda tokens de Telegram/WhatsApp/Discord en
+  # claro y los agentes reciben GITHUB_TOKEN: si algo se cuela en el repo,
+  # aquí se corta. Audita además los CVEs de las dependencias.
+  seguridad:
+    name: secretos + dependencias
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # gitleaks revisa TODO el historial, no el diff
+
+      - name: Secretos en el historial (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: El lock está al día con pyproject.toml
+        # Se regenera in situ (el comentario de cabecera incluye la orden
+        # exacta) y sólo se comprueba que git no vea diferencias.
+        run: |
+          uv pip compile --generate-hashes --extra dev --python-version 3.10 \
+            -o requirements.lock pyproject.toml
+          if ! git diff --quiet requirements.lock; then
+            git diff requirements.lock
+            echo "::error::requirements.lock desactualizado: reintenta con" \
+              "'uv pip compile --generate-hashes --extra dev --python-version" \
+              "3.10 -o requirements.lock pyproject.toml' y haz commit del lock"
+            exit 1
+          fi
+
+      - name: Auditoría de dependencias (pip-audit sobre el lock)
+        run: |
+          # --strict: un CVE nuevo rompe el build en vez de imprimirse y
+          # olvidarse. Las excepciones justificadas se anotan con
+          # --ignore-vuln-id. --no-deps: el lock ya fija toda la cerradura.
+          pip install pip-audit
+          pip-audit -r requirements.lock --no-deps --strict

@@ -57,6 +57,12 @@ def verificar_registro():
     """
     if not os.path.exists(cfg.REGISTRO):
         return
+    # Un registro creado por una versión anterior puede quedar en 0664 y ahí
+    # viven los tokens de webhooks: se endurece al detectarlo.
+    try:
+        os.chmod(cfg.REGISTRO, 0o600)
+    except OSError:
+        pass
     try:
         with open(cfg.REGISTRO, encoding="utf-8") as f:
             json.load(f)
@@ -73,20 +79,28 @@ def descartar_registro_corrupto():
 
 
 def _escribir(datos):
-    """Escribe el registro de forma atómica.
+    """Escribe el registro de forma atómica y privada.
 
     json.dump va primero al temporal y sólo después se os.replace() sobre el
     destino: replace es atómico en el mismo sistema de ficheros, así que un
     corte de luz o un kill a mitad de escritura deja el registro anterior
     intacto en lugar de un JSON truncado e ilegible.
+
+    El temporal se crea con permisos 0o600 (sólo el usuario) ANTES de
+    escribir, y como replace mueve el inodo, el destino hereda esos
+    permisos: los tokens de webhooks que guarda el registro no acaban
+    legibles por el grupo ni por otros usuarios (antes salían en 0664).
     """
-    os.makedirs(cfg.CONFIG_DIR, exist_ok=True)
+    os.makedirs(cfg.CONFIG_DIR, exist_ok=True, mode=0o700)
     tmp = f"{cfg.REGISTRO}.{os.getpid()}.tmp"
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(datos, f, indent=2, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())
+        # Por si un umask laxo o un temporal heredado hayan aflojado el modo.
+        os.chmod(tmp, 0o600)
         os.replace(tmp, cfg.REGISTRO)
     except BaseException:
         # Incluye TypeError/ValueError de json.dump con datos no serializables:

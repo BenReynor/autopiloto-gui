@@ -217,6 +217,45 @@ def test_escribir_no_deja_el_registro_roto_si_falla_la_serializacion():
         _limpiar(reg)
 
 
+# ---------- permisos del registro (tokens de webhooks) ----------
+#
+# El registro guarda telegram_token/whatsapp_token/discord en claro. Con los
+# permisos por omisión del umask salía en 0664, legible por el grupo. El
+# fix: crear el temporal con 0600 ANTES de escribir (replace mueve el inodo,
+# así que el destino hereda el modo) y endurecer en verificar_registro los
+# registros antiguos.
+
+
+def test_escribir_deja_el_registro_en_0600():
+    """Ni el umask laxo ni el temporal deben dejar permisos de grupo/otros."""
+    reg = _config_aislada()
+    try:
+        umask_previo = os.umask(0o022)  # umask de por defecto, permisivo
+        try:
+            proyectos.guardar({"A": {"ruta": "/tmp/a", "config": {
+                "webhooks": {"telegram_token": "123:abc"}}}}, "Oscuro")
+        finally:
+            os.umask(umask_previo)
+
+        modo = os.stat(reg).st_mode & 0o777
+        assert modo == 0o600, f"permisos del registro: {modo:04o}, esperado 0600"
+    finally:
+        _limpiar(reg)
+
+
+def test_verificar_registro_endurece_un_registro_antiguo():
+    """Un proyectos.json heredado (0664) se endurece al arrancar."""
+    reg = _config_aislada()
+    try:
+        os.chmod(reg, 0o664)
+        proyectos.verificar_registro()  # no lanza: el JSON es válido
+
+        modo = os.stat(reg).st_mode & 0o777
+        assert modo == 0o600, f"tras verificar: {modo:04o}, esperado 0600"
+    finally:
+        _limpiar(reg)
+
+
 if __name__ == "__main__":
     test_guardar_config_no_reañade_proyecto_quitado()
     test_guardar_config_sigue_guardando_proyectos_existentes()
