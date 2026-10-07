@@ -84,6 +84,40 @@ jobs:
         run: |
           /usr/bin/time -p ping -c1 -W2000 8.8.8.8 || echo "sin red (esperado en CI)"
 
+  # Windows: la GUI debe arrancar y la suite completa debe pasar con los
+  # tests POSIX saltados (test_portabilidad, señales, 0600...). El runner
+  # trae Git for Windows, así que los harness con bash sí corren; el loop
+  # sigue siendo bash hasta que llegue el backend nativo.
+  test-windows:
+    name: ruff + pytest (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Los tests hacen commits git REALES (mismo motivo que en test-linux).
+      - name: Identidad git
+        run: |
+          git config --global user.name "autopiloto CI"
+          git config --global user.email "ci@autopiloto.local"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Dependencias de Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: python -m ruff check autopiloto_gui/ tests/
+
+      - name: Tests (pytest)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest tests/
+
   # El registro de proyectos guarda tokens de Telegram/WhatsApp/Discord en
   # claro y los agentes reciben GITHUB_TOKEN: si algo se cuela en el repo,
   # aquí se corta. Audita además los CVEs de las dependencias.

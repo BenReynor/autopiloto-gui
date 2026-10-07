@@ -29,6 +29,25 @@ RUTAS_OPENCODE = [
     "/opt/opencode/bin/opencode",
 ]
 
+
+def _binario_en(ruta_base):
+    """`ruta_base` si existe, probando los sufijos de ejecutable de Windows.
+
+    En Windows los CLIs suelen ser opencode.exe/opencode.cmd (PATHEXT), el
+    `~/.agente/bin/agente` sin extensión no existe y os.access(X_OK) no
+    significa nada. shutil.which ya resuelve PATHEXT para lo que está en el
+    PATH; esto cubre los fallbacks con ruta absoluta.
+    """
+    sufijos = ("", ".exe", ".cmd", ".bat") if os.name == "nt" else ("",)
+    for sufijo in sufijos:
+        cand = ruta_base + sufijo
+        if os.path.isfile(cand) and (
+            os.name == "nt" or os.access(cand, os.X_OK)
+        ):
+            return cand
+    return ""
+
+
 PROVEEDORES_CATALOGO = [
     "opencode", "google", "openai", "anthropic", "xai", "groq",
     "together", "deepseek", "azure", "bedrock", "ollama", "lmstudio",
@@ -45,8 +64,8 @@ def _cli_opencode():
     if encontrado:
         return encontrado
     for ruta in RUTAS_OPENCODE:
-        expandida = os.path.expanduser(ruta)
-        if os.path.isfile(expandida):
+        expandida = _binario_en(os.path.expanduser(ruta))
+        if expandida:
             return expandida
     return "opencode"
 
@@ -166,8 +185,8 @@ def ruta_binario(nombre):
     if ruta:
         return ruta
     if nombre in cfg.AGENTES_DISPONIBLES:
-        candidata = os.path.expanduser(f"~/.{nombre}/bin/{nombre}")
-        if os.path.isfile(candidata) and os.access(candidata, os.X_OK):
+        candidata = _binario_en(os.path.expanduser(f"~/.{nombre}/bin/{nombre}"))
+        if candidata:
             return candidata
     return ""
 

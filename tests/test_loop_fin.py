@@ -18,6 +18,8 @@ import os
 import sys
 import time
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from unittest.mock import MagicMock  # noqa: E402
@@ -117,6 +119,9 @@ def test_loop_fin_no_bloquea_con_sesiones_lentas(app, monkeypatch):
     assert llamadas, "no se llegó a ejecutar el comando de opencode"
 
 
+@pytest.mark.skipif(
+    not os.path.exists("/bin/sh"),
+    reason="el proceso de prueba vive en /bin/sh (no existe en Windows)")
 def test_detener_loop_no_bloquea_esperando(app):
     """`_detener_loop` devuelve al instante y escala a SIGKILL con un timer."""
     proc = QProcess()

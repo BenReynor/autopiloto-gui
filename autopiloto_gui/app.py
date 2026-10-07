@@ -639,9 +639,26 @@ class Ventana(QMainWindow):
 
     # ---------- Loop ----------
 
+    def _avisar_si_no_hay_bash(self) -> bool:
+        """True si falta bash (muestra el aviso y no hay que seguir).
+
+        Las plantillas son bash puro: sin bash el QProcess fallaría con un
+        "FailedToStart" críptico.
+        """
+        if shutil.which("bash"):
+            return False
+        QMessageBox.warning(
+            self, "Falta bash",
+            "No se encontró `bash` en el PATH y el loop necesita bash.\n\n"
+            "En Windows instala Git for Windows (Git Bash) y reinicia la "
+            "GUI; en Linux y macOS bash viene de serie.")
+        return True
+
     def _iniciar_loop(self):
         p = self._proyecto_actual()
         if not p:
+            return
+        if self._avisar_si_no_hay_bash():
             return
         estado_net = net.ultimo_estado()
         if estado_net is None:
@@ -684,8 +701,10 @@ class Ventana(QMainWindow):
                 env[var] = binario
                 dirs_extra.add(os.path.dirname(binario))
         if dirs_extra:
-            env["PATH"] = ":".join(sorted(dirs_extra)) + (
-                ":" + env["PATH"] if env.get("PATH") else "")
+            # os.pathsep: con ":" fijo el PATH del loop se corrompía en
+            # Windows (que separa con ";").
+            env["PATH"] = os.pathsep.join(sorted(dirs_extra)) + (
+                os.pathsep + env["PATH"] if env.get("PATH") else "")
 
         # Un selector en "auto" no es el nombre del agente: lo resolvemos aquí
         # con la misma lista de preferencia que usa autopiloto.sh, para que el
@@ -784,16 +803,9 @@ class Ventana(QMainWindow):
         """
         if not ruta_proyecto:
             return 0
-        binario = ""
-        for cand in ("opencode",):
-            ruta = shutil.which(cand)
-            if ruta:
-                binario = ruta
-                break
-            candidata = os.path.expanduser(f"~/.{cand}/bin/{cand}")
-            if os.path.isfile(candidata) and os.access(candidata, os.X_OK):
-                binario = candidata
-                break
+        # modelos.ruta_binario cubre PATH + fallback ~/.opencode/bin (con
+        # sufijos .exe/.cmd en Windows); antes había esta búsqueda duplicada.
+        binario = modelos.ruta_binario("opencode")
         if not binario:
             return 0
 
@@ -1056,6 +1068,8 @@ class Ventana(QMainWindow):
     def _ejecutar_gate(self):
         p = self._proyecto_actual()
         if not p:
+            return
+        if self._avisar_si_no_hay_bash():
             return
         _, ruta = p
         panel = self.pan_logs.panel_gate

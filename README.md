@@ -148,7 +148,7 @@ Los scripts `autopiloto.sh`, `gate.sh`, `mapear.sh` se copian automáticamente a
 |----|--------|
 | **Linux** | ✅ Funciona. Es el entorno de referencia y donde corre CI. |
 | **macOS** | ⚠️ Parcial. Ya no exige GNU coreutils: `timeout` → `_timeout` (GNU/gtimeout/respaldo bash que devuelve 124) y `sed -i "0,/…/"` → `marcar_plan` (awk+cat, conserva permisos), con tests que impiden regresiones. Queda el sensor térmico (`/sys/class/thermal`, sólo Linux; degrada a "sin dato") y la verificación en un Mac real + el `.dmg`. |
-| **Windows** | ❌ No. Las plantillas son bash puro y la GUI las lanza con `bash`. Haría falta WSL2/Git Bash. Además la GUI concatena el PATH con `:` en vez de `os.pathsep` y busca los CLI sin `.exe`. |
+| **Windows** | ⚠️ Parcial. La GUI ya funciona con Git Bash en el PATH: el PATH se une con `os.pathsep`, los CLIs de agentes se resuelven con sufijo `.exe`/`.cmd` (PATHEXT) y la suite corre en CI (job `windows-latest` con los tests POSIX saltados). El loop y el gate siguen siendo bash; el backend nativo (sin Git Bash) es el siguiente paso. |
 
 Lo que sí es independiente del SO desde ya: los finales de línea de los `.sh`
 (`.gitattributes` fuerza `eol=lf`, un `clone` en Windows con `autocrlf` ya no

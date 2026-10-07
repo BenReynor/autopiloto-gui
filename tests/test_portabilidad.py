@@ -18,6 +18,12 @@ from pathlib import Path
 
 import pytest
 
+# Este módulo analiza .sh con `bash -n`, `locale`, permisos +x y symlinks:
+# en Windows no tiene sentido (allí se salta entero). La portabilidad de las
+# plantillas se verifica en Linux y en el job de macOS de CI.
+pytestmark = pytest.mark.skipif(
+    os.name == "nt", reason="lint de plantillas shell: sólo POSIX")
+
 RAIZ = Path(__file__).resolve().parent.parent
 SH_DIRS = [RAIZ / "autopiloto_gui", RAIZ]
 _IGNORAR = {".git", ".mypy_cache", ".pytest_cache", ".ruff_cache",
@@ -131,9 +137,10 @@ def test_ejecutable(path: Path):
 # ---------------------------------------------------------------------------
 PENDIENTES_MACOS: set[str] = set()
 PENDIENTES_WINDOWS = {
-    "bash": "las plantillas son bash: en Windows hace falta WSL2 o Git Bash",
+    "bash": "las plantillas son bash puro: en Windows hace falta WSL2 o Git Bash",
     "QProcess(\"bash\")": "la GUI lanza `bash`: en Windows requiere bash.exe en el PATH",
-    "os.pathsep": "la GUI concatena el PATH con ':' en vez de os.pathsep (';' en Windows)",
+    # "os.pathsep" ya no está: app.py une el PATH con os.pathsep (se arregló
+    # junto con la búsqueda de CLIs con sufijo .exe/.cmd en modelos.py).
 }
 
 
@@ -143,7 +150,9 @@ def test_pendientes_documentados_no_ocultan_nada_nuevo():
     assert PENDIENTES_MACOS == set(), (
         "macOS quedó resuelto: timeout/sed ya no deben estar en pendientes")
     assert set(PENDIENTES_WINDOWS) == {
-        "bash", 'QProcess("bash")', "os.pathsep"}
+        "bash", 'QProcess("bash")'}, (
+        "actualiza PENDIENTES_WINDOWS (y su comentario) al arreglar o "
+        "añadir un bloqueo de Windows")
     # Resueltos: ahora están PROHIBIDOS para que no se reintroduzcan.
     prohibidos = " | ".join(p for p, _, _ in PROHIBIDOS)
     assert "timeout" in prohibidos
@@ -391,3 +400,12 @@ def test_auto_localizacion_sin_readlink_f(tmp_path):
                            text=True, cwd=tmp_path)
         assert r.returncode == 0, (entrada, r.stderr)
         assert f"P={proy}" in r.stdout, (entrada, r.stdout)
+
+
+def test_gui_une_el_path_con_pathsep():
+    """Regresión: app.py unía el PATH con ":" fijo, que corrompe el PATH del
+    loop en Windows (separador ';'). Ya no está en PENDIENTES_WINDOWS, así
+    que este test evita que vuelva."""
+    app = (RAIZ / "autopiloto_gui" / "app.py").read_text(encoding="utf-8")
+    assert 'env["PATH"] = ":"' not in app, "usa os.pathsep para unir el PATH"
+    assert "os.pathsep" in app

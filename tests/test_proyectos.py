@@ -226,6 +226,9 @@ def test_escribir_no_deja_el_registro_roto_si_falla_la_serializacion():
 # registros antiguos.
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Windows no aplica bits de permiso POSIX (no hay 0600)")
 def test_escribir_deja_el_registro_en_0600():
     """Ni el umask laxo ni el temporal deben dejar permisos de grupo/otros."""
     reg = _config_aislada()
@@ -243,6 +246,9 @@ def test_escribir_deja_el_registro_en_0600():
         _limpiar(reg)
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Windows no aplica bits de permiso POSIX (no hay 0600)")
 def test_verificar_registro_endurece_un_registro_antiguo():
     """Un proyectos.json heredado (0664) se endurece al arrancar."""
     reg = _config_aislada()

@@ -9,6 +9,7 @@ solos con un QTimer para no bloquear el test.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 
@@ -135,6 +136,9 @@ def test_lecciones_nueva_y_guardar(app, proyecto_git):
 
 # ─── PanelMapa ────────────────────────────────────────────────
 
+@pytest.mark.skipif(
+    shutil.which("bash") is None,
+    reason="bash no disponible (el botón regenera mapeo.sh con bash)")
 def test_mapa_regenerar_crea_mapeo(app, proyecto_git):
     from autopiloto_gui.paneles import PanelMapa
     # Añadir mapear.sh que genera mapeo.txt

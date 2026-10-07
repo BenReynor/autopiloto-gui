@@ -34,7 +34,10 @@ PLANTILLAS = RAIZ / "autopiloto_gui" / "plantillas_data"
 TMPDIR = Path(os.environ.get("TMPDIR", "/tmp"))
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("bash") is None, reason="bash no disponible")
+    # En Windows el módulo no tiene os.killpg/os.getpgid y los procesos no
+    # tienen grupo POSIX: aunque exista Git Bash, esta suite no es válida.
+    shutil.which("bash") is None or os.name == "nt",
+    reason="bash no disponible o sin semántica POSIX de señales")
 
 
 def _git(*args, cwd):
