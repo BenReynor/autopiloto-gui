@@ -177,9 +177,14 @@ Arreglos anteriores (baseline verificado):
     Linux=OK; macOS=parcial (sed -i,         y documentado  macOS=parcial,
     timeout, /sys); Windows=no                             Windows=no
 
-6   local fuera de función en autopiloto.sh  Espurio       Ruido en log cada
-    línea ~1065 (`local iter_sin_trabajo=0`  (log)         iteración; fix de
-    en nivel superior del script)                          1 palabra
+6   local fuera de función en autopiloto.sh  ✓ Corregido   Bug REAL (este informe lo
+    (`local iter_sin_trabajo=0` en nivel      (2026-10-07)  clasificó antes como "espurio":
+    superior del script)                                   era el error. Cualquier iteración
+                                                            con trabajo actualizado abortaba
+                                                            con "unbound variable" y exit 1 a
+                                                            media tarea). Fix de 1 palabra +
+                                                            e2e que lo detecta:
+                                                            test_e2e_con_trabajo.py
 
 6. SEGURIDAD — HALLAZGOS
 ================================================================================

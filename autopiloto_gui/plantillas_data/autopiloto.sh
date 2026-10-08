@@ -141,10 +141,16 @@ un_ping() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --hasta) HASTA="${2:-}"; shift 2 ;;
+        # `shift 2` sin comprobar $#: si --hasta/--padre/--trabajo iba como
+        # ÚLTIMO argumento, shift no avanzaba y el while giraba para siempre
+        # (verificado: CPU al 100%, rc 124 con timeout). 64 = EX_USAGE.
+        --hasta) [[ $# -ge 2 ]] || { echo "autopiloto.sh: falta valor tras $1" >&2; exit 64; }
+                 HASTA="$2"; shift 2 ;;
         --push) PUSH="1"; shift ;;
-        --padre) RAMA_BASE="${2:-}"; shift 2 ;;
-        --trabajo) RAMA_TRABAJO="${2:-}"; shift 2 ;;
+        --padre) [[ $# -ge 2 ]] || { echo "autopiloto.sh: falta valor tras $1" >&2; exit 64; }
+                 RAMA_BASE="$2"; shift 2 ;;
+        --trabajo) [[ $# -ge 2 ]] || { echo "autopiloto.sh: falta valor tras $1" >&2; exit 64; }
+                   RAMA_TRABAJO="$2"; shift 2 ;;
         -h|--help) sed -n '1,22p' "$0"; exit 0 ;;
         *) PLAN="$1"; shift ;;
     esac
@@ -1131,7 +1137,11 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         # seguiría gastando iteraciones sin poder trabajar nunca.
         # CORROBORACIÓN: solo aborta si hay sospecha de auth Y la iteración no
         # cambió nada (sin trabajo = fallo real; con trabajo = falso positivo).
-        local iter_sin_trabajo=0
+        # NADA de `local`: esto está en el top-level del script (dentro del
+        # while), y `local` fuera de función deja la variable SIN CREAR →
+        # `set -u` abortaba en la línea siguiente con "unbound variable" y
+        # cualquier iteración con trabajo real terminaba el run con exit 1.
+        iter_sin_trabajo=0
         iteracion_sin_trabajo && iter_sin_trabajo=1
         if sin_autenticacion "${OUT}.err" "$OUT" "$iter_sin_trabajo"; then
             echo "[autopiloto] ✗✗ $AGENTE_TAREA no está autenticado (CLI instalado, sin sesión)." \
