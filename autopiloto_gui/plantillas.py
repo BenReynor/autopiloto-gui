@@ -11,7 +11,9 @@ SCRIPTS = ("autopiloto.sh", "gate.sh", "mapear.sh")
 ARCHIVOS = SCRIPTS + ("plan.md", "lecciones.md")
 GATE_CHECKS_DIR = "gate_checks"
 GATE_CHECKS = tuple(
-    os.path.relpath(os.path.join(ruta, f), PLANTILLA_DIR)
+    # Nombres relativos SIEMPRE con "/": el listado de `instalar()` (que la GUI
+    # muestra y el test compara) no puede depender de la barra del SO.
+    os.path.relpath(os.path.join(ruta, f), PLANTILLA_DIR).replace("\\", "/")
     for ruta, _dirs, archivos in os.walk(os.path.join(PLANTILLA_DIR, GATE_CHECKS_DIR))
     for f in archivos
     if f.endswith(".sh")

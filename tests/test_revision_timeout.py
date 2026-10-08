@@ -20,7 +20,8 @@ PLANTILLA = os.path.join(
     RAIZ, "autopiloto_gui", "plantillas_data", "autopiloto.sh")
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("bash") is None, reason="bash no disponible")
+    shutil.which("bash") is None or os.name == "nt",
+    reason="harness POSIX (agent falsos en bash): se valida en Linux")
 
 
 def _extraer_funcion(texto, nombre):

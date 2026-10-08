@@ -37,7 +37,8 @@ RAIZ = Path(__file__).resolve().parent.parent
 CHECK = RAIZ / "autopiloto_gui" / "plantillas_data" / "gate_checks" / "03_backend.sh"
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("bash") is None, reason="bash no disponible")
+    shutil.which("bash") is None or os.name == "nt",
+    reason="harness POSIX (gate.sh en bash): se valida en Linux")
 
 PENDIENTE = 100  # puerto sin servicio, para probar "no responde"
 

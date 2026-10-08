@@ -27,7 +27,8 @@ PLANTILLAS = RAIZ / "autopiloto_gui" / "plantillas_data"
 GATE = PLANTILLAS / "gate.sh"
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("bash") is None, reason="bash no disponible")
+    shutil.which("bash") is None or os.name == "nt",
+    reason="harness POSIX (gate.sh en bash): se valida en Linux")
 
 
 def _escenario(tmp_path, checks, con_env):

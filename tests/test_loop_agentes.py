@@ -11,7 +11,13 @@ import json
 import os
 import sys
 
+import pytest  # noqa: E402
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+pytestmark = pytest.mark.skipif(
+    os.name == "nt",
+    reason="motores de agente falsos en bash (POSIX): se valida en Linux")
 
 from autopiloto_gui.loop_agentes import (  # noqa: E402
     agente_ok,

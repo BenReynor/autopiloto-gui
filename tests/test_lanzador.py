@@ -43,8 +43,9 @@ def _git(*args, cwd):
                    cwd=cwd, check=True, capture_output=True)
 
 
-@pytest.mark.skipif(shutil.which("bash") is None,
-                    reason="el gate del motor se ejecuta con bash")
+@pytest.mark.skipif(shutil.which("bash") is None or os.name == "nt",
+                    reason="el gate del motor y el agente falso son bash "
+                           "(POSIX): se valida en Linux")
 @pytest.mark.skipif(not net.hay_internet(), reason="requiere internet")
 def test_arranque_por_python_m_desde_otro_cwd(tmp_path):
     """Comando exacto de la GUI en modo fuente: `python -m

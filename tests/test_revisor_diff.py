@@ -25,8 +25,9 @@ RAIZ = Path(__file__).resolve().parent.parent
 PLANTILLA = RAIZ / "autopiloto_gui" / "plantillas_data" / "autopiloto.sh"
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("bash") is None or shutil.which("git") is None,
-    reason="bash o git no disponible")
+    shutil.which("bash") is None or shutil.which("git") is None
+    or os.name == "nt",
+    reason="harness POSIX (diff/CLIs falsos en bash): se valida en Linux")
 
 CONTROL = r"plan\.md|progreso\.log|lecciones\.md|mapeo\.txt"
 

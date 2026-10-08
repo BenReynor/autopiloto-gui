@@ -25,7 +25,8 @@ JUEZ = os.path.join(RAIZ, "autopiloto_gui", "plantillas_data",
                     "gate_checks", "98_criterio.sh")
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("bash") is None, reason="bash no disponible")
+    shutil.which("bash") is None or os.name == "nt",
+    reason="harness POSIX (CLIs falsos en bash): se valida en Linux")
 
 
 def _extraer_funcion(texto, nombre):
