@@ -104,7 +104,11 @@ rm -rf "$SMOKE_DIR"
 echo "==> zip portátil"
 ZIP="$OUT/$NOMBRE-$VERSION-win64.zip"
 rm -f "$ZIP"
-powershell -NoProfile -Command "Compress-Archive -Force -Path '$APP' -DestinationPath '$ZIP'"
+# Compress-Archive es PowerShell nativo y no entiende rutas POSIX (/d/...):
+# se pasan convertidas con cygpath (D:\...).
+W_APP="$(cygpath -w "$APP")"
+W_ZIP="$(cygpath -w "$ZIP")"
+powershell -NoProfile -Command "Compress-Archive -Force -Path '$W_APP' -DestinationPath '$W_ZIP'"
 echo "    $ZIP"
 
 echo "==> listo: $(ls -1 "$OUT" | grep -E '\.zip$' | tr '\n' ' ')"
