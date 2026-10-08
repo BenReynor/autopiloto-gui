@@ -168,6 +168,22 @@ contra los binutils de BSD de verdad. La allowlist de bloqueos pendientes
 (sólo Windows; la de macOS quedó vacía al portar `timeout` y el marcado del
 plan) está al final de ese fichero, con el motivo de cada uno.
 
+### 📦 Descargas (Release)
+
+Los binarios por plataforma se publican en [Releases](https://github.com/BenReynor/autopiloto-gui/releases)
+al etiquetar un `v*` (Linux: `.tar.gz`/`.deb`/`.AppImage`; Windows: `.zip`
+con `autopiloto-gui.exe`; macOS: `.dmg`). Los builds **no llevan firma de
+código**: al instalarlos el sistema pedirá confirmación explícita:
+
+| SO | Primer arranque |
+|----|-----------------|
+| **macOS** | `control + clic` en la app → *Abrir* (o `xattr -dr com.apple.quarantine /Applications/Autopiloto.app`). |
+| **Windows** | SmartScreen advertirá con *Más información → Ejecutar de todas formas*. |
+| **Linux** | Sin firma ni sandbox; procedencia = este repositorio (los checksums están en la propia Release). |
+
+Cada Release lleva sus `SHA256SUMS*`; se verifican con
+`shasum -a 256 -c SHA256SUMS[-windows|-macos]`.
+
 ---
 
 ## 🔧 Variables del loop (env)
