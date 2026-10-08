@@ -66,6 +66,24 @@ from .temas import NOMBRES, inicializar_temas, obtener_temas
 from .webhooks import WebhookManager
 
 
+def _argv_motor(frozen, args):
+    """Comando (programa, argv) que lanza el motor del loop.
+
+    En el código fuente: `python -m autopiloto_gui.loop [args]`. En el
+    binario de PyInstaller `-m` no resuelve el módulo (va empaquetado en el
+    exe): el entrypoint interpreta `--autopiloto-loop` y llama a
+    `loop.main(argv[1:])`.
+    """
+    if frozen:
+        return sys.executable, ["--autopiloto-loop"] + args
+    return sys.executable, ["-m", "autopiloto_gui.loop"] + args
+
+
+def _raiz_codigo():
+    """Raíz del repo de la GUI: `autopiloto_gui` es un subdirectorio suyo."""
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 class Ventana(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -642,23 +660,22 @@ class Ventana(QMainWindow):
     def _avisar_si_no_hay_bash(self) -> bool:
         """True si falta bash (muestra el aviso y no hay que seguir).
 
-        Las plantillas son bash puro: sin bash el QProcess fallaría con un
-        "FailedToStart" críptico.
+        El loop ya corre en Python (no necesita bash para arrancar), pero
+        gate.sh y gate_checks/ son bash: sin bash el QProcess del gate
+        fallaría con un "FailedToStart" críptico.
         """
         if shutil.which("bash"):
             return False
         QMessageBox.warning(
             self, "Falta bash",
-            "No se encontró `bash` en el PATH y el loop necesita bash.\n\n"
-            "En Windows instala Git for Windows (Git Bash) y reinicia la "
-            "GUI; en Linux y macOS bash viene de serie.")
+            "No se encontró `bash` en el PATH y el gate es un script bash.\n\n"
+            "En Windows instala Git for Windows (Git Bash) para usar el gate; "
+            "el loop del autopiloto (motor Python) sí funciona sin él.")
         return True
 
     def _iniciar_loop(self):
         p = self._proyecto_actual()
         if not p:
-            return
-        if self._avisar_si_no_hay_bash():
             return
         estado_net = net.ultimo_estado()
         if estado_net is None:
@@ -716,7 +733,7 @@ class Ventana(QMainWindow):
             panel = self.pan_logs.panel_loop
             panel.clear()
             panel.appendPlainText(
-                "> bash autopiloto.sh  (sin agentes utilizables: instala o "
+                "> loop (motor python)  (sin agentes utilizables: instala o "
                 "inicia sesión en opencode, codex o claude)")
             self.pan_ejec.b_iniciar.setEnabled(True)
             return
@@ -751,22 +768,34 @@ class Ventana(QMainWindow):
         env["MAX_COSTO"] = str(conf['costo_max'])
         env["COSTO_POR_ITER"] = str(conf['costo_iter'])
         env["REVISION_MANUAL"] = '1' if conf['revision_manual'] else '0'
+
+        # El motor es Python (autopiloto_gui.loop, port de autopiloto.sh):
+        # ya no hace falta bash para arrancar el loop (el gate sigue siendo
+        # bash y se avisa en el header si no hay).
+        programa, args_motor = _argv_motor(getattr(sys, "frozen", False), args)
+        if not getattr(sys, "frozen", False):
+            env["PYTHONPATH"] = _raiz_codigo() + (
+                os.pathsep + env["PYTHONPATH"]
+                if env.get("PYTHONPATH") else "")
         env = [f"{k}={v}" for k, v in env.items()]
 
         panel = self.pan_logs.panel_loop
         panel.clear()
+        aviso_bash = "" if shutil.which("bash") else \
+            " (sin bash: el gate no podrá ejecutarse)"
         panel.appendPlainText(
-            f"> bash autopiloto.sh {' '.join(args)}  "
+            f"> loop {' '.join(args_motor) or 'loop'}  "
             f"(agente={agente_tarea}, modelo tarea={modelo_tarea or 'n/a'}, "
             f"revisor={agente_revisor}, modelo revisor="
             f"{modelo_revisor or 'n/a'}, "
             f"nav={'on' if nav_conf['activo'] else 'off'}, "
             f"dual={conf['dual']}, "
-            f"costo/iter={conf['costo_iter']} USD, iter={conf['iteraciones']})")
+            f"costo/iter={conf['costo_iter']} USD, iter={conf['iteraciones']})"
+            + aviso_bash)
         self.loop = Proceso(panel, on_fin=self._loop_fin)
         self.loop.setWorkingDirectory(ruta)
         self.loop.setEnvironment(env)
-        self.loop.start("bash", ["autopiloto.sh"] + args)
+        self.loop.start(programa, args_motor)
         self.pan_ejec.b_iniciar.setEnabled(False)
         self.pan_ejec.b_detener.setEnabled(True)
         self.pan_ejec.b_gate.setEnabled(False)
