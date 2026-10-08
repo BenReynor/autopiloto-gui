@@ -85,9 +85,10 @@ jobs:
           /usr/bin/time -p ping -c1 -W2000 8.8.8.8 || echo "sin red (esperado en CI)"
 
   # Windows: la GUI debe arrancar y la suite completa debe pasar con los
-  # tests POSIX saltados (test_portabilidad, señales, 0600...). El runner
-  # trae Git for Windows, así que los harness con bash sí corren; el loop
-  # sigue siendo bash hasta que llegue el backend nativo.
+  # tests POSIX saltados (test_portabilidad, señales, 0600...). El loop es ya
+  # un motor Python nativo (test_lanzador lo arranca por `python -m …loop`
+  # desde otro cwd, como hace la GUI); el gate sigue siendo bash y funciona
+  # porque el runner trae Git for Windows.
   test-windows:
     name: ruff + pytest (Windows)
     runs-on: windows-latest

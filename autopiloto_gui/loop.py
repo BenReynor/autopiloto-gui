@@ -139,6 +139,16 @@ def mensaje(cfg, s):
     _append_log(cfg, s)
 
 
+def _proteger_salidas():
+    """En un binario --windowed (Windows) sys.stdout/stderr son None y el
+    primer print() reventaría. Se redirigen a devnull; lo que importa (el
+    log con timestamp) ya va a progreso.log. No-op cuando hay consola."""
+    for nombre in ("stdout", "stderr"):
+        if getattr(sys, nombre, None) is None:
+            setattr(sys, nombre, open(
+                os.devnull, "w", encoding="utf-8", errors="replace"))
+
+
 def rama_run_nombre():
     """`autopiloto/$(date +%Y-%m-%d_%H-%M-%S)` del script."""
     return "autopiloto/" + time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -293,6 +303,7 @@ def _marcar(cfg, estado):
 
 def run(cfg):
     """Bucle completo; devuelve el código de salida (0-7, como el script)."""
+    _proteger_salidas()
     _RECHAZO_MOTIVO["txt"] = ""
     _instalar_senales(cfg)
 

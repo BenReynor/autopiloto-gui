@@ -39,6 +39,16 @@ def test_iconos_generados_son_validos():
     assert max(ancho for ancho, _ in ico.info["sizes"]) == 256
 
 
+def test_build_windows_smk_checkea_el_motor_empaquetado():
+    """El smoke del build de Windows debe valider el branch `--autopiloto-loop`
+    del entrypoint (si alguien lo quita, el zip sale pero el motor empaquetado
+    queda sin verificar)."""
+    fuente = (PACKAGING / "build_windows.sh").read_text(encoding="utf-8")
+    assert "--autopiloto-loop" in fuente
+    assert "Compress-Archive" in fuente
+    assert "ABORTADO: agente no disponible" in fuente
+
+
 def test_make_iconos_regenera_desde_el_svg(tmp_path, monkeypatch):
     """Ejecuta el generador real contra un destino temporal: si el SVG o la
     ruta cambian de forma inesperada, el build se entera aquí y no en CI."""
