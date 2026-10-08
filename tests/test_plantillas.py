@@ -62,8 +62,12 @@ def test_package_data_cubre_lo_que_instala():
 
     sin_cubrir = [
         nombre
-        for nombre in _lo_que_instala_en_runtime()
-        if os.path.join("plantillas_data", nombre) not in cubiertos
+for nombre in _lo_que_instala_en_runtime()
+    # Comparar SIEMPRE con "/": en Windows os.path.join mezclaría muchísimas
+    # barras y glob.relpath usa las del SO, por eso ambos lados se normalizan.
+    if os.path.join("plantillas_data", nombre).replace("\\", "/") not in {
+        p.replace("\\", "/") for p in cubiertos
+    }
     ]
     assert not sin_cubrir, (
         "pyproject.toml no empaqueta estos ficheros que instalar() copia "
