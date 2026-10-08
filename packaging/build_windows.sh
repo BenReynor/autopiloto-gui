@@ -49,6 +49,17 @@ if ! kill -0 "$SMOKE" 2>/dev/null; then
     exit 1
 fi
 (cmd //c "taskkill /F /PID $SMOKE" 2>/dev/null || kill "$SMOKE" 2>/dev/null || true) || true
+# Tras el kill, tope de 10 s: si la GUI no muere, fallar ya (un `wait`
+# bloqueante convertiría cualquier regresión en un job de 6 h colgado).
+for _i in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 "$SMOKE" 2>/dev/null || break
+    sleep 1
+done
+if kill -0 "$SMOKE" 2>/dev/null; then
+    cmd //c "taskkill /F /IM $NOMBRE.exe" 2>/dev/null || true
+    echo "la GUI no responde al kill tras 10 s" >&2
+    exit 1
+fi
 wait "$SMOKE" 2>/dev/null || true
 
 # ── Smoke 2: el motor empaquetado vía `--autopiloto-loop` ─────────────────────
@@ -61,14 +72,25 @@ SMOKE_DIR="$OUT/smoke_loop"
 rm -rf "$SMOKE_DIR"
 mkdir -p "$SMOKE_DIR"
 printf '# PLAN\n\n- [ ] t1\n' > "$SMOKE_DIR/plan.md"
-(
-    cd "$SMOKE_DIR"
-    set +e
-    CLI_OPENCODE=/no/existe/opencode AGENTE_TAREA=opencode \
-        "$APP/$NOMBRE.exe" --autopiloto-loop plan.md
-    RC=$?
-    set -e
-)
+# PowerShell con tope de 120 s: el proceso se lanza y espera con WaitForExit;
+# si el binario se cuelga (p. ej. regresión de encoding) el job falla en
+# minutos con rc 124 en vez de quedarse 6 h hasta el timeout de GitHub.
+# Nota: RC se captura FUERA del subshell: dentro no se propaga al padre.
+set +e
+CLI_OPENCODE=/no/existe/opencode AGENTE_TAREA=opencode \
+EXE="$APP/$NOMBRE.exe" SMOKE_LOOP_DIR="$SMOKE_DIR" \
+powershell -NoProfile -Command '
+    $p = Start-Process -FilePath $env:EXE -ArgumentList "--autopiloto-loop","plan.md" `
+        -PassThru -WorkingDirectory $env:SMOKE_LOOP_DIR
+    if (-not $p.WaitForExit(120000)) { $p.Kill(); exit 124 }
+    exit $p.ExitCode'
+RC=$?
+set -e
+if [ "$RC" = "124" ]; then
+    echo "el motor se colgó (>120 s con el agente inexistente)" >&2
+    grep -a . "$SMOKE_DIR/progreso.log" 2>/dev/null | tail -6 >&2 || true
+    exit 1
+fi
 if [ "$RC" != "2" ]; then
     echo "el motor devolvió $RC (esperado 2)" >&2
     grep -a . "$SMOKE_DIR/progreso.log" 2>/dev/null | tail -6 >&2 || true

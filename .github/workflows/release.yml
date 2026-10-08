@@ -65,6 +65,11 @@ jobs:
   windows:
     name: Windows (.zip)
     runs-on: windows-latest
+    # Consola del runner = cp1252: el smoke del motor escribe ✗/→ y sin
+    # UTF-8 el exe reventaría con UnicodeEncodeError (el código ya se
+    # protege, esta es la doble barrera del build).
+    env:
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
 

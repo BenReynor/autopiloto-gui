@@ -142,11 +142,22 @@ def mensaje(cfg, s):
 def _proteger_salidas():
     """En un binario --windowed (Windows) sys.stdout/stderr son None y el
     primer print() reventaría. Se redirigen a devnull; lo que importa (el
-    log con timestamp) ya va a progreso.log. No-op cuando hay consola."""
+    log con timestamp) ya va a progreso.log. No-op cuando hay consola.
+
+    Con consola heredada (Git Bash/cmd/PowerShell en Windows) los streams
+    NO son None pero su encoding es la locale (cp1252) y el primer ✗ del
+    motor moría con UnicodeEncodeError: se pasan a utf-8 con
+    errors="replace" para que ningún print mate al proceso."""
     for nombre in ("stdout", "stderr"):
-        if getattr(sys, nombre, None) is None:
+        s = getattr(sys, nombre, None)
+        if s is None:
             setattr(sys, nombre, open(
                 os.devnull, "w", encoding="utf-8", errors="replace"))
+        elif hasattr(s, "reconfigure"):
+            try:
+                s.reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
 
 
 def rama_run_nombre():

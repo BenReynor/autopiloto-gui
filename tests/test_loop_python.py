@@ -6,6 +6,7 @@ _run_gate y _esperar_revision_manual).
 Sin Qt: el motor python no depende de PySide.
 """
 
+import io
 import os
 import re
 import shutil
@@ -248,3 +249,28 @@ def test_manual_sin_internet_aborta_con_4(tmp_path, monkeypatch):
     rc = _esperar_revision_manual(cfg, "t1")
     assert rc == 4
     assert "ABORTADO: sin internet durante revisión manual" in _leer(cfg.log)
+
+
+def test_proteger_salidas_reconfigura_consola_no_utf8(monkeypatch):
+    """Windows con consola heredada: el encoding es cp1252 y el primer ✗
+    del motor reventaba con UnicodeEncodeError (regresión vista en el
+    smoke del binario de Windows). Debe pasar el stream a utf-8/replace."""
+    import autopiloto_gui.loop as loop_m
+    buf = io.BytesIO()
+    flujo = io.TextIOWrapper(buf, encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", flujo)
+    loop_m._proteger_salidas()
+    print("[autopiloto] ✗✗ agente no disponible")  # no debe reventar
+    flujo.flush()
+    assert "✗✗" in buf.getvalue().decode("utf-8")
+    flujo.close()
+
+
+def test_proteger_salidas_sustituye_stream_none_por_devnull(monkeypatch):
+    """Binario --windowed: stdout/stderr None y el primer print reventaría."""
+    import autopiloto_gui.loop as loop_m
+    monkeypatch.setattr(sys, "stdout", None)
+    loop_m._proteger_salidas()
+    print("ok")
+    assert sys.stdout is not None
+    sys.stdout.close()
