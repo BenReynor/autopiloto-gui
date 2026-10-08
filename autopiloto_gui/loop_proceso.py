@@ -43,8 +43,18 @@ def _golpe_grupo(proc, espera=5):
         _kill(signal.SIGKILL)
 
 
+def matar_grupo(proc, espera=5):
+    """Mata a un proceso y a TODO su grupo (hijos incluidos), TERM→KILL.
+
+    Para el camino de señales del motor: el handle de SIGTERM/SIGINT del loop
+    necesita matar el agente aunque `run_con_timeout` siga bloqueado. Se pasa
+    el mismo proc que corre; `espera=0` corta al instante (KILL directo).
+    """
+    return _golpe_grupo(proc, espera)
+
+
 def run_con_timeout(cmd, timeout, *, env=None, cwd=None,
-                    stdout=None, stderr=None):
+                    stdout=None, stderr=None, vivo=None):
     """Ejecuta `cmd` con tope de `timeout` segundos.
 
     Devuelve `(returncode, salida, timed_out)`:
@@ -54,11 +64,15 @@ def run_con_timeout(cmd, timeout, *, env=None, cwd=None,
         ficheros o None, devuelve None en esa posición (como communicate).
       · Empieza el hijo en su PROPIA sesión/grupo (start_new_session), de
         modo que `killpg(pid)` se lleva también al agente colgando de él.
+      · `vivo`: diccionario opcional; se rellena con {"proc": Popen} ANTES de
+        bloquear para que un manejador de señales pueda matar el grupo.
     """
     kwargs = dict(env=env, cwd=cwd, stdout=stdout, stderr=stderr)
     if _POSIX:
         kwargs["start_new_session"] = True
     proc = subprocess.Popen(cmd, **kwargs)
+    if vivo is not None:
+        vivo["proc"] = proc
     timed_out = False
     try:
         try:
