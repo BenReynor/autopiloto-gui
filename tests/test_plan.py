@@ -101,6 +101,74 @@ def test_plan_inexistente():
     print("✅ test_plan_inexistente PASSED")
 
 
+def _plan_con_tmp(texto):
+    f = tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False)
+    f.write(texto)
+    f.close()
+    plan = Plan(f.name)
+    plan.cargar()
+    return plan, f.name
+
+
+def test_marcar_primera_x():
+    plan, path = _plan_con_tmp(PLAN_SAMPLE)
+    try:
+        assert plan.marcar_primera("x") is True
+        pend, hechas, bloqueadas = plan.conteo()
+        assert (pend, hechas, bloqueadas) == (1, 2, 1)
+        assert "- [x] Tarea 1: Primera tarea" in plan.texto
+        assert plan.tareas[0]["estado"] == "hecha"
+        # No toca más de una tarea
+        assert plan.tareas[3]["estado"] == "pendiente"
+    finally:
+        os.unlink(path)
+
+
+def test_marcar_primera_B():
+    plan, path = _plan_con_tmp(PLAN_SAMPLE)
+    try:
+        assert plan.marcar_primera("B") is True
+        assert "- [B] Tarea 1: Primera tarea" in plan.texto
+        assert plan.tareas[0]["estado"] == "bloqueada"
+    finally:
+        os.unlink(path)
+
+
+def test_marcar_primera_solo_columna_cero():
+    plan, path = _plan_con_tmp(
+        "- [ ] Fuera\n\n  - [ ] Indentada (no cuenta)\n")
+    try:
+        assert plan.marcar_primera("x") is True
+        assert "- [x] Fuera" in plan.texto
+        assert "  - [ ] Indentada" in plan.texto
+    finally:
+        os.unlink(path)
+
+
+def test_marcar_primera_sin_pendientes():
+    plan, path = _plan_con_tmp("- [x] hecha\n- [B] bloqueada\n")
+    try:
+        assert plan.marcar_primera("x") is False
+        assert "- [x] hecha" in plan.texto
+    finally:
+        os.unlink(path)
+
+
+def test_marcar_primera_texto_persistido_en_disco():
+    plan, path = _plan_con_tmp(PLAN_SAMPLE)
+    try:
+        plan.marcar_primera("x")
+        with open(path, encoding="utf-8") as f:
+            contenido = f.read()
+        assert "- [x] Tarea 1: Primera tarea" in contenido
+        plan2 = Plan(path)
+        plan2.cargar()
+        pend, hechas, bloqueadas = plan2.conteo()
+        assert (pend, hechas, bloqueadas) == (1, 2, 1)
+    finally:
+        os.unlink(path)
+
+
 if __name__ == "__main__":
     test_plan_cargar()
     test_plan_guardar()

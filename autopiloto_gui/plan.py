@@ -61,3 +61,39 @@ class Plan:
             elif t["estado"] == "bloqueada":
                 bloq += 1
         return pend, hecho, bloq
+
+    def marcar_primera(self, estado):
+        """Marca la PRIMERA tarea pendiente con `estado` (`x`/`B`).
+
+        Misma semántica que `marcar_plan` de autopiloto.sh: sólo la primera
+        línea que empieza (columna 0) por `- [ ]`. Escritura atómica (fichero
+        temporal en el mismo directorio + os.replace) para no dejar el plan a
+        medias si el proceso muere a mitad de escritura. Devuelve True si
+        tocó alguna tarea.
+        """
+        marca = "B" if str(estado).upper() == "B" else "x"
+        hecha = False
+        lineas = []
+        for linea in self.texto.splitlines(keepends=True):
+            if not hecha and linea.startswith("- [ ]"):
+                lineas.append(linea.replace("- [ ]", f"- [{marca}]", 1))
+                hecha = True
+            else:
+                lineas.append(linea)
+        if not hecha:
+            return False
+        tmp = os.path.join(
+            os.path.dirname(self.ruta),
+            f".plan.md.tmp.{os.getpid()}")
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write("".join(lineas))
+            os.replace(tmp, self.ruta)
+        except OSError:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+        self.texto = "".join(lineas)
+        return True
