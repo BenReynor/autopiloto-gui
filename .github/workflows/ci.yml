@@ -92,6 +92,12 @@ jobs:
   test-windows:
     name: ruff + pytest (Windows)
     runs-on: windows-latest
+    env:
+      # Windows escribe tempfiles en cp1252 por defecto y la suite usa
+      # emojis (✔ ✗ ≈): con la UTF-8 mode de Python todos los harness de
+      # ficheros dejan de reventar. Los agentes reales de Windows escriben en
+      # UTF-8, así que esto refleja el comportamiento de la app.
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -100,6 +106,18 @@ jobs:
         run: |
           git config --global user.name "autopiloto CI"
           git config --global user.email "ci@autopiloto.local"
+
+      # El PATH de los runners de GitHub resuelve `bash` al shim de WSL, que
+      # no es un bash POSIX (escupiría "Windows Subsystem for Linux has no
+      # installed distributions"). Los harnesses de git/gate/motor lanzan
+      # scripts con chmod 755 mediante `bash`, así que hay que poner el Git
+      # Bash real delante.
+      - name: Git Bash real en el PATH
+        shell: pwsh
+        run: |
+          $git = "C:\Program Files\Git"
+          "PATH=$git\bin;$git\usr\bin;$env:PATH" |
+            Out-File -FilePath $env:GITHUB_ENV -Append
 
       - uses: actions/setup-python@v5
         with:

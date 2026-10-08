@@ -95,7 +95,19 @@ def _escenario(tmp_path, agente_rapido=False):
 
     dir_bin = tmp_path / "bin"
     _agente_falso(dir_bin, rapido=agente_rapido)
+    # El ICMP de los runners de GitHub está bloqueado (y `ping` existe, así
+    # que el fallback curl de hay_internet no entra): sin estos stubs estos
+    # tests dependerían de la red REAL y abortarían con "sin internet".
+    _stub_red(dir_bin, "ping")
+    _stub_red(dir_bin, "curl")
     return proyecto, dir_bin
+
+
+def _stub_red(dir_bin, nombre):
+    """ping/curl falsos para que `hay_internet` no dependa de la red real."""
+    stub = dir_bin / nombre
+    stub.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    stub.chmod(0o755)
 
 
 def _entorno(dir_bin):
