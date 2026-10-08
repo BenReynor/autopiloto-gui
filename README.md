@@ -130,15 +130,21 @@ Cada proyecto debe tener en su raíz:
 
 ```
 proyecto/
-├── autopiloto.sh    # script principal (se copia del template)
-├── gate.sh          # checks (tests, lint, etc.)
+├── autopiloto.sh    # loop bash (DEPRECADO; la GUI usa el motor python)
+├── gate.sh          # checks (tests, lint, etc.) — bash, única pieza no nativa
 ├── mapear.sh        # genera mapeo.txt
 ├── plan.md          # lista de tareas
 ├── lecciones.md     # memoria del proyecto
-└── progreso.log     # lo escribe el loop
+└── progreso.log     # lo escribe el motor (lo parsea la GUI)
 ```
 
-Los scripts `autopiloto.sh`, `gate.sh`, `mapear.sh` se copian automáticamente al crear/abrir el proyecto desde la plantilla del repo (`autopiloto_gui/plantillas_data/`).
+El motor del loop es `autopiloto_gui/loop.py` (port del script, nacido en `W2`,
+mismo log/observabilidad). La GUI lo lanza con su propio intérprete
+(`python -m autopiloto_gui.loop`, o `--autopiloto-loop` dentro del binario
+empaquetado) y ya no requiere bash para arrancar. Los ficheros `autopiloto.sh`,
+`gate.sh`, `mapear.sh` se copian automáticamente al crear/abrir el proyecto
+desde la plantilla del repo (`autopiloto_gui/plantillas_data/`); `autopiloto.sh`
+se conserva como referencia y para ejecución manual en terminal POSIX.
 
 ---
 
@@ -148,7 +154,7 @@ Los scripts `autopiloto.sh`, `gate.sh`, `mapear.sh` se copian automáticamente a
 |----|--------|
 | **Linux** | ✅ Funciona. Es el entorno de referencia y donde corre CI. |
 | **macOS** | ⚠️ Parcial. Ya no exige GNU coreutils: `timeout` → `_timeout` (GNU/gtimeout/respaldo bash que devuelve 124) y `sed -i "0,/…/"` → `marcar_plan` (awk+cat, conserva permisos), con tests que impiden regresiones. Queda el sensor térmico (`/sys/class/thermal`, sólo Linux; degrada a "sin dato") y la verificación en un Mac real + el `.dmg`. |
-| **Windows** | ⚠️ Parcial. La GUI ya funciona con Git Bash en el PATH: el PATH se une con `os.pathsep`, los CLIs de agentes se resuelven con sufijo `.exe`/`.cmd` (PATHEXT) y la suite corre en CI (job `windows-latest` con los tests POSIX saltados). El loop y el gate siguen siendo bash; el backend nativo (sin Git Bash) es el siguiente paso. |
+| **Windows** | ✅ GUI + loop nativos. El loop es un motor Python (`autopiloto_gui/loop.py`) que la GUI lanza con su propio intérprete: **ya no hace falta Git Bash para arrancarlo** (PATH con `os.pathsep`, CLIs con sufijo `.exe`/`.cmd`, suite en CI en `windows-latest`). Único resto de bash: el gate (`gate.sh`/`gate_checks/`, opción por diseño) — sin Git Bash el loop corre pero cada gate fallará y bloqueará la tarea. |
 
 Lo que sí es independiente del SO desde ya: los finales de línea de los `.sh`
 (`.gitattributes` fuerza `eol=lf`, un `clone` en Windows con `autocrlf` ya no
@@ -166,8 +172,9 @@ plan) está al final de ese fichero, con el motivo de cada uno.
 
 ## 🔧 Variables del loop (env)
 
-`autopiloto.sh` se configura por variables de entorno (la GUI las rellena desde
-el formulario de Ejecución). Las más útiles:
+El motor del loop (`autopiloto_gui/loop.py`; `autopiloto.sh` es su port bash,
+deprecado por la GUI) se configura por variables de entorno (la GUI las rellena
+desde el formulario de Ejecución). Las más útiles:
 
 | Variable | Descripción |
 |----------|-------------|
@@ -251,14 +258,22 @@ autopiloto_gui/
 ├── proyectos.py        # Persistencia JSON (~/.config/autopiloto/)
 ├── plantillas.py       # Scaffold proyectos
 ├── plantillas_data/    # Scripts .sh template + memoria inicial
-│   ├── autopiloto.sh   # loop principal
-│   ├── gate.sh         # gate de calidad
+│   ├── autopiloto.sh   # loop BASH (deprecado; referencia/uso manual)
+│   ├── gate.sh         # gate de calidad (bash)
 │   ├── mapear.sh       # mapeo del repo
 │   ├── plan.md         # memoria inicial (NO se sobreescribe)
 │   ├── lecciones.md
 │   ├── .gitignore      # excluye el framework del repo del usuario
 │   └── gate_checks/    # 8 checks (db, migrations, backend, imports, tests…)
-└── tests/              # plan, métricas, plantillas, webhooks, GUI, log/revisión, agentes, net, sensor, proceso, config, portabilidad, temas/selector
+├── loop.py             # MOTOR del loop en Python (nativo, W2):
+│   │                   #   Config, señales, gate bash, agentes, revisión,
+│   │                   #   commit/merge/[B], integración, push
+│   ├── loop_agentes.py # lanzamiento/agentes/revisor + métricas
+│   ├── loop_git.py     # git en Python
+│   ├── loop_proceso.py # run_con_timeout/killpg (agente o gate)
+│   ├── loop_args.py    # parseo CLI (--hasta/--push/--padre/--trabajo)
+│   └── plan.py         # modelo plan.md
+└── tests/              # plan, métricas, plantillas, webhooks, GUI, log/revisión, agentes, net, sensor, proceso, config, portabilidad, temas/selector, loop python/e2e
 ```
 
 ---

@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 # autopiloto.sh — Bucle autónomo para agentes IA, con git por ramas.
 #
+# ⚠️ DEPRECADO (uso manual / referencia). El bucle que lanza la GUI hoy es el
+# motor nativo: autopiloto_gui/loop.py (python -m autopiloto_gui.loop), idéntico en
+# log, observabilidad y comportamiento, y nativo (no necesita bash para
+# arrancar; el gate, gate.sh/gate_checks, sí sigue siendo bash en ambos).
+# Este script se mantiene en la plantilla porque muchos tests lo ejecutan como
+# verificación cruzada y para quien prefiera correr el loop a mano en un
+# terminal POSIX. Los fixes de comportamiento van a loop.py; NO edites este
+# script como fuente de verdad salvo para paridad.
+#
 # Workflow de ramas (por tarea):
 #   autopiloto/<fecha>                          <- rama base del run (hija de RAMA_BASE)
 #   └── autopiloto/tareas/<fecha>/t<N>          <- una rama por tarea (git no
