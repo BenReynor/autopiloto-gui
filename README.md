@@ -184,6 +184,10 @@ código**: al instalarlos el sistema pedirá confirmación explícita:
 Cada Release lleva sus `SHA256SUMS*`; se verifican con
 `shasum -a 256 -c SHA256SUMS[-windows|-macos]`.
 
+La validación de puntas (GUI + un run real del loop con un agente como
+opencode) está documentada, paso a paso y por SO, en
+[packaging/PRUEBA-MANUAL.md](packaging/PRUEBA-MANUAL.md).
+
 ---
 
 ## 🔧 Variables del loop (env)

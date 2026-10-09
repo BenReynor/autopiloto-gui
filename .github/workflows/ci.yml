@@ -47,9 +47,9 @@ jobs:
 
   # Las plantillas shell se copian a proyectos de otros usuarios, que pueden
   # estar en macOS. Este job corre en BSD de verdad: lo que funciona aquí, sus
-  # binutils/date/sed/find son los de macOS. NO se lanza la suite completa
-  # (PySide6 y los tests con commits git no son fiables en ese runner): sólo el
-  # lint de portabilidad, que no importa nada del paquete.
+  # binutils/date/sed/find son los de macOS, y el lint es deliberadamente
+  # ligero (sin importar el paquete). La suite completa en este SO la valida el
+  # job "test-macos".
   portabilidad:
     name: portabilidad (macOS)
     runs-on: macos-latest
@@ -83,6 +83,41 @@ jobs:
         # colara mal, el runner de macOS se quedaría 2000 s colgado.
         run: |
           /usr/bin/time -p ping -c1 -W2000 8.8.8.8 || echo "sin red (esperado en CI)"
+
+  # macOS: la suite completa, no sólo el lint de portabilidad. El miedo de
+  # antes ("PySide6 no es fiable en ese runner") quedó obsoleto: la Release ya
+  # arranca la GUI offscreen en macos-latest (build_macos.sh). Qt offscreen no
+  # necesita deps extra en macOS y los .sh ya son portables a /bin/bash 3.2.
+  # Este runner es arm64, la misma arquitectura del .dmg que publicamos.
+  test-macos:
+    name: ruff + pytest (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Identidad git global (mismo motivo que en test/test-windows).
+      - name: Identidad git
+        run: |
+          git config --global user.name "autopiloto CI"
+          git config --global user.email "ci@autopiloto.local"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Dependencias de Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: python -m ruff check autopiloto_gui/ tests/
+
+      - name: Tests (pytest headless)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest tests/
 
   # Windows: la GUI debe arrancar y la suite completa debe pasar con los
   # tests POSIX saltados (test_portabilidad, señales, 0600...). El loop es ya
