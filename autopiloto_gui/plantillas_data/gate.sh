@@ -37,12 +37,14 @@ shopt -s nullglob
 checks=("$CHECKS_DIR"/*.sh)
 shopt -u nullglob
 
-# Excluir _env.sh (no es un check)
+# Excluir _env.sh (no es un check).
+# set -u con bash<4.4 (macOS /bin/bash, 3.2) revienta al expandir "${arr[@]}"
+# sobre un array vacío: mismo guard `${arr[@]+"${arr[@]}"}` que autopiloto.sh.
 impl=()
-for c in "${checks[@]}"; do
+for c in ${checks[@]+"${checks[@]}"}; do
     [ "$(basename "$c")" != "_env.sh" ] && impl+=("$c")
 done
-checks=("${impl[@]}")
+checks=(${impl[@]+"${impl[@]}"})
 
 if [ ${#checks[@]} -eq 0 ]; then
     echo "[GATE] ⚠ Sin checks en $CHECKS_DIR — se asume OK"

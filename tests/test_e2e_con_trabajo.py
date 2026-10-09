@@ -147,7 +147,8 @@ def test_iteracion_con_trabajo_completa_el_run(tmp_path):
     assert "AUTOPILOTO FINALIZADO" in log
 
     # La tarea se completó de verdad: commit + plan marcado.
-    assert "- [x] t1" in (proyecto / "plan.md").read_text(encoding="utf-8")
+    assert "- [x] t1" in (proyecto / "plan.md").read_text(encoding="utf-8"), \
+        f"t1 sin marcar:\n{combinado[-3000:]}"
     loggit = subprocess.run(
         ["git", "log", "--all", "--format=%s"], cwd=str(proyecto),
         capture_output=True, text=True, check=True)

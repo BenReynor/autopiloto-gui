@@ -102,6 +102,35 @@ Respondes ÚNICAMENTE con JSON en la última línea, sin markdown:
 {\"met\": true, \"reason\": \"<por qué se cumple, máx 120 caracteres>\"}   o
 {\"met\": false, \"reason\": \"<qué falta, máx 120 caracteres>\"}"
 
+# Límite de tiempo portátil, mismo criterio que _timeout() en autopiloto.sh:
+# GNU timeout > gtimeout (Homebrew) > respaldo en bash puro (macOS base no
+# trae ninguno y un `timeout` directo saldría con rc=127: el juez se omitiría
+# siempre). El respaldo devuelve 124 (como GNU) cuando se agota el tope.
+_juez_timeout() {
+    local segs="$1" pid i=0
+    shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$segs" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        gtimeout "$segs" "$@"
+    else
+        "$@" &
+        pid=$!
+        while kill -0 "$pid" 2>/dev/null; do
+            [ "$i" -ge "$segs" ] && break
+            i=$((i + 1))
+            sleep 1
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            return 124
+        fi
+        wait "$pid"
+        return $?
+    fi
+}
+
 # Invocación según el agente del juez. El modelo (--model) sólo existe en
 # opencode; codex y claude se configuran por su cuenta y no aceptan la flag,
 # así que se les ignora MODELO_JUEZ.
@@ -109,9 +138,9 @@ run_juez() {
     case "$AGENTE" in
         opencode)
             if [ -n "$MODELO_JUEZ" ]; then
-                timeout "$TIMEOUT_JUEZ" "$CLI" run --agent "$OPENCODE_AGENT" --model "$MODELO_JUEZ" "$PROMPT_JUEZ" 2>&1
+                _juez_timeout "$TIMEOUT_JUEZ" "$CLI" run --agent "$OPENCODE_AGENT" --model "$MODELO_JUEZ" "$PROMPT_JUEZ" 2>&1
             else
-                timeout "$TIMEOUT_JUEZ" "$CLI" run --agent "$OPENCODE_AGENT" "$PROMPT_JUEZ" 2>&1
+                _juez_timeout "$TIMEOUT_JUEZ" "$CLI" run --agent "$OPENCODE_AGENT" "$PROMPT_JUEZ" 2>&1
             fi
             ;;
         codex)
@@ -119,17 +148,17 @@ run_juez() {
             # pasaría un argumento vacío que el CLI tomaría como el prompt.
             local -a flags=()
             [ -n "${CODEX_FLAGS:-}" ] && read -r -a flags <<< "$CODEX_FLAGS"
-            timeout "$TIMEOUT_JUEZ" "$CLI" exec --skip-git-repo-check \
+            _juez_timeout "$TIMEOUT_JUEZ" "$CLI" exec --skip-git-repo-check \
                 ${flags[@]+"${flags[@]}"} "$PROMPT_JUEZ" 2>&1
             ;;
         claude)
             local -a flags=()
             [ -n "${CLAUDE_FLAGS:-}" ] && read -r -a flags <<< "$CLAUDE_FLAGS"
-            timeout "$TIMEOUT_JUEZ" "$CLI" -p --output-format text \
+            _juez_timeout "$TIMEOUT_JUEZ" "$CLI" -p --output-format text \
                 ${flags[@]+"${flags[@]}"} "$PROMPT_JUEZ" 2>&1
             ;;
         *)
-            timeout "$TIMEOUT_JUEZ" "$CLI" run --agent "$OPENCODE_AGENT" "$PROMPT_JUEZ" 2>&1
+            _juez_timeout "$TIMEOUT_JUEZ" "$CLI" run --agent "$OPENCODE_AGENT" "$PROMPT_JUEZ" 2>&1
             ;;
     esac
 }
