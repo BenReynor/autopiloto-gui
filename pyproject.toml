@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "autopiloto-gui"
-version = "2.0.0"
+version = "2.0.1"
 description = "Panel de control del autopiloto: GUI PySide6 para gestionar agentes IA sobre proyectos"
 requires-python = ">=3.10"
 license = { text = "MIT" }
