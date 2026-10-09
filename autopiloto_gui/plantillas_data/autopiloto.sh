@@ -119,18 +119,33 @@ CONTROL="plan\.md|lecciones\.md|progreso\.log|gate\.sh|autopiloto\.sh|mapear\.sh
 # porque LC_ALL tiene prioridad sobre LC_NUMERIC en los procesos hijos.
 num() { LC_ALL=C awk "$@"; }
 
-# Epoch en milisegundos. GNU `date +%s%3N` da nanosegundos; el date de BSD no
-# conoce %N y devuelve el literal "%3N", así que se detecta y se degrada a
-# perl (Time::HiRes) o a segundos con sufijo de ceros.
+# Epoch en milisegundos. GNU `date +%s%3N` da nanosegundos. En BSD/macOS:
+# - suele devolver solo segundos o puede devolver "17915175853N" (literal N)
+# - detectar y degradar a perl (Time::HiRes) o a segundos con sufijo ceros.
 ahora_ms() {
     local ns
     ns="$(date +%s%3N 2>/dev/null || true)"
     case "$ns" in
-        ''|*%N*) ns="" ;;
+        ''|*%N*|*N)
+            # comprueba si es puramente dígitos (GNU %3N)
+            if [[ "$ns" =~ ^[0-9]+$ ]]; then
+                printf '%s\n' "$ns"
+                return 0
+            fi
+            ns=""
+            ;;
+        *)
+            if [[ "$ns" =~ ^[0-9]+$ ]]; then
+                printf '%s\n' "$ns"
+                return 0
+            fi
+            ns=""
+            ;;
     esac
-    if [ -n "$ns" ]; then printf '%s\n' "$ns"; return 0; fi
     if command -v perl >/dev/null 2>&1; then
-        perl -MTime::HiRes=time -e 'printf "%d\n", time * 1000' 2>/dev/null && return 0
+        if perl -MTime::HiRes=time -e 'printf "%d\n", int(time * 1000)' 2>/dev/null; then
+            return 0
+        fi
     fi
     printf '%s000\n' "$(date +%s)"
 }
