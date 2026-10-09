@@ -1,0 +1,46 @@
+name: Dependabot lock
+
+# Cuando Dependabot sube una versión en pyproject.toml, requirements.lock queda
+# desincronizado y el job "seguridad" del CI falla. Aquí se regenera el lock en
+# la propia rama del PR para que quede al día.
+#
+# pull_request_target (y no pull_request) porque necesita token con permiso de
+# escritura; se limita a PRs de Dependabot con el guard `github.actor`.
+on:
+  pull_request_target:
+    paths:
+      - pyproject.toml
+      - requirements.lock
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dependabot-lock-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  relock:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Regenerar requirements.lock
+        run: |
+          uv pip compile --generate-hashes --extra dev --python-version 3.10 \
+            -o requirements.lock pyproject.toml
+          if git diff --quiet -- requirements.lock; then
+            echo "requirements.lock ya está al día."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add requirements.lock
+          git commit -m "chore: regenerar requirements.lock"
+          git push

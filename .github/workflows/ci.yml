@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Semanal (lunes 06:00 UTC): detecta que una actualización de dependencias o
+  # de las imágenes de los runners de Linux/macOS/Windows haya roto la suite,
+  # aunque nadie haga push. Un fallo aquí genera aviso en GitHub.
+  schedule:
+    - cron: "0 6 * * 1"
 
 jobs:
   test:

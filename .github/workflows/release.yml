@@ -8,6 +8,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+  # Semanal (lunes 07:00 UTC): compila los 3 SO aunque no haya cambios, para
+  # detectar que una actualización de runner/PyInstaller/PySide6 rompa el
+  # empaquetado. El job `release` está limitado a tags, así que esto NO publica.
+  schedule:
+    - cron: "0 7 * * 1"
 
 permissions:
   contents: write  # crea la release y sube artefactos
