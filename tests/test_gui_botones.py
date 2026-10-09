@@ -31,12 +31,13 @@ from PySide6.QtWidgets import (  # noqa: E402
 def app():
     a = QApplication.instance() or QApplication(sys.argv)
     yield a
-    # Teardown limpio: evitar crash de pyqtgraph/Shiboken al salir del proceso
+    # Teardown sin a.deleteLater(): borrar el QApplication de sesión provoca
+    # "shared QObject was deleted directly" / "Pure virtual function called"
+    # al salir del proceso (SIGABRT). Igual que en tests/conftest.py.
     a.processEvents()
     a.closeAllWindows()
     a.quit()
     a.processEvents()
-    a.deleteLater()
 
 
 @pytest.fixture

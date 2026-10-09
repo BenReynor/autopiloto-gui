@@ -20,9 +20,11 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 def app():
     a = QApplication.instance() or QApplication(sys.argv)
     yield a
-    # Teardown limpio: evitar crash de pyqtgraph/Shiboken al salir del proceso
+    # Teardown limpio. NO se llama a.deleteLater(): borrar el QApplication de
+    # sesión hace que Shiboken reporte "shared QObject was deleted directly"
+    # y "Pure virtual function called" al salir (SIGABRT 134 / exit 1). Se
+    # liberan ventanas y se para el bucle; el proceso termina solo.
     a.processEvents()
     a.closeAllWindows()
     a.quit()
     a.processEvents()
-    a.deleteLater()

@@ -38,7 +38,7 @@ done
 
 if [ -z "$PYTHON" ]; then
     echo "Autopiloto: no se encontró ningún Python con PySide6 instalado." >&2
-    echo "Instálalo con:  python3 -m pip install -r \"$PROYECTO/requirements.txt\"" >&2
+    echo "Instálalo con:  python3 -m pip install -e \"$PROYECTO\"" >&2
     exit 1
 fi
 
