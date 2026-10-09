@@ -214,6 +214,10 @@ jobs:
           fetch-depth: 0  # gitleaks revisa TODO el historial, no el diff
 
       - name: Secretos en el historial (gitleaks)
+        # En PRs de Dependabot el token es de solo lectura y gitleaks-action
+        # revienta con "Resource not accessible by integration". Esos PRs solo
+        # suben versiones, no añaden secretos; el push semanal a main sí audita.
+        if: github.actor != 'dependabot[bot]'
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -225,6 +229,9 @@ jobs:
       - uses: astral-sh/setup-uv@v6
 
       - name: El lock está al día con pyproject.toml
+        # En PRs de Dependabot lo regenera el workflow "Dependabot lock"; aquí
+        # se saltaría por una carrera. El push a main y el cron sí lo verifican.
+        if: github.actor != 'dependabot[bot]'
         # Se regenera in situ (el comentario de cabecera incluye la orden
         # exacta) y sólo se comprueba que git no vea diferencias.
         run: |
