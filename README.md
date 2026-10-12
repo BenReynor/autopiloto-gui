@@ -44,6 +44,15 @@ python -m autopiloto_gui
 | **Git** | Historial de commits del proyecto, revert rápido. |
 | **Seguridad** | Límite temperatura CPU (apagado seguro), webhooks (Telegram, Discord, WhatsApp). |
 
+> **Contexto del proyecto (`CONTEXTO.md`)**: fichero permanente que describe *de
+> qué va* el proyecto (de qué trata, requisitos, filosofía, estructura). El loop
+> lo **inyecta en el prompt del agente y del revisor** en cada iteración, para
+> que trabajen con el marco del proyecto y no a ciegas. A diferencia de
+> `lecciones.md` (errores aprendidos, crece solo) y `plan.md` (tareas), el
+> contexto es estable y lo escribes tú. Se instala con un esqueleto en cada
+> proyecto y **nunca se sobreescribe**. No tiene panel en la GUI: se edita con
+> tu editor.
+
 ---
 
 ## ⌨️ Atajos
@@ -107,8 +116,8 @@ vacío. Conviene saber qué toca la app en cada caso:
 
 | | Qué hace |
 |---|---|
-| Ficheros que faltan (`plan.md`, `lecciones.md`, `.gitignore`, scripts) | Los copia de la plantilla. **Nunca pisa un fichero que ya exista.** |
-| `plan.md`, `lecciones.md`, `gate_checks/*.sh` | Son contenido tuyo. No se comparan ni se sobrescriben nunca. |
+| Ficheros que faltan (`plan.md`, `lecciones.md`, `CONTEXTO.md`, `.gitignore`, scripts) | Los copia de la plantilla. **Nunca pisa un fichero que ya exista.** |
+| `plan.md`, `lecciones.md`, `CONTEXTO.md`, `gate_checks/*.sh` | Son contenido tuyo. No se comparan ni se sobrescriben nunca. |
 | `autopiloto.sh`, `gate.sh`, `mapear.sh` | **Sí se sobrescriben** al abrir el proyecto si difieren de la plantilla. Si los editaste a mano, haz commit antes. |
 | Directorio sin repo git | Hace `git init -b master` y un commit inicial con lo que haya (`git add -A`). |
 
@@ -137,6 +146,7 @@ proyecto/
 ├── mapear.sh        # genera mapeo.txt
 ├── plan.md          # lista de tareas
 ├── lecciones.md     # memoria del proyecto
+├── CONTEXTO.md      # contexto permanente (de qué va el proyecto; se inyecta al agente y al revisor)
 ├── incidencias.jsonl # fallos/abortos/bloqueos (lo escribe el motor)
 └── progreso.log     # lo escribe el motor (lo parsea la GUI)
 ```
@@ -242,6 +252,57 @@ que no exista.
 
 ---
 
+## 🤖 Servidor MCP (agente piloto)
+
+`autopiloto_gui.mcp_server` expone el estado de los proyectos y las acciones
+del loop por **MCP sobre stdio**, para que un agente "piloto" (p. ej. opencode
+o Claude Desktop) pueda leer el plan, las incidencias y las métricas, correr el
+gate, iniciar/parar el loop y **resolver la revisión manual** que de otro modo
+esperaría a una persona.
+
+Requiere el extra opcional `mcp` (no se instala por defecto):
+
+```bash
+pip install -e ".[mcp]"
+
+# Arrancar el servidor (habla JSON-RPC por stdin/stdout)
+python -m autopiloto_gui.mcp_server
+```
+
+Configuración de un cliente MCP (ejemplo `opencode`/Claude Desktop):
+
+```json
+{
+  "mcpServers": {
+    "autopiloto": {
+      "command": "python",
+      "args": ["-m", "autopiloto_gui.mcp_server"]
+    }
+  }
+}
+```
+
+**Herramientas de lectura:** `listar_proyectos`, `estado_proyecto`,
+`leer_fichero`, `leer_incidencias`, `resumen_metricas`, `cola_log`,
+`estado_agentes`, `listar_modelos`.
+
+**Herramientas de acción:** `instalar_proyecto`, `correr_gate`, `iniciar_loop`
+(segundo plano), `estado_loop`, `detener_loop`, `resolver_revision`.
+
+**Recursos:** `autopiloto://{proyecto}/{fichero}` con lista blanca (`plan.md`,
+`lecciones.md`, `CONTEXTO.md`, `progreso.log`, `metrics.jsonl`,
+`incidencias.jsonl`, `mapeo.txt`).
+
+La revisión manual del loop se resuelve escribiendo en
+`<proyecto>/.autopiloto_review/decision`: `resolver_revision(nombre, "APPROVE")`
+o `REJECT <motivo>`. El piloto puede aprobar lo trivial y escalar lo dudoso.
+
+> Nota: el binario de PyInstaller se empaqueta `--windowed` (sin consola), así
+> que el transporte stdio no está disponible en el `.exe`; usa el código fuente
+> para el servidor MCP.
+
+---
+
 ## 🐛 Desarrollo
 
 ```bash
@@ -279,6 +340,8 @@ autopiloto_gui/
 ├── metricas.py         # Parseo progreso.log → series
 ├── plan.py             # Modelo plan.md
 ├── proyectos.py        # Persistencia JSON (~/.config/autopiloto/)
+├── loop_launch.py      # preparación del lanzamiento (env + argv), compartida GUI/MCP
+├── mcp_server.py       # servidor MCP por stdio (tools + recursos); extra `mcp`
 ├── plantillas.py       # Scaffold proyectos
 ├── plantillas_data/    # Scripts .sh template + memoria inicial
 │   ├── autopiloto.sh   # loop BASH (deprecado; referencia/uso manual)
@@ -286,6 +349,7 @@ autopiloto_gui/
 │   ├── mapear.sh       # mapeo del repo
 │   ├── plan.md         # memoria inicial (NO se sobreescribe)
 │   ├── lecciones.md
+│   ├── CONTEXTO.md     # contexto del proyecto (esqueleto; NO se sobreescribe)
 │   ├── .gitignore      # excluye el framework del repo del usuario
 │   └── gate_checks/    # 8 checks (.sh bash + .py port portable sin bash)
 ├── loop.py             # MOTOR del loop en Python (nativo, W2):

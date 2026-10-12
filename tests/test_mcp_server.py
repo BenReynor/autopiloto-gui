@@ -1,0 +1,131 @@
+"""Tests del servidor MCP (herramientas y recursos headless).
+
+Llaman a las funciones directamente (los decoradores de MCPServer devuelven la
+función sin envolverla) con el registro de proyectos y el pidfile aislados en
+un tmp_path, sin arrancar el transporte stdio.
+"""
+
+import asyncio
+import json
+
+import pytest
+
+pytest.importorskip("mcp")
+
+from autopiloto_gui import mcp_server as m  # noqa: E402
+
+
+@pytest.fixture
+def proyecto(tmp_path, monkeypatch):
+    """Proyecto de prueba con plan/lecciones/contexto y registro aislado."""
+    (tmp_path / "plan.md").write_text(
+        "# Plan\n\n- [x] hecha\n- [ ] pendiente\n- [B] bloqueada\n",
+        encoding="utf-8")
+    (tmp_path / "lecciones.md").write_text("# Lecciones\n\n- ojo\n", encoding="utf-8")
+    (tmp_path / "CONTEXTO.md").write_text("# CONTEXTO\n\nun juego\n", encoding="utf-8")
+    (tmp_path / "incidencias.jsonl").write_text(
+        '{"tipo": "gate", "motivo": "falla", "tarea": "t1"}\n'
+        'no-es-json\n'
+        '{"tipo": "revisor", "motivo": "no", "tarea": "t2"}\n',
+        encoding="utf-8")
+    (tmp_path / "progreso.log").write_text(
+        "\n".join(f"linea {i}" for i in range(100)), encoding="utf-8")
+    monkeypatch.setattr(m.proyectos, "cargar",
+                        lambda: {"p1": {"ruta": str(tmp_path)}})
+    monkeypatch.setattr(m, "_PIDS_RUTA", str(tmp_path / "pids.json"))
+    return tmp_path
+
+
+def test_listar_proyectos(proyecto):
+    datos = json.loads(m.listar_proyectos())
+    assert datos == [{"nombre": "p1", "ruta": str(proyecto), "existe": True}]
+
+
+def test_estado_proyecto_cuenta_plan(proyecto):
+    datos = json.loads(m.estado_proyecto("p1"))
+    assert datos["plan"] == {"pendientes": 1, "hechas": 1, "bloqueadas": 1}
+    assert datos["lecciones"]["existe"] is True
+    assert datos["contexto"]["existe"] is True
+    assert datos["loop"]["corriendo"] is False
+
+
+def test_leer_fichero_permitido_y_bloqueado(proyecto):
+    assert "un juego" in m.leer_fichero("p1", "CONTEXTO.md")
+    assert m.leer_fichero("p1", "plan.md").startswith("# Plan")
+    with pytest.raises(ValueError):
+        m.leer_fichero("p1", "../../etc/passwd")
+
+
+def test_leer_incidencias_salta_lineas_rotas(proyecto):
+    datos = json.loads(m.leer_incidencias("p1"))
+    assert [d["tipo"] for d in datos] == ["gate", "revisor"]
+    assert all("_crudo" not in d for d in datos)
+
+
+def test_cola_log_devuelve_ultimas(proyecto):
+    assert m.cola_log("p1", 3) == "linea 97\nlinea 98\nlinea 99"
+
+
+def test_resolver_revision_escribe_decision(proyecto):
+    m.resolver_revision("p1", "approve")
+    decision = (proyecto / ".autopiloto_review" / "decision").read_text(encoding="utf-8")
+    assert decision == "APPROVE"
+    m.resolver_revision("p1", "REJECT", "no me convence")
+    decision = (proyecto / ".autopiloto_review" / "decision").read_text(encoding="utf-8")
+    assert decision == "REJECT no me convence"
+    with pytest.raises(ValueError):
+        m.resolver_revision("p1", "quizas")
+
+
+def test_estado_loop_detecta_revision_pendiente(proyecto):
+    fondo = proyecto / ".autopiloto_review"
+    fondo.mkdir()
+    (fondo / "waiting").write_text("", encoding="utf-8")
+    (fondo / "tarea.txt").write_text("Tarea 3\n", encoding="utf-8")
+    datos = json.loads(m.estado_loop("p1"))
+    assert datos["revision_pendiente"] is True
+    assert datos["tarea_en_revision"] == "Tarea 3"
+    assert datos["corriendo"] is False
+
+
+def test_proyecto_desconocido_falla(proyecto):
+    with pytest.raises(ValueError):
+        m.estado_proyecto("no-existe")
+
+
+def test_detener_loop_si_no_corre(proyecto):
+    datos = json.loads(m.detener_loop("p1"))
+    assert datos["detenido"] is False
+    assert "motivo" in datos
+
+
+def test_registro_tools_y_recurso():
+    async def _listar(server):
+        tools = [t.name for t in await server.list_tools()]
+        plantillas = [x.uri_template for x in await server.list_resource_templates()]
+        return tools, plantillas
+
+    tools, plantillas = asyncio.run(_listar(m.servidor()))
+    for esperada in ("listar_proyectos", "iniciar_loop", "detener_loop",
+                     "resolver_revision", "estado_loop", "correr_gate",
+                     "instalar_proyecto", "leer_fichero", "leer_contexto",
+                     "leer_plan", "leer_lecciones"):
+        assert esperada in tools
+    assert "autopiloto://{nombre}/{fichero}" in plantillas
+
+
+def test_iniciar_loop_sin_agentes(proyecto, monkeypatch):
+    monkeypatch.setattr(m.modelos, "agentes_operativos",
+                        lambda preferidos=None: [])
+    monkeypatch.setattr(m.net, "hay_internet", lambda: True)
+    monkeypatch.setattr(m.proyectos, "leer_config_proyecto", lambda n: {})
+    datos = json.loads(m.iniciar_loop("p1"))
+    assert datos["iniciado"] is False
+    assert "agente" in datos["motivo"]
+
+
+def test_iniciar_loop_sin_internet(proyecto, monkeypatch):
+    monkeypatch.setattr(m.net, "hay_internet", lambda: False)
+    datos = json.loads(m.iniciar_loop("p1"))
+    assert datos["iniciado"] is False
+    assert "internet" in datos["motivo"]

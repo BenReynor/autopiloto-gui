@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import configuracion as cfg
-from . import modelos, net, plantillas, sensor
+from . import loop_launch, modelos, net, plantillas, sensor
 from .gate import argv_gate
 from .paneles import (
     AvisoTemperatura,
@@ -68,21 +68,13 @@ from .webhooks import WebhookManager
 
 
 def _argv_motor(frozen, args):
-    """Comando (programa, argv) que lanza el motor del loop.
-
-    En el código fuente: `python -m autopiloto_gui.loop [args]`. En el
-    binario de PyInstaller `-m` no resuelve el módulo (va empaquetado en el
-    exe): el entrypoint interpreta `--autopiloto-loop` y llama a
-    `loop.main(argv[1:])`.
-    """
-    if frozen:
-        return sys.executable, ["--autopiloto-loop"] + args
-    return sys.executable, ["-m", "autopiloto_gui.loop"] + args
+    """Comando (programa, argv) que lanza el motor del loop (ver loop_launch)."""
+    return loop_launch.argv_motor(frozen, args)
 
 
 def _raiz_codigo():
     """Raíz del repo de la GUI: `autopiloto_gui` es un subdirectorio suyo."""
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return loop_launch.raiz_codigo()
 
 
 class Ventana(QMainWindow):
@@ -689,41 +681,11 @@ class Ventana(QMainWindow):
         self._guardar_config_proyecto()
         conf = self._lanzamiento
         nav_conf = self.pan_ejec.navegador_config()
-        args = []
-        if conf["hasta"]:
-            args += ["--hasta", conf["hasta"]]
-        if conf["padre"]:
-            args += ["--padre", conf["padre"]]
-        if conf.get("trabajo"):
-            args += ["--trabajo", conf["trabajo"]]
-        if conf["push"]:
-            args.append("--push")
 
-        env = dict(e.split("=", 1) for e in QProcess.systemEnvironment()
-                   if "=" in e)
-
-        # El agente CLI se pasa explícito. Si no está en el PATH del QProcess
-        # (p. ej. GUI abierta sin ~/.opencode/bin), resolvemos su ruta absoluta
-        # y la pasamos como CLI_<AGENTE> (que autopiloto.sh ya soporta). Si hay
-        # PATH incompleto, se añade el dir del binario al PATH del subproceso.
-        dirs_extra = set()
-        mapa_cli = {"opencode": "CLI_OPENCODE", "codex": "CLI_CODEX",
-                    "claude": "CLI_CLAUDE"}
-        for clave, var in mapa_cli.items():
-            binario = modelos.ruta_binario(clave)
-            if binario:
-                env[var] = binario
-                dirs_extra.add(os.path.dirname(binario))
-        if dirs_extra:
-            # os.pathsep: con ":" fijo el PATH del loop se corrompía en
-            # Windows (que separa con ";").
-            env["PATH"] = os.pathsep.join(sorted(dirs_extra)) + (
-                os.pathsep + env["PATH"] if env.get("PATH") else "")
-
-        # Un selector en "auto" no es el nombre del agente: lo resolvemos aquí
-        # con la misma lista de preferencia que usa autopiloto.sh, para que el
-        # log de la GUI y el motivo de lanzamiento coincidan con lo ejecutado.
-        detectados = modelos.agentes_operativos()
+        base_env = dict(e.split("=", 1) for e in QProcess.systemEnvironment()
+                        if "=" in e)
+        plan = loop_launch.preparar(conf, nav_conf, base_env)
+        detectados = plan["detectados"]
         if not detectados:
             self.estado.setText(
                 "No se detectó ningún agente CLI con sesión (opencode, codex o claude)")
@@ -735,46 +697,12 @@ class Ventana(QMainWindow):
             self.pan_ejec.b_iniciar.setEnabled(True)
             return
 
-        detectado_auto = detectados[0]
-        agente_tarea = (detectado_auto if conf['agente_cli'] == "auto"
-                        else conf['agente_cli'])
-        agente_revisor = (detectado_auto if conf['revisor_cli'] == "auto"
-                          else conf['revisor_cli'])
-        env["MAX_ITER"] = str(conf['iteraciones'])
-        env["AGENTE_TAREA"] = agente_tarea
-        env["AGENTE_REVISOR"] = agente_revisor
-        # AGENTES_PREFERIDOS sólo con agentes utilizables: si el revisor está
-        # en "auto", autopiloto.sh busca otro en esta lista, y no debe caer en
-        # un CLI instalado pero sin sesión (abortaría el loop).
-        env["AGENTES_PREFERIDOS"] = " ".join(detectados)
-        # El juez sigue al agente de la tarea salvo elección explícita.
-        env["AGENTE_JUEZ"] = agente_tarea
-        # Solo pasa --model si la selección es provider/model completo Y el
-        # agente es opencode (codex y claude no aceptan --model aquí).
-        modelo_tarea = (conf['agente'] if "/" in conf['agente']
-                        and agente_tarea == "opencode" else "")
-        modelo_revisor = (conf['revisor'] if "/" in conf['revisor']
-                          and agente_revisor == "opencode" else "")
-        modelo_nav = nav_conf['modelo'] if nav_conf['activo'] else ""
-        env["MODELO_TAREA"] = modelo_tarea
-        env["MODELO_REVISOR"] = modelo_revisor
-        env["NAVEGADOR"] = '1' if nav_conf['activo'] else '0'
-        env["MODELO_NAVEGADOR"] = modelo_nav
-        env["REVISION_DUAL"] = '1' if conf['dual'] else '0'
-        env["VOZ"] = '1' if conf['voz'] else '0'
-        env["MAX_COSTO"] = str(conf['costo_max'])
-        env["COSTO_POR_ITER"] = str(conf['costo_iter'])
-        env["REVISION_MANUAL"] = '1' if conf['revision_manual'] else '0'
-
-        # El motor es Python (autopiloto_gui.loop, port de autopiloto.sh) y el
-        # gate también (autopiloto_gui.gate): ya no hace falta bash para nada
-        # del bucle en Windows.
-        programa, args_motor = _argv_motor(getattr(sys, "frozen", False), args)
-        if not getattr(sys, "frozen", False):
-            env["PYTHONPATH"] = _raiz_codigo() + (
-                os.pathsep + env["PYTHONPATH"]
-                if env.get("PYTHONPATH") else "")
-        env = [f"{k}={v}" for k, v in env.items()]
+        agente_tarea = plan["agente_tarea"]
+        agente_revisor = plan["agente_revisor"]
+        modelo_tarea = plan["modelo_tarea"]
+        modelo_revisor = plan["modelo_revisor"]
+        programa, args_motor = plan["programa"], plan["argv"]
+        env = [f"{k}={v}" for k, v in plan["env"].items()]
 
         panel = self.pan_logs.panel_loop
         panel.clear()

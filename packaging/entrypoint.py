@@ -13,6 +13,8 @@ Triple modo:
   · `--autopiloto-gate [--proyecto DIR]`: corre el gate portable (autopiloto_gui.gate).
     El loop en el binario lo lanza así; en el código fuente usa
     `python -m autopiloto_gui.gate`.
+  · `--autopiloto-mcp`: arranca el servidor MCP por stdio (autopiloto_gui.mcp_server).
+    Requiere el extra `mcp`; en el código fuente: `python -m autopiloto_gui.mcp_server`.
 """
 import sys
 
@@ -25,6 +27,9 @@ def main(argv=None):
     if argv and argv[0] == "--autopiloto-gate":
         from autopiloto_gui.gate import main as _gate_main
         return _gate_main(argv[1:]) or 0
+    if argv and argv[0] == "--autopiloto-mcp":
+        from autopiloto_gui.mcp_server import main as _mcp_main
+        return _mcp_main() or 0
     try:
         from autopiloto_gui.app import main as _main
     except Exception:

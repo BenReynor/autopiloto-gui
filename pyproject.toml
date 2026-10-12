@@ -14,9 +14,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# `mcp` (servidor MCP por stdio) es opcional para el usuario, pero va también
+# en `dev` para que la CI lo tenga y los tests de tests/test_mcp_server.py
+# corran (hacen importorskip, así que sin él solo se saltan).
 dev = [
     "pytest>=8",
     "ruff",
+    "mcp>=2",
+]
+mcp = [
+    "mcp>=2",
 ]
 
 [tool.setuptools.packages.find]
