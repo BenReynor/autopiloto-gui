@@ -29,7 +29,7 @@ _CACHES = re.compile(
 # `^(?P<control>...)$` para que "plan.md" no se coma "docs/plan.md".
 CONTROL = (
     r"plan\.md|lecciones\.md|progreso\.log|gate\.sh|autopiloto\.sh|mapear\.sh"
-    r"|mapeo\.txt|endpoints\.txt|metrics\.jsonl|gate_checks(/.*)?"
+    r"|mapeo\.txt|endpoints\.txt|metrics\.jsonl|incidencias\.jsonl|gate_checks(/.*)?"
     r"|\.autopiloto_review(/.*)?")
 
 

@@ -3,7 +3,9 @@
 
 Sustituye al script bash manteniendo el MISMO contrato de log (lo parsea la
 GUI con las regex de metricas.py) y el mismo comportamiento observable. El
-gate se ejecuta como subproceso bash (decisión "opción B"): gate.sh y
+gate se ejecuta como subproceso Python portable (autopiloto_gui.gate): corre
+los checks .py y delega en bash los .sh si existe (así en Unix se conserva el
+comportamiento de siempre y en Windows funciona sin Git Bash). gate.sh y
 gate_checks/ siguen siendo código del framework.
 
 Uso (directo y desde la GUI; directorio actual = proyecto):
@@ -28,6 +30,7 @@ import time
 import urllib.request
 
 from . import net
+from .gate import argv_gate
 from .loop_agentes import (
     agente_ok,
     cli_agente,
@@ -55,7 +58,7 @@ from .loop_git import (
     snapshot,
 )
 from .loop_proceso import limpiar_sesiones, matar_grupo, run_con_timeout
-from .loop_util import ahora_ms, alerta, hora_limite, logx, suma_coste
+from .loop_util import ahora_ms, alerta, hora_limite, incidencia, logx, suma_coste
 from .plan import Plan
 
 GATE_TIMEOUT = 43200  # 12 h: el gate bash no tiene tope propio (como el script)
@@ -77,7 +80,9 @@ class Config:
         self.mapa = os.path.join(self.proyecto, "mapeo.txt")
         self.log = os.path.join(self.proyecto, "progreso.log")
         self.lecciones = os.path.join(self.proyecto, "lecciones.md")
+        self.incidencias = os.path.join(self.proyecto, "incidencias.jsonl")
         self.metrics = os.path.join(self.proyecto, "metrics.jsonl")
+        self.ultimo_motivo = None  # dict del último fallo de la tarea actual
 
         self.max_iter = int(env.get("MAX_ITER", "40"))
         self.timeout_por_tarea = int(env.get("TIMEOUT_POR_TAREA", "900"))
@@ -131,6 +136,18 @@ def _append_log(cfg, texto):
             f.write(texto if texto.endswith("\n") else texto + "\n")
     except OSError:
         pass
+
+
+def _incidencia(cfg, tipo, motivo, tarea="", iteracion=0, rama=""):
+    """Registra una incidencia estructurada y recuerda el último motivo.
+
+    `incidencias.jsonl` es independiente de `progreso.log` (prosa): una línea
+    JSON por fallo/aborto, para el panel de incidencias de la GUI y el resumen
+    final. `cfg.ultimo_motivo` permite que una tarea bloqueada herede el porqué
+    real de su último fallo (gate/revisor), en vez de un texto genérico."""
+    incidencia(cfg.incidencias, tipo, motivo, tarea, iteracion, rama)
+    cfg.ultimo_motivo = {"tipo": tipo, "motivo": motivo or "",
+                         "iteracion": iteracion, "tarea": tarea or ""}
 
 
 def mensaje(cfg, s):
@@ -190,7 +207,7 @@ def backup_gate(cfg):
 
 
 def gate_intacto(dir_backup, cfg):
-    """¿El agente alteró gate.sh o gate_checks/*.sh? (gate_intacto())."""
+    """¿El agente alteró gate.sh o gate_checks/*.{sh,py}? (gate_intacto())."""
     backup_gate_sh = os.path.join(dir_backup, "gate.sh")
     if os.path.exists(cfg.gate) != os.path.exists(backup_gate_sh):
         return False
@@ -202,13 +219,15 @@ def gate_intacto(dir_backup, cfg):
     if not os.path.isdir(backup_checks):
         return True
     for f in sorted(os.listdir(backup_checks)):
-        if not f.endswith(".sh"):
+        # Cubre tanto los checks bash como los del port Python (Windows).
+        if not f.endswith((".sh", ".py")):
             continue
         original = os.path.join(backup_checks, f)
-        if not os.path.exists(original):
+        if not os.path.isfile(original):
             continue
-        if not filecmp.cmp(os.path.join(proyecto_checks, f), original,
-                           shallow=False):
+        actual = os.path.join(proyecto_checks, f)
+        if not os.path.exists(actual) or not filecmp.cmp(actual, original,
+                                                         shallow=False):
             return False
     return True
 
@@ -226,20 +245,30 @@ def restaurar_gate(dir_backup, cfg):
 
 
 def _run_gate(cfg, criterio):
-    """`ejecutar_esperando bash "$GATE" 2>&1 | tee "$GATE_OUT"`.
+    """`python -m autopiloto_gui.gate 2>&1 | tee "$GATE_OUT"`.
 
     Devuelve (rc, ruta_con_la_salida_del_gate). La salida se ve en consola y
     se usa como feedback al agente si el gate falla. El gate muta el
     repositorio (p. ej. 98_criterio lanza el juez).
+
+    El gate es el orquestador portable (gate.py): corre los checks .py y, si
+    hay bash, prefiere los .sh equivalentes. En el binario congelado se lanza
+    como `autopiloto-gui --autopiloto-gate`.
     """
     gate_out = cfg.tmp("gate")
     env = dict(cfg.environ)
     env["CRITERIO"] = criterio or ""
     env["MODELO_JUEZ"] = cfg.modelo_juez
     env["OPENCODE_AGENT_JUEZ"] = cfg.opencode_agente_juez
+    if not getattr(sys, "frozen", False):
+        # `python -m autopiloto_gui.gate` arranca con cwd=proyecto: sin esto,
+        # un intérprete sin el paquete instalado (desarrollo) no lo encuentra.
+        raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        env["PYTHONPATH"] = raiz + (
+            os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     with open(gate_out, "wb") as ftee:
         rc, _salida, _t = run_con_timeout(
-            ["bash", cfg.gate], GATE_TIMEOUT, env=env, cwd=cfg.proyecto,
+            argv_gate(), GATE_TIMEOUT, env=env, cwd=cfg.proyecto,
             stdout=ftee, stderr=subprocess.STDOUT, vivo=HIJO)
     contenido = _leer(gate_out)
     if contenido:
@@ -312,6 +341,35 @@ def _marcar(cfg, estado):
     return p.marcar_primera(estado)
 
 
+def _resumen_bloqueadas(cfg):
+    """Líneas de resumen de las tareas [B] de plan.md con su último motivo.
+
+    El motivo se busca en `incidencias.jsonl` (última incidencia por tarea), así
+    el cierre responde "qué quedó sin hacer y por qué" sin bucear en el log."""
+    try:
+        p = Plan(cfg.plan_md)
+        p.cargar()
+        bloqueadas = [t["texto"] for t in p.tareas
+                      if t["estado"] == "bloqueada"]
+    except Exception:
+        bloqueadas = []
+    if not bloqueadas:
+        return []
+    motivos = {}
+    for li in _leer(cfg.incidencias).splitlines():
+        try:
+            d = json.loads(li)
+        except ValueError:
+            continue
+        if d.get("tarea"):
+            motivos[d["tarea"]] = d.get("motivo", "")
+    lineas = ["", "== TAREAS SIN COMPLETAR =="]
+    for t in bloqueadas:
+        m = motivos.get(t, "")
+        lineas.append(f"- [B] {t}" + (f" — {m}" if m else ""))
+    return lineas
+
+
 def run(cfg):
     """Bucle completo; devuelve el código de salida (0-7, como el script)."""
     _proteger_salidas()
@@ -334,6 +392,8 @@ def run(cfg):
                      f"encontrado (busqué '{binario}'). Instálalo o configura "
                      f"el PATH (o CLI_{cli_env}) y relanza.")
         logx(cfg.log, f"ABORTADO: agente no disponible ({cfg.agente_tarea})")
+        _incidencia(cfg, "aborto_agente",
+                    f"agente '{cfg.agente_tarea}' no disponible en el PATH")
         return 2
 
     cfg.revisor = elegir_revisor(cfg)
@@ -356,6 +416,7 @@ def run(cfg):
         print("[autopiloto] ✗ SIN INTERNET. Los modelos IA no pueden "
               "responder; abortando.")
         logx(cfg.log, "ABORTADO: sin internet")
+        _incidencia(cfg, "aborto_internet", "sin conexión a internet")
         alerta(cfg.voz, "Sin internet, se aborta el autopiloto")
         return 4
     logx(cfg.log, "Internet OK")
@@ -366,6 +427,7 @@ def run(cfg):
     if rc_base != 0:
         print("El repo NO pasa la verificación baseline. Corrige y relanza.")
         logx(cfg.log, "ABORTADO: baseline falló")
+        _incidencia(cfg, "aborto_baseline", "el repo no pasa el gate baseline")
         alerta(cfg.voz, "Baseline falló, el autopiloto no arranca")
         return 1
     logx(cfg.log, "Baseline GATE OK")
@@ -384,6 +446,7 @@ def run(cfg):
         print(m)
     if rama_trabajo is None:
         logx(cfg.log, "ABORTADO: no se pudo crear la rama base")
+        _incidencia(cfg, "aborto_rama", "no se pudo crear la rama base")
         return 1
     logx(cfg.log, f"Rama base: {rama_run}")
     if cfg.rama_trabajo and cfg.rama_trabajo != rama_run:
@@ -447,6 +510,7 @@ def run(cfg):
         snapshot(cfg.proyecto, before)
         hecho = 0
         gate_out = None
+        cfg.ultimo_motivo = None
 
         for intento in range(1, cfg.max_reintentos + 1):
             pre = ""
@@ -505,6 +569,9 @@ def run(cfg):
                              f"ejecutar (rc={rc}): binario no encontrado o sin "
                              f"permisos de ejecución.")
                 logx(cfg.log, f"ABORTADO: agente no ejecutable (rc={rc})")
+                _incidencia(cfg, "aborto_agente_ejecucion",
+                            f"{cfg.agente_tarea} no ejecutable (rc={rc})",
+                            tarea=tarea, iteracion=iteracion, rama=rama_tarea)
                 alerta(cfg.voz, "El agente no se pudo ejecutar; revisa PATH/instalación")
                 return 6
             elif rc != 0:
@@ -527,12 +594,17 @@ def run(cfg):
                              f"auth login' · claude: '/login' · codex: 'codex "
                              f"login').")
                 logx(cfg.log, f"ABORTADO: agente sin autenticacion ({cfg.agente_tarea})")
+                _incidencia(cfg, "aborto_autenticacion",
+                            f"{cfg.agente_tarea} sin sesión iniciada",
+                            tarea=tarea, iteracion=iteracion, rama=rama_tarea)
                 alerta(cfg.voz, "El agente no está autenticado; revisa su login")
                 return 7
             if tokens_agotados(out):
                 mensaje(cfg, "[autopiloto] ✗ Tokens/cuota agotados del proveedor "
                              "IA — deteniendo loop")
                 logx(cfg.log, "ABORTADO: tokens/cuota agotados")
+                _incidencia(cfg, "aborto_tokens", "tokens/cuota agotados",
+                            tarea=tarea, iteracion=iteracion, rama=rama_tarea)
                 alerta(cfg.voz, "Tokens agotados, se detiene el autopiloto")
                 return 5
 
@@ -541,6 +613,9 @@ def run(cfg):
                 mensaje(cfg, "[autopiloto] ✗✗ el agente cambió de rama. "
                              "Abortando: requiere revisión humana.")
                 logx(cfg.log, "ABORTADO: se detectó cambio de rama no autorizado")
+                _incidencia(cfg, "aborto_rama_agente",
+                            "el agente cambió de rama (requiere revisión humana)",
+                            tarea=tarea, iteracion=iteracion, rama=rama_tarea)
                 alerta(cfg.voz, "El agente cambió de rama, se aborta el run")
                 return 3
 
@@ -567,12 +642,20 @@ def run(cfg):
                         mensaje(cfg, f"[autopiloto] ✗✗ revisor ({cfg.revisor}) "
                                      "no está autenticado — deteniendo loop")
                         logx(cfg.log, f"ABORTADO: revisor sin autenticacion ({cfg.revisor})")
+                        _incidencia(cfg, "aborto_autenticacion",
+                                    f"revisor {cfg.revisor} sin sesión iniciada",
+                                    tarea=tarea, iteracion=iteracion,
+                                    rama=rama_tarea)
                         alerta(cfg.voz, "El revisor no está autenticado")
                         return 7
                     if resultado == "sin_tokens":
                         mensaje(cfg, "[autopiloto] ✗ Tokens/cuota agotados del "
                                      "proveedor IA (revisor) — deteniendo loop")
                         logx(cfg.log, "ABORTADO: tokens/cuota agotados (revisor)")
+                        _incidencia(cfg, "aborto_tokens",
+                                    "tokens/cuota agotados (revisor)",
+                                    tarea=tarea, iteracion=iteracion,
+                                    rama=rama_tarea)
                         alerta(cfg.voz, "Tokens agotados, se detiene el autopiloto")
                         return 5
                     if resultado == "pass":
@@ -586,6 +669,10 @@ def run(cfg):
                         if rc_manual == 2:
                             logx(cfg.log, "Revisión manual: timeout, tarea "
                                           "marcada [B]")
+                            _incidencia(cfg, "revision_timeout",
+                                        "timeout en revisión manual del diff",
+                                        tarea=tarea, iteracion=iteracion,
+                                        rama=rama_tarea)
                             break
                         revertir(cfg.proyecto)
                         pre = (f"El diff fue rechazado en revisión manual: "
@@ -594,6 +681,10 @@ def run(cfg):
                         logx(cfg.log, "REVISIÓN MANUAL RECHAZADO, reintentando...")
                     else:
                         logx(cfg.log, f"REVISOR FAIL (intento {intento})")
+                        _incidencia(cfg, "revisor_fail",
+                                    feedback or "el revisor rechazó el diff",
+                                    tarea=tarea, iteracion=iteracion,
+                                    rama=rama_tarea)
                         print(f"[autopiloto] ✗ revisor ({cfg.revisor}): FAIL")
                         if feedback:
                             pre = (f"El revisor rechazó el diff anterior: "
@@ -611,6 +702,10 @@ def run(cfg):
                     if rc_manual == 2:
                         logx(cfg.log, "Revisión manual: timeout, tarea "
                                       "marcada [B]")
+                        _incidencia(cfg, "revision_timeout",
+                                    "timeout en revisión manual del diff",
+                                    tarea=tarea, iteracion=iteracion,
+                                    rama=rama_tarea)
                         break
                     revertir(cfg.proyecto)
                     pre = (f"El diff fue rechazado en revisión manual: "
@@ -626,6 +721,9 @@ def run(cfg):
                 sin_ruido = [li for li in fb.splitlines()
                              if not re.match(r"^\[GATE\] (✓|⚠)", li)]
                 resumen_gate = " ".join(sin_ruido[-15:])[:500]
+                _incidencia(cfg, "gate_fail",
+                            resumen_gate or "gate falló sin detalle",
+                            tarea=tarea, iteracion=iteracion, rama=rama_tarea)
                 if resumen_gate:
                     pre = (f"El gate falló con: {resumen_gate}. El detalle "
                            "completo está en progreso.log. Corrige esto en tu "
@@ -671,6 +769,10 @@ def run(cfg):
                 mensaje(cfg, f"[autopiloto] ⚠ merge fallido; rama {rama_tarea} "
                              "conservada y tarea marcada [B].")
                 _marcar(cfg, "B")
+                _incidencia(cfg, "merge_fail",
+                            f"git merge --ff-only {rama_tarea} -> {rama_run} "
+                            "falló; rama conservada",
+                            tarea=tarea, iteracion=iteracion, rama=rama_tarea)
                 registrar_leccion(
                     cfg.lecciones, f"Merge fallido: {tarea}",
                     f"git merge --ff-only {rama_tarea} -> {rama_run} falló; "
@@ -690,11 +792,19 @@ def run(cfg):
             print(f"[autopiloto] ✗ tarea bloqueada tras {cfg.max_reintentos} "
                   "intentos. Marcada [B] en plan.md")
             alerta(cfg.voz, f"Tarea bloqueada: {tarea}")
+            motivo = cfg.ultimo_motivo or {}
+            detalle = (
+                f"{motivo.get('tipo', 'fallo')} en la iteración {iteracion}: "
+                f"{motivo.get('motivo') or 'sin detalle'}"
+                if motivo else
+                f"gate.sh/revisor fallaron en la iteración {iteracion}.")
+            _incidencia(cfg, "bloqueada", detalle,
+                        tarea=tarea, iteracion=iteracion, rama=rama_tarea)
             registrar_leccion(
                 cfg.lecciones, f"Tarea bloqueada: {tarea}",
                 "El agente no cumplió el criterio tras "
                 f"{cfg.max_reintentos} intentos.",
-                f"gate.sh/revisor fallaron en la iteración {iteracion}.",
+                detalle,
                 "Reformular la tarea en plan.md, dividirla en pasos más "
                 "pequeños o revisar los criterios.")
             logx(cfg.log, "lección registrada en lecciones.md (tarea bloqueada)")
@@ -742,6 +852,10 @@ def run(cfg):
                          "Trabajo queda local.")
 
     print()
+    resumen = _resumen_bloqueadas(cfg)
+    if resumen:
+        print("\n".join(resumen))
+        _append_log(cfg, "\n".join(resumen))
     print("== RESUMEN (final de progreso.log) ==")
     print("\n".join(_leer(cfg.log).splitlines()[-25:]))
     logx(cfg.log, f"== AUTOPILOTO FINALIZADO (iter={iteracion}, "

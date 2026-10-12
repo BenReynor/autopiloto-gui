@@ -8,6 +8,7 @@ Sin dependencias de PySide: el motor corre como subproceso de la GUI (y
 también a mano con `python -m autopiloto_gui.loop`).
 """
 
+import json
 import subprocess
 import time
 from decimal import ROUND_HALF_UP, Decimal
@@ -79,3 +80,24 @@ def suma_coste(actual, por_iter):
     """`actual + por_iter` con dos decimales; equivale a la línea
     `COSTO_TOTAL=num ... printf "%.2f"` de autopiloto.sh."""
     return d2(_dec(actual) + _dec(por_iter))
+
+
+def incidencia(ruta, tipo, motivo, tarea="", iteracion=0, rama=""):
+    """Append de una incidencia (JSONL) al registro estructurado del proyecto.
+
+    Una línea por fallo/aborto, independiente de `progreso.log` (que es prosa
+    cronológica): `{ts, iteracion, tarea, tipo, motivo, rama}`. Nunca revienta
+    el loop por un fallo de escritura."""
+    linea = json.dumps({
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "iteracion": int(iteracion),
+        "tarea": tarea or "",
+        "tipo": tipo,
+        "motivo": motivo or "",
+        "rama": rama or "",
+    }, ensure_ascii=False)
+    try:
+        with open(ruta, "a", encoding="utf-8") as f:
+            f.write(linea + "\n")
+    except OSError:
+        pass

@@ -43,9 +43,14 @@ datas = []
 for ruta in sorted(PAQUETE.rglob("*")):
     # Los .py del paquete ya los recoge Analysis por importación; aquí sólo
     # se necesitan los ficheros NO de código (plantillas, icono, acceso.sh).
+    # EXCEPCIÓN: los checks gate_checks/*.py son DATOS (gate.py los ejecuta con
+    # exec, no los importa), así que deben montarse junto a los .sh.
     if not ruta.is_file():
         continue
-    if "__pycache__" in ruta.parts or ruta.suffix in {".py", ".pyc", ".pyo"}:
+    es_check_py = (ruta.suffix == ".py"
+                   and ruta.parent.name == "gate_checks")
+    if "__pycache__" in ruta.parts or (
+            ruta.suffix in {".py", ".pyc", ".pyo"} and not es_check_py):
         continue
     relativa = ruta.relative_to(PAQUETE)      # p. ej. plantillas_data/gate.sh
     destino = Path("autopiloto_gui") / relativa.parent

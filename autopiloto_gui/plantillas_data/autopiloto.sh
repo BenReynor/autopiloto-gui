@@ -107,7 +107,7 @@ COSTO_POR_ITER="${COSTO_POR_ITER:-0.50}"
 RAMA_BASE="${RAMA_BASE:-master}"
 PUSH=""
 HASTA=""
-CONTROL="plan\.md|lecciones\.md|progreso\.log|gate\.sh|autopiloto\.sh|mapear\.sh|mapeo\.txt|endpoints\.txt|metrics\.jsonl|gate_checks(/.*)?|\.autopiloto_review(/.*)?"
+CONTROL="plan\.md|lecciones\.md|progreso\.log|gate\.sh|autopiloto\.sh|mapear\.sh|mapeo\.txt|endpoints\.txt|metrics\.jsonl|incidencias\.jsonl|gate_checks(/.*)?|\.autopiloto_review(/.*)?"
 
 # ---------------------------------------------------------------------------
 # Utilidades POSIX (funcionan igual en GNU/Linux y en BSD/macOS)

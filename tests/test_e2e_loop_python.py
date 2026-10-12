@@ -67,9 +67,11 @@ def _escenario(tmp_path, gate_txt):
     (proyecto / "plan.md").write_text(
         "# PLAN\n\n- [ ] t1: crear modulo nuevo\n"
         "      criterio: existe src/nuevo.py\n", encoding="utf-8")
-    gate = proyecto / "gate.sh"
-    gate.write_text(gate_txt, encoding="utf-8")
-    gate.chmod(0o755)
+    checks = proyecto / "gate_checks"
+    checks.mkdir()
+    chk = checks / "01_x.sh"
+    chk.write_text(gate_txt, encoding="utf-8")
+    chk.chmod(0o755)
     _git("add", "-A", cwd=proyecto)
     _git("commit", "-q", "-m", "base", cwd=proyecto)
     return proyecto
@@ -147,7 +149,7 @@ def test_iteracion_con_trabajo_completa_el_run(tmp_path):
     assert "Costo estimado acumulado:" in log
 
 
-def test_tarea_que_no_pasa_el_gate_se_bloquea(tmp_path):
+def test_tarea_que_no_pasa_el_gate_se_bloquea(tmp_path, capsys):
     """El gate falla DESPUÉS de trabajar (baseline pasa): tras los intentos
     la tarea queda marcada [B] sin commit, y el run termina con rc 0."""
     gate = ("#!/usr/bin/env bash\n"
@@ -170,6 +172,20 @@ def test_tarea_que_no_pasa_el_gate_se_bloquea(tmp_path):
     assert not any(linea.startswith("autopiloto:") for linea in gitlog.stdout.splitlines()), \
         "no debe haber commit de una tarea bloqueada"
 
+    # incidencias.jsonl registra cada gate_fail y el bloqueo final, y el
+    # bloqueo hereda el motivo real (gate_fail), no un texto genérico.
+    inc = (proyecto / "incidencias.jsonl").read_text(encoding="utf-8")
+    eventos = [json.loads(li) for li in inc.splitlines()]
+    tipos = [e["tipo"] for e in eventos]
+    assert "gate_fail" in tipos, tipos
+    assert eventos[-1]["tipo"] == "bloqueada"
+    assert "gate_fail" in eventos[-1]["motivo"], eventos[-1]
+
+    # El resumen final (stdout) lista la tarea [B] con su motivo.
+    salida = capsys.readouterr().out
+    assert "TAREAS SIN COMPLETAR" in salida
+    assert "- [B] t1" in salida
+
 
 def test_sin_agente_aborta_con_2(tmp_path):
     """Agente explícito cuyo binario no existe → exit 2 sin tocar el loop."""
@@ -184,6 +200,8 @@ def test_sin_agente_aborta_con_2(tmp_path):
         if (proyecto / "progreso.log").exists() else ""
     assert rc == 2
     assert "ABORTADO: agente no disponible (opencode)" in log
+    inc = (proyecto / "incidencias.jsonl").read_text(encoding="utf-8")
+    assert json.loads(inc.splitlines()[0])["tipo"] == "aborto_agente"
 
 
 def test_integracion_en_rama_de_trabajo(tmp_path):

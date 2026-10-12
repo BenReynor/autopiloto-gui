@@ -9,6 +9,7 @@ mapeo.txt
 endpoints.txt
 progreso.log
 metrics.jsonl
+incidencias.jsonl
 .autopiloto_review/
 
 # Entorno / secretos (nunca subir)

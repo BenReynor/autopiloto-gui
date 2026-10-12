@@ -118,7 +118,10 @@ git -C <proyecto> branch --delete --force <rama>
   bash) y `sed -i "0,/…/"` → `marcar_plan` (awk+cat), con tests que impiden
   regresiones. Falta verificar en un Mac real y empaquetar el `.dmg`; el sensor
   térmico (`/sys/class/thermal`) no existe allí y degrada a "sin dato".
-- Windows es parcial: la GUI corre con Git Bash en el PATH (PATH unido con
-  `os.pathsep`, CLIs `.exe`/`.cmd` resueltos, tests en CI con los POSIX
-  saltados), pero el loop y el gate siguen siendo bash; falta el backend
-  nativo en Python para no depender de Git Bash.
+- Windows es parcial: la GUI y los motores (loop `loop.py`, gate `gate.py`)
+  corren nativos en Python (PATH unido con `os.pathsep`, CLIs `.exe`/`.cmd`
+  resueltos, tests en CI con los POSIX saltados). El gate ejecuta los checks
+  `*.py` de `gate_checks/` y sólo usa bash, si está, para preferir los `*.sh`
+  equivalentes. Queda bash únicamente para el mapa del proyecto (`mapear.sh`,
+  botón "Refrescar mapa") y el motor bash opcional (`autopiloto.sh`); falta la
+  verificación en un Windows real.

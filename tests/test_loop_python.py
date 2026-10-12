@@ -9,10 +9,7 @@ Sin Qt: el motor python no depende de PySide.
 import io
 import os
 import re
-import shutil
 import sys
-
-import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -156,15 +153,17 @@ def test_backup_gate_intacto_y_restaurar(tmp_path):
     assert not gate_intacto(dir_b, cfg)
 
 
-@pytest.mark.skipif(shutil.which("bash") is None or os.name == "nt",
-                    reason="_run_gate ejecuta el gate con bash")
 def test_run_gate_pasa_env_y_devuelve_0(tmp_path):
+    """_run_gate corre gate.py; el CRITERIO llega al check por entorno."""
     proyecto = tmp_path / "p"
-    proyecto.mkdir()
-    gate = proyecto / "gate.sh"
-    gate.write_text("#!/usr/bin/env bash\necho \"$CRITERIO\" > criterio_env.txt\n"
-                    "exit 0\n", encoding="utf-8")
-    gate.chmod(0o755)
+    checks = proyecto / "gate_checks"
+    checks.mkdir(parents=True)
+    (checks / "01_x.py").write_text(
+        "import os\n"
+        "def run(env):\n"
+        "    with open('criterio_env.txt', 'w') as f:\n"
+        "        f.write(os.environ['CRITERIO'])\n"
+        "    return 0\n", encoding="utf-8")
     cfg = _cfg(proyecto, {"MODELO_JUEZ": "juez-x"})
     rc, ruta = _run_gate(cfg, "criterio de prueba")
     try:
@@ -175,15 +174,12 @@ def test_run_gate_pasa_env_y_devuelve_0(tmp_path):
         os.unlink(ruta)
 
 
-@pytest.mark.skipif(shutil.which("bash") is None or os.name == "nt",
-                    reason="_run_gate ejecuta el gate con bash")
 def test_run_gate_rc_distinto_de_cero(tmp_path):
     proyecto = tmp_path / "p"
-    proyecto.mkdir()
-    gate = proyecto / "gate.sh"
-    gate.write_text("#!/usr/bin/env bash\necho '[GATE] ⚠ fallo'\nexit 1\n",
-                    encoding="utf-8")
-    gate.chmod(0o755)
+    checks = proyecto / "gate_checks"
+    checks.mkdir(parents=True)
+    (checks / "01_x.py").write_text("def run(env):\n    return 1\n",
+                                    encoding="utf-8")
     cfg = _cfg(proyecto)
     rc, ruta = _run_gate(cfg, "")
     try:

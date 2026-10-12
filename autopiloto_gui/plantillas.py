@@ -16,7 +16,9 @@ GATE_CHECKS = tuple(
     os.path.relpath(os.path.join(ruta, f), PLANTILLA_DIR).replace("\\", "/")
     for ruta, _dirs, archivos in os.walk(os.path.join(PLANTILLA_DIR, GATE_CHECKS_DIR))
     for f in archivos
-    if f.endswith(".sh")
+    # Los .py son el port portable (se usan en Windows, sin bash); los .sh se
+    # prefieren en Unix. Ambos se copian siempre al proyecto.
+    if f.endswith((".sh", ".py"))
 )
 
 
@@ -174,6 +176,7 @@ def quitar_framework_del_git(ruta):
     if not _es_repo_git(ruta):
         return []
     patrones = list(ARCHIVOS) + [GATE_CHECKS_DIR] + ["progreso.log", "metrics.jsonl",
+                                                    "incidencias.jsonl",
                                                     "mapeo.txt", "endpoints.txt",
                                                     ".autopiloto_review"]
     try:

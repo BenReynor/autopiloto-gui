@@ -335,8 +335,8 @@ def test_ejecucion_botones_emiten_senales(app, proyecto_git):
     # Detener deshabilitado hasta que corra
     assert not p.b_detener.isEnabled()
 
-    # Ejecutar gate.sh emite
-    boton(p, "Ejecutar gate.sh").click()
+    # Ejecutar gate emite
+    boton(p, "Ejecutar gate").click()
     assert senales["gate"]
 
     # Refrescar modelos

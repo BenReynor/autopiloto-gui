@@ -37,6 +37,7 @@ autopiloto_gui = [
     "plantillas_data/*.md",
     "plantillas_data/.gitignore",
     "plantillas_data/gate_checks/*.sh",
+    "plantillas_data/gate_checks/*.py",
     "icono.svg",
     "acceso.sh",
 ]

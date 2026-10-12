@@ -35,6 +35,8 @@ python -m autopiloto_gui
 | Función | Descripción |
 |---------|-------------|
 | **Plan** | Editor Kanban + Markdown de `plan.md` (tareas `- [ ]`, hechas `- [x]`, bloqueadas `- [B]`). |
+| **Lecciones** | Editor de `lecciones.md` (memoria del proyecto): se inyecta al agente antes de cada tarea y se añade una entrada al bloquear. |
+| **Incidencias** | Tabla de `incidencias.jsonl` (hora, iteración, tarea, tipo, motivo): fallos, abortos y bloqueos con su motivo real. |
 | **Ejecución** | Lanza el loop: agente → gate → revisor → commit. Parámetros: hora límite, iteraciones, rama base, coste máx, revisión dual/manual. |
 | **Logs** | Salida en vivo de `progreso.log` (loop) y `gate.sh`. Colapsable (⛶) con header siempre visible. Auto-scroll. |
 | **Mapa** | Visor de `mapeo.txt` (módulos → tests). Botón **Regenerar** ejecuta `bash mapear.sh`. |
@@ -48,7 +50,7 @@ python -m autopiloto_gui
 
 | Tecla | Acción |
 |-------|--------|
-| `Ctrl+1` … `Ctrl+8` | Cambiar pestaña (Plan, Lecciones, Ejecución, Logs, Mapa, Git, Métricas, Seguridad) |
+| `Ctrl+1` … `Ctrl+9` | Cambiar pestaña (Plan, Lecciones, Incidencias, Ejecución, Logs, Mapa, Git, Métricas, Seguridad) |
 | `Ctrl+Q` | Salir |
 
 ---
@@ -135,6 +137,7 @@ proyecto/
 ├── mapear.sh        # genera mapeo.txt
 ├── plan.md          # lista de tareas
 ├── lecciones.md     # memoria del proyecto
+├── incidencias.jsonl # fallos/abortos/bloqueos (lo escribe el motor)
 └── progreso.log     # lo escribe el motor (lo parsea la GUI)
 ```
 
@@ -154,7 +157,7 @@ se conserva como referencia y para ejecución manual en terminal POSIX.
 |----|--------|
 | **Linux** | ✅ Funciona. Es el entorno de referencia y donde corre CI. |
 | **macOS** | ⚠️ Parcial. Ya no exige GNU coreutils: `timeout` → `_timeout` (GNU/gtimeout/respaldo bash que devuelve 124) y `sed -i "0,/…/"` → `marcar_plan` (awk+cat, conserva permisos), con tests que impiden regresiones. Queda el sensor térmico (`/sys/class/thermal`, sólo Linux; degrada a "sin dato") y la verificación en un Mac real + el `.dmg`. |
-| **Windows** | ✅ GUI + loop nativos. El loop es un motor Python (`autopiloto_gui/loop.py`) que la GUI lanza con su propio intérprete: **ya no hace falta Git Bash para arrancarlo** (PATH con `os.pathsep`, CLIs con sufijo `.exe`/`.cmd`, suite en CI en `windows-latest`). Único resto de bash: el gate (`gate.sh`/`gate_checks/`, opción por diseño) — sin Git Bash el loop corre pero cada gate fallará y bloqueará la tarea. |
+| **Windows** | ✅ GUI + loop + gate nativos. Tanto el loop (`autopiloto_gui/loop.py`) como el gate (`autopiloto_gui/gate.py`) son motores Python que la GUI lanza con su propio intérprete: **ya no hace falta Git Bash** (PATH con `os.pathsep`, CLIs con sufijo `.exe`/`.cmd`, suite en CI en `windows-latest`). El gate corre los checks `*.py` de `gate_checks/` y, si hay bash, prefiere los `*.sh` equivalentes. Queda bash solo para el mapa del proyecto (`mapear.sh`) y el motor bash opcional (`autopiloto.sh`). |
 
 Lo que sí es independiente del SO desde ya: los finales de línea de los `.sh`
 (`.gitattributes` fuerza `eol=lf`, un `clone` en Windows con `autocrlf` ya no
@@ -279,15 +282,17 @@ autopiloto_gui/
 ├── plantillas.py       # Scaffold proyectos
 ├── plantillas_data/    # Scripts .sh template + memoria inicial
 │   ├── autopiloto.sh   # loop BASH (deprecado; referencia/uso manual)
-│   ├── gate.sh         # gate de calidad (bash)
+│   ├── gate.sh         # gate bash (legacy/Unix; el loop usa gate.py)
 │   ├── mapear.sh       # mapeo del repo
 │   ├── plan.md         # memoria inicial (NO se sobreescribe)
 │   ├── lecciones.md
 │   ├── .gitignore      # excluye el framework del repo del usuario
-│   └── gate_checks/    # 8 checks (db, migrations, backend, imports, tests…)
+│   └── gate_checks/    # 8 checks (.sh bash + .py port portable sin bash)
 ├── loop.py             # MOTOR del loop en Python (nativo, W2):
-│   │                   #   Config, señales, gate bash, agentes, revisión,
+│   │                   #   Config, señales, gate portable, agentes, revisión,
 │   │                   #   commit/merge/[B], integración, push
+│   ├── gate.py         # orquestador portable del gate (checks .py; .sh vía bash)
+│   ├── gate_env.py     # entorno del gate (port de gate_checks/_env.sh)
 │   ├── loop_agentes.py # lanzamiento/agentes/revisor + métricas
 │   ├── loop_git.py     # git en Python
 │   ├── loop_proceso.py # run_con_timeout/killpg (agente o gate)

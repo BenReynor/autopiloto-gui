@@ -8,7 +8,6 @@ vigilancia (temperatura e internet).
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -33,11 +32,13 @@ from PySide6.QtWidgets import (
 
 from . import configuracion as cfg
 from . import modelos, net, plantillas, sensor
+from .gate import argv_gate
 from .paneles import (
     AvisoTemperatura,
     LoopPill,
     PanelEjecucion,
     PanelGit,
+    PanelIncidencias,
     PanelLecciones,
     PanelLogs,
     PanelMapa,
@@ -174,11 +175,19 @@ class Ventana(QMainWindow):
         self.timer_lecciones.timeout.connect(self._refrescar_lecciones)
         self.timer_lecciones.start(2000)
 
+        # Recarga incidencias.jsonl automáticamente si cambia en disco
+        self.timer_incidencias = QTimer(self)
+        self.timer_incidencias.timeout.connect(self._refrescar_incidencias)
+        self.timer_incidencias.start(2000)
+
     def _refrescar_plan(self):
         self.pan_plan._recargar_si_cambio()
 
     def _refrescar_lecciones(self):
         self.pan_lecciones._recargar_si_cambio()
+
+    def _refrescar_incidencias(self):
+        self.pan_incidencias._recargar_si_cambio()
 
     def _sondear_sesiones_en_fondo(self):
         """Consulta en segundo plano si cada CLI instalado tiene sesión.
@@ -268,6 +277,7 @@ class Ventana(QMainWindow):
         self.pan_lecciones = PanelLecciones()
         self.pan_lecciones.guardado.connect(
             lambda ruta: self.estado.setText(f"lecciones.md guardado ({ruta})"))
+        self.pan_incidencias = PanelIncidencias()
         self.pan_ejec = PanelEjecucion()
         self.pan_ejec.iniciar.connect(self._iniciar_loop)
         self.pan_ejec.detener.connect(self._detener_loop)
@@ -291,6 +301,7 @@ class Ventana(QMainWindow):
         self._secciones = [
             ("Plan", self.pan_plan),
             ("🧠 Lecciones", self.pan_lecciones),
+            ("⚠ Incidencias", self.pan_incidencias),
             ("Ejecución", self.pan_ejec),
             ("Logs", self.pan_logs),
             ("🗺 Mapa", self.pan_mapa),
@@ -481,6 +492,7 @@ class Ventana(QMainWindow):
             self.estado.setText("Sin proyecto")
             self.pan_plan.clear()
             self.pan_lecciones.cargar(None)
+            self.pan_incidencias.cargar(None)
             self.pan_git.cargar(None)
             self.pan_mapa.cargar(None)
             self.pan_logs.panel_loop.clear()
@@ -499,6 +511,7 @@ class Ventana(QMainWindow):
         self.estado.setText(f"Proyecto: {nombre} — {ruta}")
         self.pan_plan.cargar(os.path.join(ruta, "plan.md"))
         self.pan_lecciones.cargar(os.path.join(ruta, "lecciones.md"))
+        self.pan_incidencias.cargar(os.path.join(ruta, "incidencias.jsonl"))
         self.pan_git.cargar(ruta)
         self.pan_mapa.cargar(os.path.join(ruta, "mapeo.txt"))
         self.pan_ejec.actualizar_ramas(ruta)
@@ -657,22 +670,6 @@ class Ventana(QMainWindow):
 
     # ---------- Loop ----------
 
-    def _avisar_si_no_hay_bash(self) -> bool:
-        """True si falta bash (muestra el aviso y no hay que seguir).
-
-        El loop ya corre en Python (no necesita bash para arrancar), pero
-        gate.sh y gate_checks/ son bash: sin bash el QProcess del gate
-        fallaría con un "FailedToStart" críptico.
-        """
-        if shutil.which("bash"):
-            return False
-        QMessageBox.warning(
-            self, "Falta bash",
-            "No se encontró `bash` en el PATH y el gate es un script bash.\n\n"
-            "En Windows instala Git for Windows (Git Bash) para usar el gate; "
-            "el loop del autopiloto (motor Python) sí funciona sin él.")
-        return True
-
     def _iniciar_loop(self):
         p = self._proyecto_actual()
         if not p:
@@ -769,9 +766,9 @@ class Ventana(QMainWindow):
         env["COSTO_POR_ITER"] = str(conf['costo_iter'])
         env["REVISION_MANUAL"] = '1' if conf['revision_manual'] else '0'
 
-        # El motor es Python (autopiloto_gui.loop, port de autopiloto.sh):
-        # ya no hace falta bash para arrancar el loop (el gate sigue siendo
-        # bash y se avisa en el header si no hay).
+        # El motor es Python (autopiloto_gui.loop, port de autopiloto.sh) y el
+        # gate también (autopiloto_gui.gate): ya no hace falta bash para nada
+        # del bucle en Windows.
         programa, args_motor = _argv_motor(getattr(sys, "frozen", False), args)
         if not getattr(sys, "frozen", False):
             env["PYTHONPATH"] = _raiz_codigo() + (
@@ -781,8 +778,6 @@ class Ventana(QMainWindow):
 
         panel = self.pan_logs.panel_loop
         panel.clear()
-        aviso_bash = "" if shutil.which("bash") else \
-            " (sin bash: el gate no podrá ejecutarse)"
         panel.appendPlainText(
             f"> loop {' '.join(args_motor) or 'loop'}  "
             f"(agente={agente_tarea}, modelo tarea={modelo_tarea or 'n/a'}, "
@@ -790,8 +785,7 @@ class Ventana(QMainWindow):
             f"{modelo_revisor or 'n/a'}, "
             f"nav={'on' if nav_conf['activo'] else 'off'}, "
             f"dual={conf['dual']}, "
-            f"costo/iter={conf['costo_iter']} USD, iter={conf['iteraciones']})"
-            + aviso_bash)
+            f"costo/iter={conf['costo_iter']} USD, iter={conf['iteraciones']})")
         self.loop = Proceso(panel, on_fin=self._loop_fin)
         self.loop.setWorkingDirectory(ruta)
         self.loop.setEnvironment(env)
@@ -1098,15 +1092,20 @@ class Ventana(QMainWindow):
         p = self._proyecto_actual()
         if not p:
             return
-        if self._avisar_si_no_hay_bash():
-            return
         _, ruta = p
         panel = self.pan_logs.panel_gate
         panel.clear()
-        panel.appendPlainText("> bash gate.sh")
+        programa, args = argv_gate(getattr(sys, "frozen", False))
+        panel.appendPlainText("> " + " ".join([programa, *args]))
+        env = dict(os.environ)
+        if not getattr(sys, "frozen", False):
+            env["PYTHONPATH"] = _raiz_codigo() + (
+                os.pathsep + env["PYTHONPATH"]
+                if env.get("PYTHONPATH") else "")
         self.gate = Proceso(panel)
         self.gate.setWorkingDirectory(ruta)
-        self.gate.start("bash", ["gate.sh"])
+        self.gate.setEnvironment([f"{k}={v}" for k, v in env.items()])
+        self.gate.start(programa, args)
 
     # ---------- Webhooks ----------
 
@@ -1174,7 +1173,8 @@ class Ventana(QMainWindow):
         # Detener timers
         for t in (self.timer, self.timer_temp, self.timer_net,
                   self.timer_revision, self.timer_metricas,
-                  self.timer_plan, self.timer_lecciones):
+                  self.timer_plan, self.timer_lecciones,
+                  self.timer_incidencias):
             t.stop()
         # Terminar proceso loop si corre (SIGTERM y, si no muere, SIGKILL)
         if self.loop and self.loop.state() == QProcess.Running:

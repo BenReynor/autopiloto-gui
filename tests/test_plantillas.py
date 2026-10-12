@@ -212,7 +212,7 @@ def test_instalar_crea_gitignore_del_framework():
         # El repo del proyecto jamás debe commitear/pushear archivos del autopiloto
         for entrada in ("autopiloto.sh", "gate.sh", "gate_checks/", "plan.md",
                         "lecciones.md", "progreso.log", "metrics.jsonl",
-                        ".autopiloto_review/"):
+                        "incidencias.jsonl", ".autopiloto_review/"):
             assert entrada in contenido, f"falta entrada {entrada!r}"
     finally:
         import shutil
@@ -249,7 +249,7 @@ def test_asegurar_gitignore_anade_bloque_existente():
         assert "node_modules/" in contenido, "lo del usuario no se toca"
         for entrada in ("autopiloto.sh", "gate.sh", "gate_checks/", "plan.md",
                         "lecciones.md", "progreso.log", "metrics.jsonl",
-                        ".autopiloto_review/"):
+                        "incidencias.jsonl", ".autopiloto_review/"):
             assert entrada in contenido, f"falta entrada {entrada!r}"
         # Idempotente: segunda llamada no duplica
         assert plantillas.asegurar_gitignore(tmp) is False
@@ -282,7 +282,7 @@ def test_quitar_framework_del_git():
     try:
         subprocess.run(["git", "init", "-q"], cwd=tmp, check=True)
         for nombre in ["autopiloto.sh", "gate.sh", "plan.md", "lecciones.md",
-                       "progreso.log", "metrics.jsonl", "mapeo.txt",
+                       "progreso.log", "metrics.jsonl", "incidencias.jsonl", "mapeo.txt",
                        "endpoints.txt", "gate_checks/01_db.sh", "readme.md"]:
             p = os.path.join(tmp, nombre)
             os.makedirs(os.path.dirname(p), exist_ok=True)

@@ -137,8 +137,12 @@ def test_ejecutable(path: Path):
 # ---------------------------------------------------------------------------
 PENDIENTES_MACOS: set[str] = set()
 PENDIENTES_WINDOWS = {
-    "bash": "las plantillas son bash puro: en Windows hace falta WSL2 o Git Bash",
-    "QProcess(\"bash\")": "la GUI lanza `bash`: en Windows requiere bash.exe en el PATH",
+    # El loop y el gate ya son Python (no necesitan bash). Queda bash solo
+    # para el mapa del proyecto (mapear.sh, botón "Refrescar mapa") y para el
+    # motor bash opcional (autopiloto.sh): sin Git Bash esas rutas fallan.
+    "bash": "mapear.sh/autopiloto.sh siguen siendo bash: requieren WSL2 o Git Bash",
+    # "QProcess(\"bash\")" ya no está: la GUI lanza el gate como
+    # `python -m autopiloto_gui.gate` (o el binario --autopiloto-gate).
     # "os.pathsep" ya no está: app.py une el PATH con os.pathsep (se arregló
     # junto con la búsqueda de CLIs con sufijo .exe/.cmd en modelos.py).
 }
@@ -149,8 +153,7 @@ def test_pendientes_documentados_no_ocultan_nada_nuevo():
     para que quede a la vista lo que aún impide macOS/Windows."""
     assert PENDIENTES_MACOS == set(), (
         "macOS quedó resuelto: timeout/sed ya no deben estar en pendientes")
-    assert set(PENDIENTES_WINDOWS) == {
-        "bash", 'QProcess("bash")'}, (
+    assert set(PENDIENTES_WINDOWS) == {"bash"}, (
         "actualiza PENDIENTES_WINDOWS (y su comentario) al arreglar o "
         "añadir un bloqueo de Windows")
     # Resueltos: ahora están PROHIBIDOS para que no se reintroduzcan.

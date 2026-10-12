@@ -129,10 +129,11 @@ jobs:
         run: python -m pytest tests/
 
   # Windows: la GUI debe arrancar y la suite completa debe pasar con los
-  # tests POSIX saltados (test_portabilidad, señales, 0600...). El loop es ya
-  # un motor Python nativo (test_lanzador lo arranca por `python -m …loop`
-  # desde otro cwd, como hace la GUI); el gate sigue siendo bash y funciona
-  # porque el runner trae Git for Windows.
+  # tests POSIX saltados (test_portabilidad, señales, 0600...). El loop y el
+  # gate son ya motores Python nativos (test_lanzador arranca `python -m
+  # …loop` desde otro cwd, como la GUI); Git Bash se pone en el PATH para los
+  # tests que siguen usando el motor/plantillas bash (test_autopiloto_senales,
+  # test_e2e_con_trabajo, test_gate_backend...).
   test-windows:
     name: ruff + pytest (Windows)
     runs-on: windows-latest

@@ -4,6 +4,7 @@ Cada clase construye su UI y expone señales/métodos; la ventana (app.py) solo
 orquesta: conecta señales, gestiona procesos y actualiza estado.
 """
 
+import json
 import os
 import re
 import subprocess
@@ -839,6 +840,107 @@ class PanelLecciones(QWidget):
         self.guardado.emit(self._ruta)
 
 
+class PanelIncidencias(QWidget):
+    """Incidencias del loop (incidencias.jsonl): fallos y bloqueos, en tabla.
+
+    Una línea JSON por incidencia (ts, iteración, tarea, tipo, motivo). El panel
+    se relee solo cuando el fichero cambia en disco, igual que PanelLecciones.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._ruta = None
+        self._huella_guardada = None
+
+        v = QVBoxLayout(self)
+        v.setSpacing(8)
+        v.setContentsMargins(0, 0, 0, 0)
+
+        h = QHBoxLayout()
+        lbl = QLabel("⚠ Incidencias del loop")
+        _fuente_ui(lbl)
+        lbl.setStyleSheet("font-weight: 600; font-size: 13px;")
+        h.addWidget(lbl)
+        self.lbl_estado = _LabelMuted("")
+        h.addWidget(self.lbl_estado)
+        h.addStretch()
+        self.lbl_apunte = _LabelMuted(
+            "Fallos, abortos y tareas bloqueadas con su motivo real.")
+        h.addWidget(self.lbl_apunte)
+        v.addLayout(h)
+
+        self.tree = QTreeWidget()
+        self.tree.setHeaderLabels(
+            ["Hora", "Iteración", "Tarea", "Tipo", "Motivo"])
+        self.tree.setColumnWidth(0, 130)
+        self.tree.setColumnWidth(1, 70)
+        self.tree.setColumnWidth(2, 220)
+        self.tree.setColumnWidth(3, 150)
+        self.tree.setColumnWidth(4, 420)
+        _fuente_monospace(self.tree)
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setSelectionBehavior(QTreeWidget.SelectRows)
+        v.addWidget(self.tree, 1)
+
+        h = QHBoxLayout()
+        h.setSpacing(8)
+        b_recargar = _BtnGhost("Recargar")
+        b_recargar.clicked.connect(lambda: self.cargar())
+        h.addStretch()
+        h.addWidget(b_recargar)
+        v.addLayout(h)
+
+    def cargar(self, ruta=None):
+        if ruta is not None:
+            self._ruta = ruta or None
+        self.tree.clear()
+        if not self._ruta or not os.path.isfile(self._ruta):
+            self.lbl_estado.setText("incidencias.jsonl no existe aún")
+            self._huella_guardada = None
+            return
+        try:
+            with open(self._ruta, encoding="utf-8", errors="replace") as f:
+                lineas = f.read().splitlines()
+        except OSError:
+            lineas = []
+        n = 0
+        for li in lineas:
+            li = li.strip()
+            if not li:
+                continue
+            try:
+                d = json.loads(li)
+            except ValueError:
+                continue
+            self.tree.addTopLevelItem(QTreeWidgetItem([
+                str(d.get("ts", "")),
+                str(d.get("iteracion", "")),
+                str(d.get("tarea", "") or "—"),
+                str(d.get("tipo", "")),
+                str(d.get("motivo", "")),
+            ]))
+            n += 1
+        self._huella_guardada = self._huella()
+        self.lbl_estado.setText(f"{n} incidencia(s) · {self._ruta}")
+
+    def _huella(self):
+        if not self._ruta:
+            return None
+        try:
+            return (os.path.getmtime(self._ruta), os.path.getsize(self._ruta))
+        except OSError:
+            return None
+
+    def _recargar_si_cambio(self):
+        """Recarga si incidencias.jsonl cambió en disco (solo lectura)."""
+        if not self._ruta:
+            return
+        huella = self._huella()
+        if huella is None or huella == self._huella_guardada:
+            return
+        self.cargar()
+
+
 class PanelMapa(QWidget):
     """Visor de mapeo.txt (mapa módulos → tests)."""
 
@@ -1197,7 +1299,7 @@ class PanelEjecucion(QWidget):
         self.b_detener = _BtnDanger("■ Detener")
         self.b_detener.clicked.connect(self.detener)
         self.b_detener.setEnabled(False)
-        self.b_gate = _BtnGhost("Ejecutar gate.sh")
+        self.b_gate = _BtnGhost("Ejecutar gate")
         self.b_gate.clicked.connect(self.gate)
         h_ctrl.addWidget(self.b_iniciar)
         h_ctrl.addWidget(self.b_detener)
@@ -1655,7 +1757,7 @@ class PanelLogs(QWidget):
 
         # ---- GATE (abajo) ----
         self.gate_container = self._crear_panel_log(
-            "Salida de gate.sh",
+            "Salida del gate",
             "gate"
         )
         self.panel_gate = self.gate_container.log_widget
