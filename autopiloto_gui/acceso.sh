@@ -63,7 +63,7 @@ buscar_proyecto() {
             [ -f "$dir/__init__.py" ] || continue
             [ -f "$dir/icono.svg" ] || continue
             proy="$(dirname "$dir")"
-            [ -f "$proy/requirements.txt" ] || continue
+            
             printf '%s\n' "$proy"
             return 0
         done < <(
