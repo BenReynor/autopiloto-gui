@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PySide6.QtCore import QEventLoop, QTimer  # noqa: E402
 
-from autopiloto_gui.proceso import Proceso, Trabajo  # noqa: E402
+from dedalo.proceso import Proceso, Trabajo  # noqa: E402
 
 
 def _ejecutar(worker, timeout_ms=3000):
@@ -48,7 +48,7 @@ def test_trabajo_excepcion_emite_none(app):
 def test_proceso_erroroccurred_failedtostart_llama_on_fin(app):
     """Si QProcess no puede arrancar (dir inexistente), errorOccurred(FailedToStart)
     debe invocar on_fin para no dejar la UI bloqueada."""
-    from autopiloto_gui.paneles import PanelTarea
+    from dedalo.paneles import PanelTarea
 
     panel = PanelTarea()
     llamado = []

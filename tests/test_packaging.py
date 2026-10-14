@@ -19,8 +19,8 @@ PACKAGING = RAIZ / "packaging"
 def test_spec_es_python_sintactico():
     """La spec sólo puede comprobarse con compile(): PyInstaller inyecta
     SPECPATH/Analysis/EXE... en tiempo de ejecución."""
-    fuente = (PACKAGING / "autopiloto-gui.spec").read_text(encoding="utf-8")
-    compile(fuente, "autopiloto-gui.spec", "exec")
+    fuente = (PACKAGING / "dedalo.spec").read_text(encoding="utf-8")
+    compile(fuente, "dedalo.spec", "exec")
     assert "BUNDLE" in fuente and "icono.icns" in fuente, (
         "falta el bundle .app de macOS en la spec")
     assert "icono.ico" in fuente, "Windows necesita un .ico, no un .svg"
@@ -40,11 +40,11 @@ def test_iconos_generados_son_validos():
 
 
 def test_build_windows_smk_checkea_el_motor_empaquetado():
-    """El smoke del build de Windows debe valider el branch `--autopiloto-loop`
+    """El smoke del build de Windows debe valider el branch `--dedalo-loop`
     del entrypoint (si alguien lo quita, el zip sale pero el motor empaquetado
     queda sin verificar)."""
     fuente = (PACKAGING / "build_windows.sh").read_text(encoding="utf-8")
-    assert "--autopiloto-loop" in fuente
+    assert "--dedalo-loop" in fuente
     assert "Compress-Archive" in fuente
     assert "ABORTADO: agente no disponible" in fuente
 

@@ -53,7 +53,7 @@ def boton(curso, texto):
 
 @pytest.fixture
 def proyecto_git(tmp_path):
-    """Repo git con un plan.md y 2 commits autopiloto."""
+    """Repo git con un plan.md y 2 commits de Dédalo."""
     subprocess.run(["git", "init", "-q", "-b", "master"], cwd=tmp_path, check=True)
     (tmp_path / "plan.md").write_text(
         "# PLAN\n\n- [ ] #1 crear demo.py\n      criterio: demo.py existe\n",
@@ -61,12 +61,12 @@ def proyecto_git(tmp_path):
     )
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
     subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=T",
-                    "commit", "-q", "-m", "autopiloto: tarea 1"], cwd=tmp_path,
+                    "commit", "-q", "-m", "dedalo: tarea 1"], cwd=tmp_path,
                    check=True)
     (tmp_path / "demo.py").write_text("def demo():\n    return 1\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
     subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=T",
-                    "commit", "-q", "-m", "autopiloto: tarea 2"], cwd=tmp_path,
+                    "commit", "-q", "-m", "dedalo: tarea 2"], cwd=tmp_path,
                    check=True)
     return tmp_path
 
@@ -74,7 +74,7 @@ def proyecto_git(tmp_path):
 # ─── PanelPlan ────────────────────────────────────────────────
 
 def test_plan_guardar_modifica_archivo_y_kanban(app, proyecto_git):
-    from autopiloto_gui.paneles import PanelPlan
+    from dedalo.paneles import PanelPlan
     p = PanelPlan()
     ruta = str(proyecto_git / "plan.md")
     p.cargar(ruta)
@@ -97,7 +97,7 @@ def test_plan_guardar_modifica_archivo_y_kanban(app, proyecto_git):
 
 
 def test_plan_kanban_click_enfoca_editor(app, proyecto_git):
-    from autopiloto_gui.paneles import PanelPlan
+    from dedalo.paneles import PanelPlan
     p = PanelPlan()
     p.cargar(str(proyecto_git / "plan.md"))
     p.kanban.tarea_seleccionada.emit("crear demo.py")
@@ -108,7 +108,7 @@ def test_plan_kanban_click_enfoca_editor(app, proyecto_git):
 # ─── PanelLecciones ───────────────────────────────────────────
 
 def test_lecciones_nueva_y_guardar(app, proyecto_git):
-    from autopiloto_gui.paneles import PanelLecciones
+    from dedalo.paneles import PanelLecciones
     p = PanelLecciones()
     ruta = str(proyecto_git / "lecciones.md")
     p.cargar(ruta)
@@ -131,7 +131,7 @@ def test_lecciones_nueva_y_guardar(app, proyecto_git):
                     reason="regenerar el mapa ejecuta mapear.sh (POSIX): "
                            "se valida en Linux")
 def test_mapa_regenerar_crea_mapeo(app, proyecto_git):
-    from autopiloto_gui.paneles import PanelMapa
+    from dedalo.paneles import PanelMapa
     # Añadir mapear.sh que genera mapeo.txt
     (proyecto_git / "mapear.sh").write_text(
         "#!/usr/bin/env bash\necho '# demo.py -> tests/test_demo.py' > mapeo.txt\n",
@@ -149,7 +149,7 @@ def test_mapa_regenerar_crea_mapeo(app, proyecto_git):
 # ─── PanelGit ─────────────────────────────────────────────────
 
 def test_git_refrescar_lista_commits(app, proyecto_git):
-    from autopiloto_gui.paneles import PanelGit
+    from dedalo.paneles import PanelGit
     p = PanelGit()
     p.cargar(str(proyecto_git))
     # esperar worker
@@ -166,7 +166,7 @@ def test_git_refrescar_lista_commits(app, proyecto_git):
 
 def test_git_revert_devuelve_estado_anterior(app, proyecto_git):
     """Pulsar '↩ Revertir' deshace el cambio manteniendo el repo intacto."""
-    from autopiloto_gui.paneles import PanelGit
+    from dedalo.paneles import PanelGit
     # El commit tarea 2 añadió demo.py; revertirlo debe quitar demo.py
     p = PanelGit()
     p.cargar(str(proyecto_git))
@@ -201,12 +201,12 @@ def test_git_revert_devuelve_estado_anterior(app, proyecto_git):
 
 def test_git_revert_no_rompe_rama(app, proyecto_git):
     """Tras revertir, git status limpio y la rama sigue en master."""
-    from autopiloto_gui.app import Ventana
+    from dedalo.app import Ventana
     # revertir el commit más reciente vía la función real del panel git
     _ = Ventana._git_revert  # referencia (usada por app)
     sha = subprocess.run(["git", "-C", str(proyecto_git), "rev-parse", "HEAD"],
                          capture_output=True, text=True).stdout.strip()
-    import autopiloto_gui.app as app_mod
+    import dedalo.app as app_mod
     ok = app_mod.Ventana._git_revert(None, str(proyecto_git), sha)
     assert ok
     # repo sigue siendo válido: rama activa intacta, log sin romper
@@ -223,10 +223,10 @@ def test_git_revert_aparece_en_lista(app, proyecto_git):
     """El commit 'revert: ...' generado por el botón DEBE verse en PanelGit."""
     from PySide6.QtTest import QTest
 
-    from autopiloto_gui.paneles import PanelGit
+    from dedalo.paneles import PanelGit
     sha = subprocess.run(["git", "-C", str(proyecto_git), "rev-parse", "HEAD"],
                          capture_output=True, text=True).stdout.strip()
-    import autopiloto_gui.app as app_mod
+    import dedalo.app as app_mod
     assert app_mod.Ventana._git_revert(None, str(proyecto_git), sha)
 
     p = PanelGit()
@@ -244,7 +244,7 @@ def test_git_revert_aparece_en_lista(app, proyecto_git):
 
 def test_git_revert_conflicto_no_rompe_ui(app, proyecto_git, cerrar_modales):
     """Revertir un commit que produce conflicto devuelve False (no crashea)."""
-    import autopiloto_gui.app as app_mod
+    import dedalo.app as app_mod
     # Crear estado sucio que choca con el revert del commit 2
     (proyecto_git / "demo.py").write_text("# modificado por el usuario\n",
                                           encoding="utf-8")
@@ -264,11 +264,11 @@ def test_git_revert_conflicto_no_rompe_ui(app, proyecto_git, cerrar_modales):
 def test_metricas_exportar_csv(app, proyecto_git, cerrar_modales, tmp_path, monkeypatch):
     from PySide6.QtWidgets import QFileDialog
 
-    from autopiloto_gui.paneles_metricas import PanelMetricas
+    from dedalo.paneles_metricas import PanelMetricas
     # Pasar un progreso.log mínimo con el formato real (timestamp)
     (proyecto_git / "progreso.log").write_text(
         "[2026-09-24 10:00:00] == Iteración 1: tarea demo "
-        "(rama autopiloto/tareas/2026-09-24/t1) ==\n"
+        "(rama dedalo/tareas/2026-09-24/t1) ==\n"
         "[2026-09-24 10:00:05] ✔ commit: abc\n"
         "[2026-09-24 10:00:05] Costo iteración 1: 0.50 USD\n",
         encoding="utf-8")
@@ -287,10 +287,10 @@ def test_metricas_exportar_csv(app, proyecto_git, cerrar_modales, tmp_path, monk
 
 
 def test_metricas_actualizar_kpis(app, proyecto_git):
-    from autopiloto_gui.paneles_metricas import PanelMetricas
+    from dedalo.paneles_metricas import PanelMetricas
     (proyecto_git / "progreso.log").write_text(
         "[2026-09-24 10:00:00] == Iteración 1: tarea demo "
-        "(rama autopiloto/tareas/2026-09-24/t1) ==\n"
+        "(rama dedalo/tareas/2026-09-24/t1) ==\n"
         "[2026-09-24 10:00:05] ✔ commit: abc\n"
         "[2026-09-24 10:00:05] Costo iteración 1: 0.50 USD\n",
         encoding="utf-8")
@@ -306,7 +306,7 @@ def test_metricas_actualizar_kpis(app, proyecto_git):
 # ─── PanelEjecucion ───────────────────────────────────────────
 
 def test_ejecucion_botones_emiten_senales(app, proyecto_git):
-    from autopiloto_gui.paneles import PanelEjecucion
+    from dedalo.paneles import PanelEjecucion
     p = PanelEjecucion()
     senales = {"iniciar": [], "detener": [], "gate": [], "refrescar": []}
     p.iniciar.connect(lambda: senales["iniciar"].append(True))
@@ -338,7 +338,7 @@ def test_ejecucion_botones_emiten_senales(app, proyecto_git):
 
 def test_ejecucion_marca_agente_sin_login(app, proyecto_git, monkeypatch):
     """Un CLI instalado pero sin sesión se muestra marcado y no se puede elegir."""
-    from autopiloto_gui import modelos, paneles
+    from dedalo import modelos, paneles
 
     monkeypatch.setattr(modelos.shutil, "which", lambda n: (
         "/usr/bin/opencode" if n == "opencode" else
@@ -363,7 +363,7 @@ def test_ejecucion_marca_agente_sin_login(app, proyecto_git, monkeypatch):
 
 def test_ejecucion_auto_sin_agente_operativo(app, proyecto_git, monkeypatch):
     """Si el único CLI no tiene sesión, no se ofrece como auto."""
-    from autopiloto_gui import modelos, paneles
+    from dedalo import modelos, paneles
 
     monkeypatch.setattr(modelos.shutil, "which", lambda n: (
         "/usr/bin/claude" if n == "claude" else None))
@@ -382,10 +382,10 @@ def test_ejecucion_config_devuelve_el_valor_y_no_la_etiqueta(
     """config() alimenta AGENTE_TAREA, así que debe devolver el valor real.
 
     La etiqueta del combo es decorativa ("auto → opencode"); si config()
-    devolviera el texto, el env llevaría "auto → opencode", autopiloto.sh no
+    devolviera el texto, el env llevaría "auto → opencode", dedalo.sh no
     entraría en autodetección y abortaría con exit 2 sin llegar a la tarea 1.
     """
-    from autopiloto_gui import modelos, paneles
+    from dedalo import modelos, paneles
 
     monkeypatch.setattr(modelos.shutil, "which", lambda n: (
         "/usr/bin/opencode" if n == "opencode" else None))
@@ -414,7 +414,7 @@ def test_ejecucion_config_devuelve_el_valor_y_no_la_etiqueta(
 
 
 def test_ejecucion_config_roundtrip(app, proyecto_git):
-    from autopiloto_gui.paneles import PanelEjecucion
+    from dedalo.paneles import PanelEjecucion
     p = PanelEjecucion()
     p.txt_hasta.setText("18:30")
     p.txt_iter.setText("5")
@@ -431,7 +431,7 @@ def test_ejecucion_config_roundtrip(app, proyecto_git):
 def test_ejecucion_combo_agente_solo_ofrece_instalados(
         app, proyecto_git, monkeypatch):
     """El combo no debe ofrecer agentes que no existen en la máquina."""
-    from autopiloto_gui import modelos, paneles
+    from dedalo import modelos, paneles
 
     monkeypatch.setattr(modelos.shutil, "which", lambda n: (
         "/usr/bin/claude" if n == "claude" else None))
@@ -450,7 +450,7 @@ def test_ejecucion_combo_agente_solo_ofrece_instalados(
 
 def test_ejecucion_auto_usa_current_data(app, proyecto_git, monkeypatch):
     """La etiqueta "auto → x" es decorativa: el valor real debe ser 'auto'."""
-    from autopiloto_gui import modelos, paneles
+    from dedalo import modelos, paneles
 
     monkeypatch.setattr(modelos.shutil, "which", lambda n: (
         "/usr/bin/claude" if n == "claude" else None))
@@ -476,7 +476,7 @@ def test_ejecucion_auto_usa_current_data(app, proyecto_git, monkeypatch):
 # ─── PanelSeguridad / PanelWebhooks ───────────────────────────
 
 def test_seguridad_guardar_emite(app, proyecto_git, cerrar_modales):
-    from autopiloto_gui.paneles import PanelSeguridad
+    from dedalo.paneles import PanelSeguridad
     p = PanelSeguridad({"activo": True, "umbral": 85, "segundos": 5, "ver": False}, {})
     datos = []
     p.guardar_ajustes.connect(datos.append)
@@ -486,7 +486,7 @@ def test_seguridad_guardar_emite(app, proyecto_git, cerrar_modales):
 
 
 def test_webhooks_guardar_emite_y_probar_no_crashea(app, cerrar_modales):
-    from autopiloto_gui.paneles_webhooks import PanelWebhooks
+    from dedalo.paneles_webhooks import PanelWebhooks
     p = PanelWebhooks({})
     datos = []
     p.guardado.connect(datos.append)
@@ -500,7 +500,7 @@ def test_webhooks_guardar_emite_y_probar_no_crashea(app, cerrar_modales):
 # ─── PanelLogs ────────────────────────────────────────────────
 
 def test_logs_limpiar_maximizar(app):
-    from autopiloto_gui.paneles import PanelLogs
+    from dedalo.paneles import PanelLogs
     p = PanelLogs()
     p.show()  # sin show() los widgets no están 'visible' para Qt
     app.processEvents()
@@ -529,22 +529,22 @@ def test_logs_limpiar_maximizar(app):
 # ─── AvisoTemperatura ─────────────────────────────────────────
 
 def test_aviso_continuar_no_apaga(app):
-    from autopiloto_gui.paneles import AvisoTemperatura
+    from dedalo.paneles import AvisoTemperatura
     a = AvisoTemperatura(95, 30)
     boton(a, "Continuar").click()
     assert not a.apagar
 
 
-# ─── Todos los commits (no solo autopiloto) ─────────────────────
+# ─── Todos los commits (no solo dedalo) ─────────────────────
 
 def test_git_muestra_todos_los_commits(app):
-    """El PanelGit muestra commits MANUALES además de los del autopiloto."""
+    """El PanelGit muestra commits MANUALES además de los de Dédalo."""
     import os
     import tempfile
 
     from PySide6.QtTest import QTest
 
-    from autopiloto_gui.paneles import PanelGit
+    from dedalo.paneles import PanelGit
     tmp = tempfile.mkdtemp(prefix="git_todos_")
     subprocess.run(["git", "init", "-q", "-b", "master"], cwd=tmp, check=True)
     with open(os.path.join(tmp, "readme.md"), "w", encoding="utf-8") as f:
@@ -572,7 +572,7 @@ def test_quitar_proyecto_sin_ruta(app, monkeypatch):
     """'Quitar' debe poder eliminar un proyecto guardado sin clave 'ruta'."""
     from PySide6.QtWidgets import QComboBox
 
-    import autopiloto_gui.app as app_mod
+    import dedalo.app as app_mod
 
     nombre = "proyecto_sin_ruta"
     monkeypatch.setattr(app_mod.plantillas, "quitar", lambda *a, **k: [])

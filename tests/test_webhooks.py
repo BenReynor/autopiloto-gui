@@ -8,7 +8,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from autopiloto_gui.webhooks import WebhookManager
+from dedalo.webhooks import WebhookManager
 
 
 def test_envios_simultaneos_no_se_pisan(app, monkeypatch):

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lanzador del panel de autopiloto.
+# Lanzador del panel de Dédalo.
 #
 # Se auto-localiza: resuelve su propia ruta real (sigue symlinks) y no depende
 # de la ubicación del proyecto ni de un venv concreto. Sobrevive a mover o
@@ -37,10 +37,10 @@ for p in \
 done
 
 if [ -z "$PYTHON" ]; then
-    echo "Autopiloto: no se encontró ningún Python con PySide6 instalado." >&2
+    echo "Dédalo: no se encontró ningún Python con PySide6 instalado." >&2
     echo "Instálalo con:  python3 -m pip install -e \"$PROYECTO\"" >&2
     exit 1
 fi
 
 cd "$PROYECTO"
-exec "$PYTHON" -m autopiloto_gui
+exec "$PYTHON" -m dedalo

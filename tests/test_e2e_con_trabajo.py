@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E2E del run completo de autopiloto.sh con un agente falso que SÍ trabaja.
+"""E2E del run completo de dedalo.sh con un agente falso que SÍ trabaja.
 
 Regresión del bug más grave del script (línea ~1140): `local iter_sin_trabajo=0`
 estaba en el top-level del fichero (dentro del while de reintentos, fuera de
@@ -10,7 +10,7 @@ agente producía cambios llegaba a la comprobación siguiente con `set -u` y
 abortaba con `iter_sin_trabajo: unbound variable` → exit 1: sin commit, sin
 marcar [x], sin resumen. Ningún test existente lo pillaba:
 
-  · test_autopiloto_senales.py sólo usa agentes que se bloquean o que no
+  · test_dedalo_senales.py sólo usa agentes que se bloquean o que no
     cambian nada (ahí la rama de la variable SÍ se asigna).
   · test_agentes.py extrae funciones sueltas y su arnés usa la forma
     corregida (`iter_sin_trabajo=0` sin `local`), reforzando el error.
@@ -32,11 +32,11 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 RAIZ = Path(__file__).resolve().parent.parent
-PLANTILLAS = RAIZ / "autopiloto_gui" / "plantillas_data"
+PLANTILLAS = RAIZ / "dedalo" / "plantillas_data"
 
 pytestmark = pytest.mark.skipif(
     shutil.which("bash") is None or os.name == "nt",
-    reason="el e2e ejecuta autopiloto.sh con bash (no disponible en Windows)")
+    reason="el e2e ejecuta dedalo.sh con bash (no disponible en Windows)")
 
 
 def _git(*args, cwd):
@@ -93,7 +93,7 @@ def _escenario(tmp_path, con_trabajo: bool):
     # El .gitignore es parte de la instalación real (plantillas.asegurar_gitignore):
     # excluye gate_checks/ y el resto del framework. Sin él, `ruff check .` del
     # gate lintearía los .py del port y el baseline abortaría.
-    for nombre in ("autopiloto.sh", "gate.sh", "mapear.sh", "lecciones.md",
+    for nombre in ("dedalo.sh", "gate.sh", "mapear.sh", "lecciones.md",
                    ".gitignore"):
         origen = PLANTILLAS / nombre
         if origen.exists():
@@ -128,7 +128,7 @@ def _entorno(dir_bin):
 
 def _correr(proyecto, env):
     return subprocess.run(
-        ["bash", "autopiloto.sh", "plan.md"], cwd=str(proyecto), env=env,
+        ["bash", "dedalo.sh", "plan.md"], cwd=str(proyecto), env=env,
         capture_output=True, text=True, timeout=120)
 
 
@@ -148,7 +148,7 @@ def test_iteracion_con_trabajo_completa_el_run(tmp_path):
 
     # El run debe terminar normalmente (con el bug salía 1 a media tarea).
     assert proc.returncode == 0, f"rc={proc.returncode}\n{combinado[-3000:]}"
-    assert "AUTOPILOTO FINALIZADO" in log
+    assert "DEDALO FINALIZADO" in log
 
     # La tarea se completó de verdad: commit + plan marcado.
     assert "- [x] t1" in (proyecto / "plan.md").read_text(encoding="utf-8"), \
@@ -156,7 +156,7 @@ def test_iteracion_con_trabajo_completa_el_run(tmp_path):
     loggit = subprocess.run(
         ["git", "log", "--all", "--format=%s"], cwd=str(proyecto),
         capture_output=True, text=True, check=True)
-    assert any(linea.startswith("autopiloto:") for linea in loggit.stdout.splitlines()), \
+    assert any(linea.startswith("dedalo:") for linea in loggit.stdout.splitlines()), \
         f"no hubo commit de iteración:\n{loggit.stdout}"
 
 
@@ -173,7 +173,7 @@ def test_iteracion_sin_trabajo_no_crashea(tmp_path):
 
     assert "unbound variable" not in combinado, combinado[-3000:]
     assert proc.returncode == 0, f"rc={proc.returncode}\n{combinado[-3000:]}"
-    assert "AUTOPILOTO FINALIZADO" in log
+    assert "DEDALO FINALIZADO" in log
 
 
 @pytest.mark.parametrize("opcion", ["--hasta", "--padre", "--trabajo"])
@@ -182,7 +182,7 @@ def test_opcion_sin_valor_no_deja_cuelgar(opcion):
     opción venía como ÚLTIMO argumento (CPU al 100 %, se mataba con
     timeout). Ahora falla rápido con EX_USAGE (64)."""
     proc = subprocess.run(
-        ["bash", str(PLANTILLAS / "autopiloto.sh"), opcion],
+        ["bash", str(PLANTILLAS / "dedalo.sh"), opcion],
         capture_output=True, text=True, timeout=10)
     assert proc.returncode == 64, (
         f"{opcion} sin valor: rc={proc.returncode}\n"

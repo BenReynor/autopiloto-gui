@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# build_macos.sh — empaqueta autopiloto-gui para macOS.
+# build_macos.sh — empaqueta Dédalo para macOS.
 #
 # Salidas (en packaging/out/):
-#   Autopiloto.app                       bundle con icono.icns
-#   autopiloto-gui-<v>-macos-<arch>.dmg  montaje en /Applications
+#   Dedalo.app                       bundle con icono.icns
+#   dedalo-<v>-macos-<arch>.dmg  montaje en /Applications
 #
 # Uso:
 #   bash packaging/build_macos.sh
@@ -34,9 +34,9 @@ EOF
 )"
 
 OUT="$RAIZ/packaging/out"
-NOMBRE="autopiloto-gui"
+NOMBRE="dedalo"
 ARCH="$(uname -m)"        # arm64 | x86_64
-APP="$OUT/Autopiloto.app"
+APP="$OUT/Dedalo.app"
 
 echo "==> PyInstaller v$VERSION"
 rm -rf "$OUT" build
@@ -97,7 +97,7 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -sf /Applications "$STAGE/Applications"
-hdiutil create -volname "Autopiloto $VERSION" -srcfolder "$STAGE" \
+hdiutil create -volname "Dédalo $VERSION" -srcfolder "$STAGE" \
     -ov -format UDZO "$DMG"
 rm -rf "$STAGE"
 echo "    $DMG"

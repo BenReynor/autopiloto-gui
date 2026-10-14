@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from autopiloto_gui import configuracion as cfg  # noqa: E402
+from dedalo import configuracion as cfg  # noqa: E402
 
 
 def test_dimensiones_coherentes():

@@ -19,9 +19,9 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PLANTILLA = os.path.join(RAIZ, "autopiloto_gui", "plantillas_data",
-                         "autopiloto.sh")
-JUEZ = os.path.join(RAIZ, "autopiloto_gui", "plantillas_data",
+PLANTILLA = os.path.join(RAIZ, "dedalo", "plantillas_data",
+                         "dedalo.sh")
+JUEZ = os.path.join(RAIZ, "dedalo", "plantillas_data",
                     "gate_checks", "98_criterio.sh")
 
 pytestmark = pytest.mark.skipif(
@@ -107,7 +107,7 @@ def _monkey_cli(monkeypatch, modelos, tmp_path, disponibles, cuerpos):
 
 
 def test_sesion_detecta_sin_login(monkeypatch, tmp_path):
-    from autopiloto_gui import modelos
+    from dedalo import modelos
 
     _monkey_cli(monkeypatch, modelos, tmp_path, {"claude"},
                 {"claude": 'echo "Not logged in · Please run /login"\n'})
@@ -115,7 +115,7 @@ def test_sesion_detecta_sin_login(monkeypatch, tmp_path):
 
 
 def test_sesion_detecta_login_correcto(monkeypatch, tmp_path):
-    from autopiloto_gui import modelos
+    from dedalo import modelos
 
     _monkey_cli(monkeypatch, modelos, tmp_path, {"claude"},
                 {"claude": 'echo "pong"\n'})
@@ -125,7 +125,7 @@ def test_sesion_detecta_login_correcto(monkeypatch, tmp_path):
 def test_sesion_opencode_es_desconocida_sin_credenciales(monkeypatch, tmp_path):
     """`opencode auth list` responde 0 siempre: 0 credenciales no es prueba de
     que no sirva (los modelos free del catálogo no necesitan key)."""
-    from autopiloto_gui import modelos
+    from dedalo import modelos
 
     _monkey_cli(monkeypatch, modelos, tmp_path, {"opencode"},
                 {"opencode": 'echo "0 credentials"\n'})
@@ -133,7 +133,7 @@ def test_sesion_opencode_es_desconocida_sin_credenciales(monkeypatch, tmp_path):
 
 
 def test_sesion_timeout_es_desconocida(monkeypatch, tmp_path):
-    from autopiloto_gui import modelos
+    from dedalo import modelos
 
     _monkey_cli(monkeypatch, modelos, tmp_path, {"claude"},
                 {"claude": "sleep 30\n"})
@@ -146,7 +146,7 @@ def test_sesion_timeout_es_desconocida(monkeypatch, tmp_path):
 
 
 def test_sesion_se_cachea(monkeypatch, tmp_path):
-    from autopiloto_gui import modelos
+    from dedalo import modelos
 
     _monkey_cli(monkeypatch, modelos, tmp_path, {"claude"},
                 {"claude": 'echo "Not logged in"\n'})
@@ -159,7 +159,7 @@ def test_sesion_se_cachea(monkeypatch, tmp_path):
 
 def test_agentes_operativos_excluye_sin_login(monkeypatch, tmp_path):
     """El agente sin sesión se detecta pero no se ofrece para trabajar."""
-    from autopiloto_gui import modelos
+    from dedalo import modelos
 
     _monkey_cli(monkeypatch, modelos, tmp_path, {"opencode", "claude"},
                 {"opencode": 'echo "0 credentials"\n',
@@ -170,7 +170,7 @@ def test_agentes_operativos_excluye_sin_login(monkeypatch, tmp_path):
 
 
 def test_agentes_operativos_con_dos_con_sesion(monkeypatch, tmp_path):
-    from autopiloto_gui import modelos
+    from dedalo import modelos
 
     _monkey_cli(monkeypatch, modelos, tmp_path, {"codex", "claude"},
                 {"codex": 'echo "pong"\n', "claude": 'echo "pong"\n'})
@@ -178,7 +178,7 @@ def test_agentes_operativos_con_dos_con_sesion(monkeypatch, tmp_path):
 
 
 def test_agentes_operativos_ignora_no_instalado(monkeypatch, tmp_path):
-    from autopiloto_gui import modelos
+    from dedalo import modelos
 
     _monkey_cli(monkeypatch, modelos, tmp_path, {"claude"},
                 {"claude": 'echo "Not logged in"\n'})
@@ -187,7 +187,7 @@ def test_agentes_operativos_ignora_no_instalado(monkeypatch, tmp_path):
 
 
 def test_estado_agentes_tecnifica(monkeypatch, tmp_path):
-    from autopiloto_gui import modelos
+    from dedalo import modelos
 
     _monkey_cli(monkeypatch, modelos, tmp_path, {"claude"},
                 {"claude": 'echo "Not logged in"\n'})
@@ -202,7 +202,7 @@ def test_estado_agentes_tecnifica(monkeypatch, tmp_path):
 # ---------- detección de agentes instalados (Python / GUI) ----------
 
 def test_agentes_instalados_respeta_preferencia(tmp_path):
-    from autopiloto_gui import modelos
+    from dedalo import modelos
 
     d = str(tmp_path)
     _cli_falso(d, "claude", "exit 0\n")
@@ -226,7 +226,7 @@ def test_agentes_instalados_respeta_preferencia(tmp_path):
 
 
 def test_agentes_instalados_vacio_no_inventa(tmp_path):
-    from autopiloto_gui import modelos
+    from dedalo import modelos
 
     monkey = pytest.MonkeyPatch()
     monkey.setattr(modelos.shutil, "which", lambda n: None)
@@ -240,7 +240,7 @@ def test_agentes_instalados_vacio_no_inventa(tmp_path):
 
 def test_ruta_binario_usa_fallback_dot_dir(tmp_path):
     """Instalado en ~/.codex/bin/codex y fuera del PATH: debe resolverse."""
-    from autopiloto_gui import modelos
+    from dedalo import modelos
 
     d = tmp_path / ".codex" / "bin"
     d.mkdir(parents=True)
@@ -377,7 +377,7 @@ def test_agente_ok_rechaza_la_etiqueta_decorativa_del_combo(tmp_path):
     """La etiqueta "auto → opencode" es para el ojo; el env exige el valor.
 
     Si la GUI mandara la etiqueta, cli_agente cae en su rama *) y devuelve "",
-    por lo que agente_ok falla y autopiloto.sh aborta con exit 2. Este test
+    por lo que agente_ok falla y dedalo.sh aborta con exit 2. Este test
     fija esa frontera para que config() no vuelva a leer currentText().
     """
     d = tmp_path / "bin"
@@ -811,7 +811,7 @@ def test_juez_sin_criterio_omitido(tmp_path):
 
 
 def test_configuracion_expone_agentes_conocidos():
-    from autopiloto_gui import configuracion as cfg
+    from dedalo import configuracion as cfg
 
     assert "auto" in cfg.AGENTES_DISPONIBLES
     assert set(cfg.AGENTES_CONOCIDOS) == {"opencode", "codex", "claude"}

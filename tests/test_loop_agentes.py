@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Tests de autopiloto_gui.loop_agentes (port de la capa de agentes del loop).
+"""Tests de dedalo.loop_agentes (port de la capa de agentes del loop).
 
-Se toman de las secciones de autopiloto.sh (cli_agente, agente_ok,
+Se toman de las secciones de dedalo.sh (cli_agente, agente_ok,
 detectar_agente, elegir_revisor, sin_autenticacion, tokens_agotados,
 _registrar_metrica, revisar_diff) manteniendo la MISMA semántica, incluyendo
 la corroboración de auth (sólo aborta si además no hubo trabajo).
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(
     os.name == "nt",
     reason="motores de agente falsos en bash (POSIX): se valida en Linux")
 
-from autopiloto_gui.loop_agentes import (  # noqa: E402
+from dedalo.loop_agentes import (  # noqa: E402
     agente_ok,
     costo_por_modelo,
     detectar_agente,
@@ -31,11 +31,11 @@ from autopiloto_gui.loop_agentes import (  # noqa: E402
     sin_autenticacion,
     tokens_agotados,
 )
-from autopiloto_gui.loop_args import parse_args  # noqa: E402
+from dedalo.loop_args import parse_args  # noqa: E402
 
 
 def _config(tmp_path, env_extra=None):
-    from autopiloto_gui.loop import Config
+    from dedalo.loop import Config
     env = {
         "PATH": os.environ.get("PATH", ""),
         "AGENTE_TAREA": "opencode",

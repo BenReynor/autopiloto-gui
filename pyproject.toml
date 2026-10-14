@@ -3,9 +3,9 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "autopiloto-gui"
+name = "dedalo"
 version = "2.0.1"
-description = "Panel de control del autopiloto: GUI PySide6 para gestionar agentes IA sobre proyectos"
+description = "Panel de control de Dédalo: GUI PySide6 para gestionar agentes IA sobre proyectos"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
@@ -27,7 +27,7 @@ mcp = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["autopiloto_gui*"]
+include = ["dedalo*"]
 
 [tool.setuptools]
 license-files = ["LICENSE"]
@@ -39,7 +39,7 @@ license-files = ["LICENSE"]
 # OJO: los globs `*` NO hacen match con ficheros que empiezan por punto, así
 # que .gitignore necesita su propia entrada. Lo vigila
 # tests/test_plantillas.py::test_package_data_cubre_lo_que_instala.
-autopiloto_gui = [
+dedalo = [
     "plantillas_data/*.sh",
     "plantillas_data/*.md",
     "plantillas_data/.gitignore",
@@ -52,7 +52,7 @@ autopiloto_gui = [
 [tool.ruff]
 line-length = 88
 target-version = "py310"
-exclude = ["autopiloto_gui/plantillas_data/**"]
+exclude = ["dedalo/plantillas_data/**"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]

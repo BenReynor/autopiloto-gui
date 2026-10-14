@@ -12,7 +12,7 @@ import pytest
 
 pytest.importorskip("mcp")
 
-from autopiloto_gui import mcp_server as m  # noqa: E402
+from dedalo import mcp_server as m  # noqa: E402
 
 
 @pytest.fixture
@@ -68,17 +68,17 @@ def test_cola_log_devuelve_ultimas(proyecto):
 
 def test_resolver_revision_escribe_decision(proyecto):
     m.resolver_revision("p1", "approve")
-    decision = (proyecto / ".autopiloto_review" / "decision").read_text(encoding="utf-8")
+    decision = (proyecto / ".dedalo_review" / "decision").read_text(encoding="utf-8")
     assert decision == "APPROVE"
     m.resolver_revision("p1", "REJECT", "no me convence")
-    decision = (proyecto / ".autopiloto_review" / "decision").read_text(encoding="utf-8")
+    decision = (proyecto / ".dedalo_review" / "decision").read_text(encoding="utf-8")
     assert decision == "REJECT no me convence"
     with pytest.raises(ValueError):
         m.resolver_revision("p1", "quizas")
 
 
 def test_estado_loop_detecta_revision_pendiente(proyecto):
-    fondo = proyecto / ".autopiloto_review"
+    fondo = proyecto / ".dedalo_review"
     fondo.mkdir()
     (fondo / "waiting").write_text("", encoding="utf-8")
     (fondo / "tarea.txt").write_text("Tarea 3\n", encoding="utf-8")
@@ -111,7 +111,7 @@ def test_registro_tools_y_recurso():
                      "instalar_proyecto", "leer_fichero", "leer_contexto",
                      "leer_plan", "leer_lecciones"):
         assert esperada in tools
-    assert "autopiloto://{nombre}/{fichero}" in plantillas
+    assert "dedalo://{nombre}/{fichero}" in plantillas
 
 
 def test_iniciar_loop_sin_agentes(proyecto, monkeypatch):

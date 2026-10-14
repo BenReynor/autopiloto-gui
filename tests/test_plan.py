@@ -7,7 +7,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from autopiloto_gui.plan import Plan
+from dedalo.plan import Plan
 
 PLAN_SAMPLE = """# PLAN — Test
 

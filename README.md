@@ -1,6 +1,6 @@
-# Autopiloto GUI
+# Dédalo
 
-Panel de control gráfico (PySide6) para el sistema **autopiloto**: gestiona agentes IA (opencode, codex, claude) que iteran sobre tareas de un `plan.md`, ejecutan tests (`gate.sh`), piden revisión de código y commitean automáticamente.
+Panel de control gráfico (PySide6) para el sistema **Dédalo**: gestiona agentes IA (opencode, codex, claude) que iteran sobre tareas de un `plan.md`, ejecutan tests (`gate.sh`), piden revisión de código y commitean automáticamente.
 
 ---
 
@@ -9,7 +9,7 @@ Panel de control gráfico (PySide6) para el sistema **autopiloto**: gestiona age
 ```bash
 # Clonar
 git clone <repo>
-cd autopiloto-gui
+cd dedalo
 
 # Entorno virtual (recomendado)
 python3 -m venv venv
@@ -23,7 +23,7 @@ pip install -e .
 pip install -e ".[dev]"
 
 # Ejecutar
-python -m autopiloto_gui
+python -m dedalo
 ```
 
 > **Python**: Requiere 3.10+. En este repo se usa el venv en `../Sistema_Pos/frontend/venv/`.
@@ -83,7 +83,7 @@ Cambio en vivo desde el selector "Tema" en la barra superior.
 
 ## ⚙️ Configuración persistente
 
-Guarda en `~/.config/autopiloto/proyectos.json`:
+Guarda en `~/.config/dedalo/proyectos.json`:
 
 - Proyectos registrados (ruta + config por proyecto)
 - Tema activo
@@ -93,7 +93,7 @@ Guarda en `~/.config/autopiloto/proyectos.json`:
 - **Ancho del sidebar** (`sidebar_ancho`)
 
 Dos datos de la ventana no van aquí, sino en el `QSettings` de Qt
-(`~/.config/autopiloto-gui/panel.conf`): la geometría de la ventana y el
+(`~/.config/dedalo/panel.conf`): la geometría de la ventana y el
 proyecto que estaba activo.
 
 El registro se escribe de forma atómica (temporal + `os.replace()`), así que
@@ -118,7 +118,7 @@ vacío. Conviene saber qué toca la app en cada caso:
 |---|---|
 | Ficheros que faltan (`plan.md`, `lecciones.md`, `CONTEXTO.md`, `.gitignore`, scripts) | Los copia de la plantilla. **Nunca pisa un fichero que ya exista.** |
 | `plan.md`, `lecciones.md`, `CONTEXTO.md`, `gate_checks/*.sh` | Son contenido tuyo. No se comparan ni se sobrescriben nunca. |
-| `autopiloto.sh`, `gate.sh`, `mapear.sh` | **Sí se sobrescriben** al abrir el proyecto si difieren de la plantilla. Si los editaste a mano, haz commit antes. |
+| `dedalo.sh`, `gate.sh`, `mapear.sh` | **Sí se sobrescriben** al abrir el proyecto si difieren de la plantilla. Si los editaste a mano, haz commit antes. |
 | Directorio sin repo git | Hace `git init -b master` y un commit inicial con lo que haya (`git add -A`). |
 
 O sea: tu código y tus documentos están a salvo; los tres scripts del
@@ -141,7 +141,7 @@ Cada proyecto debe tener en su raíz:
 
 ```
 proyecto/
-├── autopiloto.sh    # loop bash (DEPRECADO; la GUI usa el motor python)
+├── dedalo.sh    # loop bash (DEPRECADO; la GUI usa el motor python)
 ├── gate.sh          # checks (tests, lint, etc.) — bash, única pieza no nativa
 ├── mapear.sh        # genera mapeo.txt
 ├── plan.md          # lista de tareas
@@ -151,12 +151,12 @@ proyecto/
 └── progreso.log     # lo escribe el motor (lo parsea la GUI)
 ```
 
-El motor del loop es `autopiloto_gui/loop.py` (port del script, nacido en `W2`,
+El motor del loop es `dedalo/loop.py` (port del script, nacido en `W2`,
 mismo log/observabilidad). La GUI lo lanza con su propio intérprete
-(`python -m autopiloto_gui.loop`, o `--autopiloto-loop` dentro del binario
-empaquetado) y ya no requiere bash para arrancar. Los ficheros `autopiloto.sh`,
+(`python -m dedalo.loop`, o `--dedalo-loop` dentro del binario
+empaquetado) y ya no requiere bash para arrancar. Los ficheros `dedalo.sh`,
 `gate.sh`, `mapear.sh` se copian automáticamente al crear/abrir el proyecto
-desde la plantilla del repo (`autopiloto_gui/plantillas_data/`); `autopiloto.sh`
+desde la plantilla del repo (`dedalo/plantillas_data/`); `dedalo.sh`
 se conserva como referencia y para ejecución manual en terminal POSIX.
 
 ---
@@ -167,7 +167,7 @@ se conserva como referencia y para ejecución manual en terminal POSIX.
 |----|--------|
 | **Linux** | ✅ Funciona. Es el entorno de referencia y donde corre CI. |
 | **macOS** | ⚠️ Parcial. Ya no exige GNU coreutils: `timeout` → `_timeout` (GNU/gtimeout/respaldo bash que devuelve 124) y `sed -i "0,/…/"` → `marcar_plan` (awk+cat, conserva permisos), con tests que impiden regresiones. Queda el sensor térmico (`/sys/class/thermal`, sólo Linux; degrada a "sin dato") y la verificación en un Mac real + el `.dmg`. |
-| **Windows** | ✅ GUI + loop + gate nativos. Tanto el loop (`autopiloto_gui/loop.py`) como el gate (`autopiloto_gui/gate.py`) son motores Python que la GUI lanza con su propio intérprete: **ya no hace falta Git Bash** (PATH con `os.pathsep`, CLIs con sufijo `.exe`/`.cmd`, suite en CI en `windows-latest`). El gate corre los checks `*.py` de `gate_checks/` y, si hay bash, prefiere los `*.sh` equivalentes. Queda bash solo para el mapa del proyecto (`mapear.sh`) y el motor bash opcional (`autopiloto.sh`). |
+| **Windows** | ✅ GUI + loop + gate nativos. Tanto el loop (`dedalo/loop.py`) como el gate (`dedalo/gate.py`) son motores Python que la GUI lanza con su propio intérprete: **ya no hace falta Git Bash** (PATH con `os.pathsep`, CLIs con sufijo `.exe`/`.cmd`, suite en CI en `windows-latest`). El gate corre los checks `*.py` de `gate_checks/` y, si hay bash, prefiere los `*.sh` equivalentes. Queda bash solo para el mapa del proyecto (`mapear.sh`) y el motor bash opcional (`dedalo.sh`). |
 
 Lo que sí es independiente del SO desde ya: los finales de línea de los `.sh`
 (`.gitattributes` fuerza `eol=lf`, un `clone` en Windows con `autocrlf` ya no
@@ -183,14 +183,14 @@ plan) está al final de ese fichero, con el motivo de cada uno.
 
 ### 📦 Descargas (Release)
 
-Los binarios por plataforma se publican en [Releases](https://github.com/BenReynor/autopiloto-gui/releases)
+Los binarios por plataforma se publican en [Releases](https://github.com/BenReynor/dedalo/releases)
 al etiquetar un `v*` (Linux: `.tar.gz`/`.deb`/`.AppImage`; Windows: `.zip`
-con `autopiloto-gui.exe`; macOS: `.dmg`). Los builds **no llevan firma de
+con `dedalo.exe`; macOS: `.dmg`). Los builds **no llevan firma de
 código**: al instalarlos el sistema pedirá confirmación explícita:
 
 | SO | Primer arranque |
 |----|-----------------|
-| **macOS** | `control + clic` en la app → *Abrir* (o `xattr -dr com.apple.quarantine /Applications/Autopiloto.app`). |
+| **macOS** | `control + clic` en la app → *Abrir* (o `xattr -dr com.apple.quarantine /Applications/Dedalo.app`). |
 | **Windows** | SmartScreen advertirá con *Más información → Ejecutar de todas formas*. |
 | **Linux** | Sin firma ni sandbox; procedencia = este repositorio (los checksums están en la propia Release). |
 
@@ -205,7 +205,7 @@ opencode) está documentada, paso a paso y por SO, en
 
 ## 🔧 Variables del loop (env)
 
-El motor del loop (`autopiloto_gui/loop.py`; `autopiloto.sh` es su port bash,
+El motor del loop (`dedalo/loop.py`; `dedalo.sh` es su port bash,
 deprecado por la GUI) se configura por variables de entorno (la GUI las rellena
 desde el formulario de Ejecución). Las más útiles:
 
@@ -254,7 +254,7 @@ que no exista.
 
 ## 🤖 Servidor MCP (agente piloto)
 
-`autopiloto_gui.mcp_server` expone el estado de los proyectos y las acciones
+`dedalo.mcp_server` expone el estado de los proyectos y las acciones
 del loop por **MCP sobre stdio**, para que un agente "piloto" (p. ej. opencode
 o Claude Desktop) pueda leer el plan, las incidencias y las métricas, correr el
 gate, iniciar/parar el loop y **resolver la revisión manual** que de otro modo
@@ -266,7 +266,7 @@ Requiere el extra opcional `mcp` (no se instala por defecto):
 pip install -e ".[mcp]"
 
 # Arrancar el servidor (habla JSON-RPC por stdin/stdout)
-python -m autopiloto_gui.mcp_server
+python -m dedalo.mcp_server
 ```
 
 Configuración de un cliente MCP (ejemplo `opencode`/Claude Desktop):
@@ -274,9 +274,9 @@ Configuración de un cliente MCP (ejemplo `opencode`/Claude Desktop):
 ```json
 {
   "mcpServers": {
-    "autopiloto": {
+    "dedalo": {
       "command": "python",
-      "args": ["-m", "autopiloto_gui.mcp_server"]
+      "args": ["-m", "dedalo.mcp_server"]
     }
   }
 }
@@ -289,12 +289,12 @@ Configuración de un cliente MCP (ejemplo `opencode`/Claude Desktop):
 **Herramientas de acción:** `instalar_proyecto`, `correr_gate`, `iniciar_loop`
 (segundo plano), `estado_loop`, `detener_loop`, `resolver_revision`.
 
-**Recursos:** `autopiloto://{proyecto}/{fichero}` con lista blanca (`plan.md`,
+**Recursos:** `dedalo://{proyecto}/{fichero}` con lista blanca (`plan.md`,
 `lecciones.md`, `CONTEXTO.md`, `progreso.log`, `metrics.jsonl`,
 `incidencias.jsonl`, `mapeo.txt`).
 
 La revisión manual del loop se resuelve escribiendo en
-`<proyecto>/.autopiloto_review/decision`: `resolver_revision(nombre, "APPROVE")`
+`<proyecto>/.dedalo_review/decision`: `resolver_revision(nombre, "APPROVE")`
 o `REJECT <motivo>`. El piloto puede aprobar lo trivial y escalar lo dudoso.
 
 > Nota: el binario de PyInstaller se empaqueta `--windowed` (sin consola), así
@@ -313,14 +313,14 @@ pip install -e ".[dev]"
 QT_QPA_PLATFORM=offscreen python -m pytest tests/ -q
 
 # Lint
-python -m ruff check autopiloto_gui/ tests/
+python -m ruff check dedalo/ tests/
 
 # Smoke de instalación NO editable (la que de verdad importa: con
 # `pip install -e .` los ficheros ausentes en package-data no se notan)
 python -m pip wheel --no-deps -w /tmp/wheel . && python -m zipfile -l /tmp/wheel/*.whl
 
 # Boot test (headless)
-QT_QPA_PLATFORM=offscreen python -c "from autopiloto_gui.app import main; main()" &
+QT_QPA_PLATFORM=offscreen python -c "from dedalo.app import main; main()" &
 ```
 
 `[project.optional-dependencies] dev` trae `pytest` y `ruff`, nada más: no
@@ -332,19 +332,19 @@ haga nada.
 ## 📂 Estructura clave
 
 ```
-autopiloto_gui/
+dedalo/
 ├── app.py              # Ventana principal, orquestación, QProcess
 ├── paneles.py          # 8 paneles + widgets compartidos (PipelineLoop, LoopPill, etc.)
 ├── temas.py            # Sistema de diseño: 9 temas, QSS, colores_tema()
 ├── paneles_metricas.py # Dashboard pyqtgraph
 ├── metricas.py         # Parseo progreso.log → series
 ├── plan.py             # Modelo plan.md
-├── proyectos.py        # Persistencia JSON (~/.config/autopiloto/)
+├── proyectos.py        # Persistencia JSON (~/.config/dedalo/)
 ├── loop_launch.py      # preparación del lanzamiento (env + argv), compartida GUI/MCP
 ├── mcp_server.py       # servidor MCP por stdio (tools + recursos); extra `mcp`
 ├── plantillas.py       # Scaffold proyectos
 ├── plantillas_data/    # Scripts .sh template + memoria inicial
-│   ├── autopiloto.sh   # loop BASH (deprecado; referencia/uso manual)
+│   ├── dedalo.sh   # loop BASH (deprecado; referencia/uso manual)
 │   ├── gate.sh         # gate bash (legacy/Unix; el loop usa gate.py)
 │   ├── mapear.sh       # mapeo del repo
 │   ├── plan.md         # memoria inicial (NO se sobreescribe)

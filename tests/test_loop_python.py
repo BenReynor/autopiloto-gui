@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests de autopiloto_gui.loop: helpers puros del motor (proxima_tarea,
+"""Tests de dedalo.loop: helpers puros del motor (proxima_tarea,
 criterio_tarea, rama_run_nombre, Config, backup/gate_intacto/restaurar_gate,
 _run_gate y _esperar_revision_manual).
 
@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from autopiloto_gui.loop import (  # noqa: E402
+from dedalo.loop import (  # noqa: E402
     _RECHAZO_MOTIVO,
     Config,
     _esperar_revision_manual,
@@ -25,7 +25,7 @@ from autopiloto_gui.loop import (  # noqa: E402
     rama_run_nombre,
     restaurar_gate,
 )
-from autopiloto_gui.loop_args import parse_args  # noqa: E402
+from dedalo.loop_args import parse_args  # noqa: E402
 
 
 def _leer(ruta):
@@ -96,7 +96,7 @@ def test_criterio_vacio_ignora_otras_tareas_previas(tmp_path):
 
 def test_rama_run_nombre_formato():
     nombre = rama_run_nombre()
-    assert re.fullmatch(r"autopiloto/\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}",
+    assert re.fullmatch(r"dedalo/\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}",
                         nombre)
 
 
@@ -114,7 +114,7 @@ def test_config_defaults_y_plan_absoluto(tmp_path):
 
 
 def test_config_respeta_entorno_y_args(tmp_path):
-    from autopiloto_gui.loop_args import parse_args as pa
+    from dedalo.loop_args import parse_args as pa
     env = {"MAX_ITER": "12", "REVISION_DUAL": "0", "TIMEOUT_POR_TAREA": "30",
            "AGENTE_TAREA": "codex", "RAMA_BASE": "dev"}
     cfg = Config(pa(["--hasta", "23:00", "--padre", "feat", "--push",
@@ -197,7 +197,7 @@ def test_manual_desactivada_devuelve_0(tmp_path):
 
 
 def test_manual_aprobada(tmp_path):
-    dir_rev = tmp_path / ".autopiloto_review"
+    dir_rev = tmp_path / ".dedalo_review"
     dir_rev.mkdir(exist_ok=True)
     (dir_rev / "decision").write_text("APPROVE\n", encoding="utf-8")
     cfg = _cfg(tmp_path, {"REVISION_MANUAL": "1"})
@@ -213,7 +213,7 @@ def test_manual_aprobada(tmp_path):
 
 
 def test_manual_rechazada_rellena_motivo(tmp_path):
-    dir_rev = tmp_path / ".autopiloto_review"
+    dir_rev = tmp_path / ".dedalo_review"
     dir_rev.mkdir(exist_ok=True)
     (dir_rev / "decision").write_text("REJECT\nmalisimo\n", encoding="utf-8")
     cfg = _cfg(tmp_path, {"REVISION_MANUAL": "1"})
@@ -229,7 +229,7 @@ def test_manual_rechazada_rellena_motivo(tmp_path):
 def test_manual_timeout_marca_2(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, {"REVISION_MANUAL": "1",
                           "TIMEOUT_REVISION_MANUAL": "2"})
-    import autopiloto_gui.loop as loop_m
+    import dedalo.loop as loop_m
     monkeypatch.setattr(loop_m.time, "sleep", lambda s: None)
     rc = _esperar_revision_manual(cfg, "t1")
     assert rc == 2
@@ -239,7 +239,7 @@ def test_manual_timeout_marca_2(tmp_path, monkeypatch):
 def test_manual_sin_internet_aborta_con_4(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, {"REVISION_MANUAL": "1",
                           "TIMEOUT_REVISION_MANUAL": "0"})
-    import autopiloto_gui.loop as loop_m
+    import dedalo.loop as loop_m
     monkeypatch.setattr(loop_m.time, "sleep", lambda s: None)
     monkeypatch.setattr(loop_m.net, "hay_internet", lambda: False)
     rc = _esperar_revision_manual(cfg, "t1")
@@ -251,12 +251,12 @@ def test_proteger_salidas_reconfigura_consola_no_utf8(monkeypatch):
     """Windows con consola heredada: el encoding es cp1252 y el primer ✗
     del motor reventaba con UnicodeEncodeError (regresión vista en el
     smoke del binario de Windows). Debe pasar el stream a utf-8/replace."""
-    import autopiloto_gui.loop as loop_m
+    import dedalo.loop as loop_m
     buf = io.BytesIO()
     flujo = io.TextIOWrapper(buf, encoding="cp1252")
     monkeypatch.setattr(sys, "stdout", flujo)
     loop_m._proteger_salidas()
-    print("[autopiloto] ✗✗ agente no disponible")  # no debe reventar
+    print("[dedalo] ✗✗ agente no disponible")  # no debe reventar
     flujo.flush()
     assert "✗✗" in buf.getvalue().decode("utf-8")
     flujo.close()
@@ -264,7 +264,7 @@ def test_proteger_salidas_reconfigura_consola_no_utf8(monkeypatch):
 
 def test_proteger_salidas_sustituye_stream_none_por_devnull(monkeypatch):
     """Binario --windowed: stdout/stderr None y el primer print reventaría."""
-    import autopiloto_gui.loop as loop_m
+    import dedalo.loop as loop_m
     monkeypatch.setattr(sys, "stdout", None)
     loop_m._proteger_salidas()
     print("ok")

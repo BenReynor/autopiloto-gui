@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests del timeout de la revisión manual de autopiloto.sh.
+"""Tests del timeout de la revisión manual de dedalo.sh.
 
 Extrae `esperar_revision_manual` de la plantilla y la ejecuta con stubs de
 red/sleep para verificar: aprobación (rc=0), timeout (rc=2) y caída de red
@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLANTILLA = os.path.join(
-    RAIZ, "autopiloto_gui", "plantillas_data", "autopiloto.sh")
+    RAIZ, "dedalo", "plantillas_data", "dedalo.sh")
 
 pytestmark = pytest.mark.skipif(
     shutil.which("bash") is None or os.name == "nt",
@@ -56,18 +56,18 @@ run_case() {
     PROYECTO="$dir"
     TAREA="t"
     LOG="$dir/log"
-    mkdir -p "$dir/.autopiloto_review"
+    mkdir -p "$dir/.dedalo_review"
     : > "$LOG"
     logx() { :; }
     alerta() { :; }
     hay_internet() { return "$inet_rc"; }
     sleep() { :; }
     git() { return 0; }
-    [ -n "$pre" ] && printf '%s' "$pre" > "$dir/.autopiloto_review/decision"
+    [ -n "$pre" ] && printf '%s' "$pre" > "$dir/.dedalo_review/decision"
     ( esperar_revision_manual )
     rc=$?
     leftover="limpio"
-    [ -e "$dir/.autopiloto_review/waiting" ] && leftover="waiting"
+    [ -e "$dir/.dedalo_review/waiting" ] && leftover="waiting"
     echo "CASE $name rc=$rc $leftover"
     rm -rf "$dir"
 }

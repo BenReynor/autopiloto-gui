@@ -3,10 +3,10 @@
 
 El bug que motivó este fichero: `gate.sh` usaba `fail()` y `ok()`, que sólo
 estaban definidas en `gate_checks/_env.sh`. Si un proyecto se copytaba sin
-`_env.sh` (uso "portable" documentado en autopiloto.sh), un check que fallaba
+`_env.sh` (uso "portable" documentado en dedalo.sh), un check que fallaba
 provocaba `fail: orden no encontrada` con rc=127, el bucle lo ignoraba porque
 no hay `set -e`, y el gate imprimía "✅ TODO OK" con rc=0. Como el rc del gate
-decide el merge en autopiloto.sh, eso meteía código roto en master en silencio.
+decide el merge en dedalo.sh, eso meteía código roto en master en silencio.
 
 Aquí se ejercita el gate.sh real con checks stubs, con y sin `_env.sh`.
 """
@@ -23,7 +23,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 RAIZ = Path(__file__).resolve().parent.parent
-PLANTILLAS = RAIZ / "autopiloto_gui" / "plantillas_data"
+PLANTILLAS = RAIZ / "dedalo" / "plantillas_data"
 GATE = PLANTILLAS / "gate.sh"
 
 pytestmark = pytest.mark.skipif(

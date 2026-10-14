@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from autopiloto_gui.app import Ventana  # noqa: E402
+from dedalo.app import Ventana  # noqa: E402
 
 
 class _PanelFake:

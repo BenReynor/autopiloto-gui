@@ -16,8 +16,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from autopiloto_gui import configuracion as cfg
-from autopiloto_gui import proyectos
+from dedalo import configuracion as cfg
+from dedalo import proyectos
 
 
 def _config_aislada(contenido=None):

@@ -1,12 +1,12 @@
 # Prueba manual de un binario publicado (v2.0.0)
 
 Checklist de ~15 min por SO para validar de punta a punta un binario de la
-[Release de GitHub](https://github.com/BenReynor/autopiloto-gui/releases).
+[Release de GitHub](https://github.com/BenReynor/dedalo/releases).
 El agente de prueba recomendado es **opencode** (CLI agnóstico; en Windows es
 `.exe`/`.cmd`). Los binarios **no llevan firma de código**: ver el apartado
 de primer arranque de cada SO.
 
-Códigos de salida del motor (`--autopiloto-loop`): `0` = loop completado,
+Códigos de salida del motor (`--dedalo-loop`): `0` = loop completado,
 `2` = agente no disponible, `4` = sin internet, `7` = error interno.
 
 ---
@@ -32,25 +32,25 @@ Códigos de salida del motor (`--autopiloto-loop`): `0` = loop completado,
 
 1. Verificar checksum: `sha256sum -c SHA256SUMS` (junto a los ficheros en la
    Release).
-2. AppImage: `chmod +x autopiloto-gui-*.AppImage && ./autopiloto-gui-*.AppImage`.
-   .deb: `sudo apt install ./autopiloto-gui_*.deb`.
+2. AppImage: `chmod +x dedalo-*.AppImage && ./dedalo-*.AppImage`.
+   .deb: `sudo apt install ./dedalo_*.deb`.
 3. **GUI**: arranca el panel; añadir un proyecto con el `plan.md` del punto 0;
    cambiar de tema y confirmar que persiste al reiniciar.
 4. **Motor**: lanzar el loop desde el panel → `progreso.log` avanza, el gate
    corre, y `t1` termina `[x]` (existe `hola.txt`).
-5. **CLI**: `./autopiloto-gui-*.AppImage --autopiloto-loop plan.md`
+5. **CLI**: `./dedalo-*.AppImage --dedalo-loop plan.md`
    (en el cwd del proyecto): con opencode en PATH → rc `0`; si se quita del
    PATH → rc `2` y `ABORTADO: agente no disponible (opencode)` en la cola del
    `progreso.log`.
 6. **Sensor térmico**: en máquinas con `/sys/class/thermal` se muestra el dato;
    sin él, "sin dato" (degradación esperada).
 
-## 2. Windows (`autopiloto-gui-2.0.0-win64.zip`)
+## 2. Windows (`dedalo-2.0.0-win64.zip`)
 
 1. Verificar checksum desde PowerShell:
-   `Get-FileHash autopiloto-gui-2.0.0-win64.zip -Algorithm SHA256`
+   `Get-FileHash dedalo-2.0.0-win64.zip -Algorithm SHA256`
    y comparar con `SHA256SUMS-windows`.
-2. Descomprimir → `autopiloto-gui\autopiloto-gui.exe`.
+2. Descomprimir → `dedalo\dedalo.exe`.
 3. **Primer arranque**: SmartScreen → *Más información* → *Ejecutar de todas
    formas*. Abre el panel.
 4. **GUI**: añadir proyecto con el `plan.md` del punto 0; tema persistente.
@@ -58,21 +58,21 @@ Códigos de salida del motor (`--autopiloto-loop`): `0` = loop completado,
    con su `bash`). Sin Git Bash, el loop corre pero el gate bloquea la tarea.
    Con Git Bash en el PATH, `t1` pasa el criterio y `progreso.log` lo refleja.
 6. **CLI** (PowerShell, en el cwd del proyecto):
-   `.\autopiloto-gui\autopiloto-gui.exe --autopiloto-loop plan.md`
+   `.\dedalo\dedalo.exe --dedalo-loop plan.md`
    → rc `0` con opencode en PATH; rc `2` sin él.
 
-## 3. macOS (`autopiloto-gui-2.0.0-macos-arm64.dmg`)
+## 3. macOS (`dedalo-2.0.0-macos-arm64.dmg`)
 
 > Solo **Apple Silicon (arm64)**. Binario sin firmar ni notarizar.
 
 1. Verificar checksum: `shasum -a 256 -c SHA256SUMS-macos`.
-2. Abrir el dmg → arrastrar **Autopiloto.app** a Aplicaciones.
+2. Abrir el dmg → arrastrar **Dedalo.app** a Aplicaciones.
 3. **Primer arranque**: `control + clic` en la app → *Abrir*. Alternativa:
-   `xattr -dr com.apple.quarantine /Applications/Autopiloto.app`.
+   `xattr -dr com.apple.quarantine /Applications/Dedalo.app`.
 4. **GUI + motor**: igual que Linux; el **sensor térmico degrada a "sin dato"**
    (no hay `/sys/class/thermal` en macOS; comportamiento esperado).
-5. **CLI**: `"/Applications/Autopiloto.app/Contents/MacOS/autopiloto-gui" \
-   --autopiloto-loop plan.md` → rc `0` con opencode en PATH; rc `2` sin él.
+5. **CLI**: `"/Applications/Dedalo.app/Contents/MacOS/dedalo" \
+   --dedalo-loop plan.md` → rc `0` con opencode en PATH; rc `2` sin él.
 
 ---
 

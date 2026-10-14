@@ -6,38 +6,38 @@ se pueda reportar antes de que Qt tome el control).
 
 Triple modo:
   · sin argumentos (o con argumentos de la GUI): arranca el panel de control.
-  · `--autopiloto-loop <args…>`: arranca el MOTOR del loop (autopiloto_gui.loop)
+  · `--dedalo-loop <args…>`: arranca el MOTOR del loop (dedalo.loop)
     como subproceso. La GUI en el binario lo lanza así en vez de
     `python -m` (que en un ejecutable congelado no resuelve el módulo);
-    en el código fuente la GUI usa `python -m autopiloto_gui.loop` en su lugar.
-  · `--autopiloto-gate [--proyecto DIR]`: corre el gate portable (autopiloto_gui.gate).
+    en el código fuente la GUI usa `python -m dedalo.loop` en su lugar.
+  · `--dedalo-gate [--proyecto DIR]`: corre el gate portable (dedalo.gate).
     El loop en el binario lo lanza así; en el código fuente usa
-    `python -m autopiloto_gui.gate`.
-  · `--autopiloto-mcp`: arranca el servidor MCP por stdio (autopiloto_gui.mcp_server).
-    Requiere el extra `mcp`; en el código fuente: `python -m autopiloto_gui.mcp_server`.
+    `python -m dedalo.gate`.
+  · `--dedalo-mcp`: arranca el servidor MCP por stdio (dedalo.mcp_server).
+    Requiere el extra `mcp`; en el código fuente: `python -m dedalo.mcp_server`.
 """
 import sys
 
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] == "--autopiloto-loop":
-        from autopiloto_gui.loop import main as _loop_main
+    if argv and argv[0] == "--dedalo-loop":
+        from dedalo.loop import main as _loop_main
         return _loop_main(argv[1:]) or 0
-    if argv and argv[0] == "--autopiloto-gate":
-        from autopiloto_gui.gate import main as _gate_main
+    if argv and argv[0] == "--dedalo-gate":
+        from dedalo.gate import main as _gate_main
         return _gate_main(argv[1:]) or 0
-    if argv and argv[0] == "--autopiloto-mcp":
-        from autopiloto_gui.mcp_server import main as _mcp_main
+    if argv and argv[0] == "--dedalo-mcp":
+        from dedalo.mcp_server import main as _mcp_main
         return _mcp_main() or 0
     try:
-        from autopiloto_gui.app import main as _main
+        from dedalo.app import main as _main
     except Exception:
         import traceback
 
         traceback.print_exc()
         print(
-            "\nAutopiloto: no se pudieron cargar sus dependencias "
+            "\nDédalo: no se pudieron cargar sus dependencias "
             "(¿falta libQt/GL en el sistema?).",
             file=sys.stderr,
         )

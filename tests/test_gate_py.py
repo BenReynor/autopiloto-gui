@@ -22,7 +22,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from autopiloto_gui import gate  # noqa: E402
+from dedalo import gate  # noqa: E402
 
 CHECK_FALLA = "def run(env):\n    env.fail('algo va mal')\n    return 1\n"
 CHECK_OK = "def run(env):\n    env.ok('todo en orden')\n    return 0\n"
@@ -117,7 +117,7 @@ def test_env_django_define_db_check_por_defecto(tmp_path):
     Regresión: la rama Django llamaba a `_db_por_defecto`, que no existía, y
     reventaba con NameError. Solo se activa con manage.py, por eso no la cubría
     ningún test hasta ahora."""
-    from autopiloto_gui import gate_env
+    from dedalo import gate_env
     proyecto = tmp_path / "p"
     (proyecto / "Backend").mkdir(parents=True)
     (proyecto / "Backend" / "manage.py").write_text("", encoding="utf-8")

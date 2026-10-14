@@ -10,7 +10,7 @@ import json
 import os
 import tempfile
 
-from autopiloto_gui.loop_util import (
+from dedalo.loop_util import (
     ahora_ms,
     d2,
     hora_limite,

@@ -13,7 +13,7 @@ tiene riesgo activo o sólo deuda técnica.
 
 **Riesgo activo: ninguno.** Deuda técnica.
 
-`autopiloto_gui/paneles.py:1493` llama `w.liberar(self, "worker")` (sin guion bajo)
+`dedalo/paneles.py:1493` llama `w.liberar(self, "worker")` (sin guion bajo)
 cuando el atributo real es `self._worker` (línea 1487). `Trabajo.liberar` hace
 `setattr(owner, nombre, None)`, así que:
 
@@ -37,7 +37,7 @@ había guard y dos eventos solapados sí abortaban la aplicación.
 
 **Riesgo activo: aceptado por decisión explícita del usuario.**
 
-`autopiloto_gui/plantillas_data/gate_checks/03_backend.sh:28-37` mata con
+`dedalo/plantillas_data/gate_checks/03_backend.sh:28-37` mata con
 `lsof -ti :"$PUERTO" | xargs kill -9`. El comentario del código dice "otro proceso
 **del gate**", pero en realidad es **cualquier** proceso que escuche en ese puerto,
 incluido el backend de desarrollo del usuario, y sin aviso previo.
@@ -79,7 +79,7 @@ falso 2xx sobre una ruta mal escrita.
 
 **Riesgo activo: bajo.** Deuda técnica.
 
-`autopiloto_gui/registro.py` ya protege el registro contra corrupción sintáctica
+`dedalo/registro.py` ya protege el registro contra corrupción sintáctica
 (escritura atómica, copia `.corrupto` y arranque bloqueado en lugar de perder
 proyectos — commit `ffef4d6`), pero el formato no lleva versión. Una migración futura
 que cambie claves no tiene forma de distinguir "configuración antigua" de "archivo
@@ -95,14 +95,14 @@ registro y validar el número al leer.
 **Riesgo activo: cosmetico.** Consecuencia de una decisión tomada.
 
 Al marcar una tarea como `[B]` por fallo de merge (decisión del usuario), la rama
-`autopiloto/tareas/<fecha>/t<n>` se conserva para poder inspeccionar el trabajo. El
-reaper de `autopiloto.sh:878-883` sólo borra la rama del mismo `<fecha>/t<iter>` del
+`dedalo/tareas/<fecha>/t<n>` se conserva para poder inspeccionar el trabajo. El
+reaper de `dedalo.sh:878-883` sólo borra la rama del mismo `<fecha>/t<iter>` del
 run en curso, así que las de días anteriores se quedan.
 
 Listarlas y borrarlas:
 
 ```bash
-git -C <proyecto> branch --list 'autopiloto/tareas/*'
+git -C <proyecto> branch --list 'dedalo/tareas/*'
 git -C <proyecto> branch --delete --force <rama>
 ```
 
@@ -123,5 +123,5 @@ git -C <proyecto> branch --delete --force <rama>
   resueltos, tests en CI con los POSIX saltados). El gate ejecuta los checks
   `*.py` de `gate_checks/` y sólo usa bash, si está, para preferir los `*.sh`
   equivalentes. Queda bash únicamente para el mapa del proyecto (`mapear.sh`,
-  botón "Refrescar mapa") y el motor bash opcional (`autopiloto.sh`); falta la
+  botón "Refrescar mapa") y el motor bash opcional (`dedalo.sh`); falta la
   verificación en un Windows real.

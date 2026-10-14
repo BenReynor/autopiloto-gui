@@ -25,13 +25,13 @@ pytestmark = pytest.mark.skipif(
     os.name == "nt", reason="lint de plantillas shell: sólo POSIX")
 
 RAIZ = Path(__file__).resolve().parent.parent
-SH_DIRS = [RAIZ / "autopiloto_gui", RAIZ]
+SH_DIRS = [RAIZ / "dedalo", RAIZ]
 _IGNORAR = {".git", ".mypy_cache", ".pytest_cache", ".ruff_cache",
             "venv", ".venv", "__pycache__", "node_modules",
             # `pip install .` / `pip wheel` dejan build/lib/ con una copia de
             # las plantillas: sin esto, un build local duplicaba los 12 .sh y
             # la suite de portabilidad reportaba 48 tests de más.
-            "build", "dist", "autopiloto_gui.egg-info",
+            "build", "dist", "dedalo.egg-info",
             # build_linux.sh desempaqueta en packaging/out/ copias de los .sh
             # del build anterior: analizan el fichero viejo y fallan (ningún
             # .sh del repo vive bajo un directorio llamado `out`).
@@ -139,10 +139,10 @@ PENDIENTES_MACOS: set[str] = set()
 PENDIENTES_WINDOWS = {
     # El loop y el gate ya son Python (no necesitan bash). Queda bash solo
     # para el mapa del proyecto (mapear.sh, botón "Refrescar mapa") y para el
-    # motor bash opcional (autopiloto.sh): sin Git Bash esas rutas fallan.
-    "bash": "mapear.sh/autopiloto.sh siguen siendo bash: requieren WSL2 o Git Bash",
+    # motor bash opcional (dedalo.sh): sin Git Bash esas rutas fallan.
+    "bash": "mapear.sh/dedalo.sh siguen siendo bash: requieren WSL2 o Git Bash",
     # "QProcess(\"bash\")" ya no está: la GUI lanza el gate como
-    # `python -m autopiloto_gui.gate` (o el binario --autopiloto-gate).
+    # `python -m dedalo.gate` (o el binario --dedalo-gate).
     # "os.pathsep" ya no está: app.py une el PATH con os.pathsep (se arregló
     # junto con la búsqueda de CLIs con sufijo .exe/.cmd en modelos.py).
 }
@@ -176,7 +176,7 @@ def test_gitattributes_fuerza_lf_para_sh():
 # Formatos que no deben depender del locale del usuario
 # ---------------------------------------------------------------------------
 
-_AUTOPILOTO = RAIZ / "autopiloto_gui" / "plantillas_data" / "autopiloto.sh"
+_DEDALO = RAIZ / "dedalo" / "plantillas_data" / "dedalo.sh"
 
 
 def test_awk_de_formatos_usa_locale_c():
@@ -186,9 +186,9 @@ def test_awk_de_formatos_usa_locale_c():
     comparación del tope de coste. OJO: `export LC_NUMERIC=C` NO lo arregla,
     porque LC_ALL tiene prioridad sobre LC_NUMERIC en los procesos hijos.
     """
-    texto = _AUTOPILOTO.read_text(encoding="utf-8")
+    texto = _DEDALO.read_text(encoding="utf-8")
     assert re.search(r"^num\(\)\s*\{\s*LC_ALL=C awk", texto, re.M), (
-        "autopiloto.sh debe definir num() con LC_ALL=C awk")
+        "dedalo.sh debe definir num() con LC_ALL=C awk")
     # Ningún awk que formatee un decimal puede quedar fuera del helper.
     sueltos = [n for n, linea in enumerate(texto.splitlines(), 1)
                if re.search(r"(?<![\w-])awk .*printf \"%", linea)
@@ -199,9 +199,9 @@ def test_awk_de_formatos_usa_locale_c():
 def test_exporta_lc_all_c_para_el_printf_de_bash():
     """El otro lado del bug: el `printf "%.6f"` del propio bash usa el locale
     del shell y rechazaba "0.500000" como número no válido."""
-    texto = _AUTOPILOTO.read_text(encoding="utf-8")
+    texto = _DEDALO.read_text(encoding="utf-8")
     m = re.search(r"^export LC_ALL=C$", texto, re.M)
-    assert m, "autopiloto.sh debe hacer `export LC_ALL=C`"
+    assert m, "dedalo.sh debe hacer `export LC_ALL=C`"
     assert m.start() < texto.index("costo=$(num"), (
         "el export debe ir antes de calcular el coste")
 
@@ -212,7 +212,7 @@ def test_registrar_metrica_escribe_json_valido(tmp_path):
                                      text=True).stdout.lower():
         pytest.skip("el runner no tiene locale es_ES; el test A ya lo cubre")
 
-    texto = _AUTOPILOTO.read_text(encoding="utf-8")
+    texto = _DEDALO.read_text(encoding="utf-8")
     ini = texto.index("_registrar_metrica() {")
     funcion = texto[ini:texto.index("\n}", ini) + 2]
 
@@ -253,7 +253,7 @@ def test_registrar_metrica_falla_sin_lc_all_c(tmp_path):
                                      text=True).stdout.lower():
         pytest.skip("el runner no tiene locale es_ES")
 
-    texto = _AUTOPILOTO.read_text(encoding="utf-8")
+    texto = _DEDALO.read_text(encoding="utf-8")
     ini = texto.index("_registrar_metrica() {")
     funcion = texto[ini:texto.index("\n}", ini) + 2]
 
@@ -281,7 +281,7 @@ def test_registrar_metrica_falla_sin_lc_all_c(tmp_path):
 # ---------------------------------------------------------------------------
 
 def _extraer_bloque(nombre: str) -> str:
-    texto = _AUTOPILOTO.read_text(encoding="utf-8")
+    texto = _DEDALO.read_text(encoding="utf-8")
     ini = texto.index(f"{nombre}() {{")
     fin = texto.index("\n}", ini) + 2
     return texto[ini:fin]
@@ -409,6 +409,6 @@ def test_gui_une_el_path_con_pathsep():
     """Regresión: app.py unía el PATH con ":" fijo, que corrompe el PATH del
     loop en Windows (separador ';'). Ya no está en PENDIENTES_WINDOWS, así
     que este test evita que vuelva."""
-    app = (RAIZ / "autopiloto_gui" / "app.py").read_text(encoding="utf-8")
+    app = (RAIZ / "dedalo" / "app.py").read_text(encoding="utf-8")
     assert 'env["PATH"] = ":"' not in app, "usa os.pathsep para unir el PATH"
     assert "os.pathsep" in app

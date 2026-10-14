@@ -1,5 +1,5 @@
 ================================================================================
-INFORME COMPLETO — autopiloto-gui
+INFORME COMPLETO — dedalo
 Estado del proyecto tras los arreglos A–F
 Fecha: 2026-10-06
 Nota (2026-10-07): informe congelado en su fecha. El estado vivo (portabilidad
@@ -25,7 +25,7 @@ y el camino para que un tercero lo instale sin leer el código fuente.
 
 Commits totales en el repo:      85
 Commits sin push (locales):       19  (origin/main..HEAD)
-Líneas Python (autopiloto_gui/): 6.203
+Líneas Python (dedalo/): 6.203
 Líneas Tests (tests/):           4.655
 Líneas Shell (plantillas_data/): 2.043
 Tests totales:                   266 (264 passed, 2 skipped)
@@ -33,7 +33,7 @@ Licencia:                        MIT (LICENSE en repo)
 Versión pyproject:               2.0.0
 Python mínimo:                   3.10
 CI:                              GitHub Actions (ubuntu + macos)
-Remoto:                          https://github.com/BenReynor/autopiloto-gui.git
+Remoto:                          https://github.com/BenReynor/dedalo.git
 
 Desglose de tests por archivo:
   test_agentes.py          52
@@ -49,7 +49,7 @@ Desglose de tests por archivo:
   test_webhooks.py          7
   test_revertir.py          6
   test_revisor_diff.py      6
-  test_autopiloto_senales.py 5  (NUEVO en D)
+  test_dedalo_senales.py 5  (NUEVO en D)
   test_loop_fin.py          4
   test_configuracion.py     3
   test_net.py               3
@@ -65,7 +65,7 @@ Historial reciente (más reciente primero):
 
   1ee0c44  F: backup timestamped antes de sobrescribir scripts en
               plantillas.actualizar()
-              → Antes de copiar la plantilla nueva sobre autopiloto.sh/gate.sh/
+              → Antes de copiar la plantilla nueva sobre dedalo.sh/gate.sh/
                 mapear.sh, se guarda <nombre>.bak.<YYYYMMDD_HHMMSS> en el
                 proyecto. Si la actualización rompe algo, se puede revertir a
                 mano.
@@ -92,7 +92,7 @@ Historial reciente (más reciente primero):
                 cuelga.
               → PID en fichero /tmp para encontrar al hijo también cuando corre
                 en subshell (el gate va por pipe → subshell).
-              → Tests: tests/test_autopiloto_senales.py (5 tests con
+              → Tests: tests/test_dedalo_senales.py (5 tests con
                 SIGTERM/SIGINT reales, verifica exit 143/130, limpieza única,
                 sin huérfanos, gate interruptible).
 
@@ -133,11 +133,11 @@ Arreglos anteriores (baseline verificado):
 ================================================================================
 
   ✓ Suite completa:     264 passed, 2 skipped (58–68 s)
-  ✓ ruff check:         All checks passed! (autopiloto_gui/ + tests/)
+  ✓ ruff check:         All checks passed! (dedalo/ + tests/)
   ✓ bash -n:            TODOS los .sh OK (plantillas_data/*.sh + gate_checks/)
   ✓ Smoke wheel (no editable):
-      pip wheel --no-deps → autopiloto_gui-2.0.0-py3-none-any.whl (106 KB)
-      Contenido verificado: autopiloto.sh, gate.sh, mapear.sh, plan.md,
+      pip wheel --no-deps → dedalo-2.0.0-py3-none-any.whl (106 KB)
+      Contenido verificado: dedalo.sh, gate.sh, mapear.sh, plan.md,
       lecciones.md, .gitignore, gate_checks/ (8 checks), icono.svg,
       acceso.sh → TODO dentro del wheel.
   ✓ Boot headless:      QT_QPA_PLATFORM=offscreen → main() arranca y sale
@@ -177,7 +177,7 @@ Arreglos anteriores (baseline verificado):
     Linux=OK; macOS=parcial (sed -i,         y documentado  macOS=parcial,
     timeout, /sys); Windows=no                             Windows=no
 
-6   local fuera de función en autopiloto.sh  ✓ Corregido   Bug REAL (este informe lo
+6   local fuera de función en dedalo.sh  ✓ Corregido   Bug REAL (este informe lo
     (`local iter_sin_trabajo=0` en nivel      (2026-10-07)  clasificó antes como "espurio":
     superior del script)                                   era el error. Cualquier iteración
                                                             con trabajo actualizado abortaba
@@ -210,7 +210,7 @@ Arreglos anteriores (baseline verificado):
 6.2 Lo que NO está (riesgos reales):
 
   ✗ Tokens de webhooks (telegram_token, whatsapp_token, discord_webhook_url)
-    se guardan en CLARO en ~/.config/autopiloto/proyectos.json.
+    se guardan en CLARO en ~/.config/dedalo/proyectos.json.
     Permisos del fichero: 664 (rw-rw-r--) — legible por grupo.
     → Recomendación: os.chmod 0o600 al escribir; idealmente usar
       keyring/libsecret (aunque es plataforma-dependiente).
@@ -255,7 +255,7 @@ macOS (parcial):
   ✗ No hay .dmg ni notarización
 
 Windows (no soportado):
-  ✗ autopiloto.sh es bash puro — no corre sin WSL2/Git Bash
+  ✗ dedalo.sh es bash puro — no corre sin WSL2/Git Bash
   ✗ GUI concatena PATH con ":" en vez de os.pathsep
   ✗ Búsqueda de CLI sin sufijo .exe
   ✗ Sin .msi/.exe instalable
@@ -310,7 +310,7 @@ Fase 2 — macOS (1 semana):
 
 Fase 3 — Windows (2-4 semanas o más):
   · Opción A: solo WSL2 documentado (1 semana)
-  · Opción B: nativo — reescribir autopiloto.sh en Python/PowerShell
+  · Opción B: nativo — reescribir dedalo.sh en Python/PowerShell
     + instalador (2-4 semanas extra)
 
 Fase 4 — Seguridad mínima (1-2 semanas):

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Tests de cómo la GUI lanza el motor del loop (F4).
 
-Cubre _argv_motor (dev = `python -m autopiloto_gui.loop`, binario =
-`--autopiloto-loop`) y un smoke real del arranque por `-m` desde otro cwd
+Cubre _argv_motor (dev = `python -m dedalo.loop`, binario =
+`--dedalo-loop`) y un smoke real del arranque por `-m` desde otro cwd
 (el mismo comando que construye la GUI, con PYTHONPATH al repo), skip si no
 hay internet.
 """
@@ -16,8 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest  # noqa: E402
 
-from autopiloto_gui import net  # noqa: E402
-from autopiloto_gui.app import _argv_motor, _raiz_codigo  # noqa: E402
+from dedalo import net  # noqa: E402
+from dedalo.app import _argv_motor, _raiz_codigo  # noqa: E402
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -25,17 +25,17 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def test_argv_motor_dev():
     prog, argv = _argv_motor(False, ["--hasta", "23:00"])
     assert prog == sys.executable
-    assert argv == ["-m", "autopiloto_gui.loop", "--hasta", "23:00"]
+    assert argv == ["-m", "dedalo.loop", "--hasta", "23:00"]
 
 
 def test_argv_motor_binario():
     prog, argv = _argv_motor(True, ["--push"])
     assert prog == sys.executable
-    assert argv == ["--autopiloto-loop", "--push"]
+    assert argv == ["--dedalo-loop", "--push"]
 
 
 def test_raiz_codigo_contiene_el_paquete():
-    assert os.path.isdir(os.path.join(_raiz_codigo(), "autopiloto_gui"))
+    assert os.path.isdir(os.path.join(_raiz_codigo(), "dedalo"))
 
 
 def _git(*args, cwd):
@@ -49,7 +49,7 @@ def _git(*args, cwd):
 @pytest.mark.skipif(not net.hay_internet(), reason="requiere internet")
 def test_arranque_por_python_m_desde_otro_cwd(tmp_path):
     """Comando exacto de la GUI en modo fuente: `python -m
-    autopiloto_gui.loop` con cwd=proyecto y PYTHONPATH al repo."""
+    dedalo.loop` con cwd=proyecto y PYTHONPATH al repo."""
     proyecto = tmp_path / "proyecto"
     proyecto.mkdir()
     _git("init", "-q", "-b", "master", cwd=proyecto)
@@ -85,7 +85,7 @@ def test_arranque_por_python_m_desde_otro_cwd(tmp_path):
     })
 
     proc = subprocess.run(
-        [sys.executable, "-m", "autopiloto_gui.loop",
+        [sys.executable, "-m", "dedalo.loop",
          str(proyecto / "plan.md")],
         cwd=str(proyecto), env=env, timeout=600, capture_output=True, text=True)
 
@@ -93,6 +93,6 @@ def test_arranque_por_python_m_desde_otro_cwd(tmp_path):
         encoding="utf-8", errors="replace")
     assert proc.returncode == 0, (proc.stderr[-3000:]
                                   + log[-3000:])
-    assert "AUTOPILOTO FINALIZADO" in log, log[-3000:]
+    assert "DEDALO FINALIZADO" in log, log[-3000:]
     assert "- [x] t1" in (proyecto / "plan.md").read_text(encoding="utf-8")
     assert (proyecto / "src" / "a.py").exists()

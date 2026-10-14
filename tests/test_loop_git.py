@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from autopiloto_gui.loop_git import (
+from dedalo.loop_git import (
     borrar_rama,
     cambios_entre,
     checkout,
@@ -31,8 +31,8 @@ def _repo(tmp_path):
     proyecto = tmp_path / "proy"
     proyecto.mkdir()
     for cmd in (["git", "init", "-q", "-b", "master"],
-                ["git", "config", "user.email", "autopiloto@test"],
-                ["git", "config", "user.name", "Autopiloto Test"]):
+                ["git", "config", "user.email", "dedalo@test"],
+                ["git", "config", "user.name", "Dédalo Test"]):
         subprocess.run(cmd, cwd=proyecto, check=True)
     (proyecto / "base.txt").write_text("base\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=proyecto, check=True)
@@ -97,10 +97,10 @@ def test_commit_tarea_con_espacios(tmp_path):
     proy = _repo(tmp_path)
     (proy / "mi modulo.py").write_text("print(1)\n", encoding="utf-8")
     archivos = ["mi modulo.py"]
-    rc = commit_tarea(proy, archivos, "autopiloto: tarea", "cuerpo de la tarea")
+    rc = commit_tarea(proy, archivos, "dedalo: tarea", "cuerpo de la tarea")
     assert rc == 0
     _, log, _ = run_git(proy, "log", "-1", "--format=%s%n%b")
-    assert log.startswith("autopiloto: tarea\ncuerpo de la tarea")
+    assert log.startswith("dedalo: tarea\ncuerpo de la tarea")
 
 
 def test_commit_tarea_sin_archivos_no_hace_nada(tmp_path):

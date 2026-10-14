@@ -16,7 +16,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from autopiloto_gui.loop_proceso import (
+from dedalo.loop_proceso import (
     RC_TIMEOUT,
     limpiar_sesiones,
     run_con_timeout,

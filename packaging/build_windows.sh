@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# build_windows.sh — empaqueta autopiloto-gui para Windows y hace el smoke
-# del binario (la GUI arranca, y el modo `--autopiloto-loop` ejecuta el motor
+# build_windows.sh — empaqueta Dédalo para Windows y hace el smoke
+# del binario (la GUI arranca, y el modo `--dedalo-loop` ejecuta el motor
 # python empaquetado y devuelve su código de salida).
 #
 # Salidas (en packaging/out/):
-#   autopiloto-gui/                   onedir (autopiloto-gui.exe + libs)
-#   autopiloto-gui-<v>-win64.zip      portátil (descomprimir y ejecutar)
+#   dedalo/                   onedir (dedalo.exe + libs)
+#   dedalo-<v>-win64.zip      portátil (descomprimir y ejecutar)
 #
 # Uso:
 #   bash packaging/build_windows.sh
@@ -28,7 +28,7 @@ with open(Path("pyproject.toml"), "rb") as f:
 ')"
 
 OUT="$RAIZ/packaging/out"
-NOMBRE="autopiloto-gui"
+NOMBRE="dedalo"
 APP="$OUT/$NOMBRE"
 
 echo "==> PyInstaller v$VERSION"
@@ -62,12 +62,12 @@ if kill -0 "$SMOKE" 2>/dev/null; then
 fi
 wait "$SMOKE" 2>/dev/null || true
 
-# ── Smoke 2: el motor empaquetado vía `--autopiloto-loop` ─────────────────────
+# ── Smoke 2: el motor empaquetado vía `--dedalo-loop` ─────────────────────
 # Con un agente deliberadamente inexistente el run aborta ANTES de tocar la
 # red/git/gate (orden del script): rc 2 y el log documenta el motivo. Esto
 # valida el branch del entrypoint de PyInstaller y que el motor corre en el
 # exe windowed (sus prints van a devnull, no a una consola inexistente).
-echo "==> smoke motor (--autopiloto-loop)"
+echo "==> smoke motor (--dedalo-loop)"
 SMOKE_DIR="$OUT/smoke_loop"
 rm -rf "$SMOKE_DIR"
 mkdir -p "$SMOKE_DIR"
@@ -80,7 +80,7 @@ set +e
 CLI_OPENCODE=/no/existe/opencode AGENTE_TAREA=opencode \
 EXE="$APP/$NOMBRE.exe" SMOKE_LOOP_DIR="$SMOKE_DIR" \
 powershell -NoProfile -Command '
-    $p = Start-Process -FilePath $env:EXE -ArgumentList "--autopiloto-loop","plan.md" `
+    $p = Start-Process -FilePath $env:EXE -ArgumentList "--dedalo-loop","plan.md" `
         -PassThru -WorkingDirectory $env:SMOKE_LOOP_DIR
     if (-not $p.WaitForExit(120000)) { $p.Kill(); exit 124 }
     exit $p.ExitCode'

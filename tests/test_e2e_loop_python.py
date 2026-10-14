@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""E2E del motor Python completo (run() de autopiloto_gui.loop).
+"""E2E del motor Python completo (run() de dedalo.loop).
 
 Espejo funcional de test_e2e_con_trabajo.py (el del motor bash): repo git con
 plan de 1 tarea, gate de fixture, agente falso que crea src/nuevo.py y red
 fakeada (monkeypatch de hay_internet, sin depender de la red real).
 
 El run se ejecuta en proceso (run(cfg)) para poder falsificar la red; el
-motor es el mismo que lanzaría la GUI como `python -m autopiloto_gui.loop`
+motor es el mismo que lanzaría la GUI como `python -m dedalo.loop`
 (el entry point main() sólo parsea argv y llama a run; se cubre en los tests
 de loop_args).
 """
@@ -21,11 +21,11 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from autopiloto_gui.loop import Config, run  # noqa: E402
-from autopiloto_gui.loop_args import parse_args  # noqa: E402
+from dedalo.loop import Config, run  # noqa: E402
+from dedalo.loop_args import parse_args  # noqa: E402
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PLANTILLAS = os.path.join(RAIZ, "autopiloto_gui", "plantillas_data")
+PLANTILLAS = os.path.join(RAIZ, "dedalo", "plantillas_data")
 
 pytestmark = pytest.mark.skipif(
     shutil.which("bash") is None or os.name == "nt",
@@ -98,10 +98,10 @@ def _entorno(binario):
 def _correr(proyecto, env, extra_args=None):
     from unittest import mock
 
-    import autopiloto_gui.net
+    import dedalo.net
     args = parse_args([str(proyecto / "plan.md")] + (extra_args or []))
     cfg = Config(args, environ=env, proyecto=str(proyecto))
-    with mock.patch.object(autopiloto_gui.net, "hay_internet",
+    with mock.patch.object(dedalo.net, "hay_internet",
                            lambda: True):
         return run(cfg), cfg
 
@@ -118,8 +118,8 @@ def test_iteracion_con_trabajo_completa_el_run(tmp_path):
         encoding="utf-8", errors="replace")
 
     assert rc == 0, log[-3000:]
-    assert "AUTOPILOTO INICIADO" in log
-    assert "AUTOPILOTO FINALIZADO" in log
+    assert "DEDALO INICIADO" in log
+    assert "DEDALO FINALIZADO" in log
 
     # La tarea se completó de verdad: commit + plan marcado [x].
     plan = (proyecto / "plan.md").read_text(encoding="utf-8")
@@ -127,14 +127,14 @@ def test_iteracion_con_trabajo_completa_el_run(tmp_path):
     gitlog = subprocess.run(
         ["git", "log", "--all", "--format=%s"], cwd=str(proyecto),
         capture_output=True, text=True, check=True)
-    assert any(linea.startswith("autopiloto:") for linea in gitlog.stdout.splitlines()), \
+    assert any(linea.startswith("dedalo:") for linea in gitlog.stdout.splitlines()), \
         gitlog.stdout
 
     # La rama de la tarea se fusionó en la rama del run y se borró.
     ramas = subprocess.run(["git", "branch"], cwd=str(proyecto),
                            capture_output=True, text=True, check=True)
-    assert "autopiloto/tareas/" not in ramas.stdout, ramas.stdout
-    assert any(linea.startswith("* autopiloto/") for linea in ramas.stdout.splitlines()), \
+    assert "dedalo/tareas/" not in ramas.stdout, ramas.stdout
+    assert any(linea.startswith("* dedalo/") for linea in ramas.stdout.splitlines()), \
         ramas.stdout
 
     # El CRITERIO llegó al gate (env) y al agente no se le pasó --model vacío.
@@ -169,7 +169,7 @@ def test_tarea_que_no_pasa_el_gate_se_bloquea(tmp_path, capsys):
     gitlog = subprocess.run(
         ["git", "log", "--all", "--format=%s"], cwd=str(proyecto),
         capture_output=True, text=True, check=True)
-    assert not any(linea.startswith("autopiloto:") for linea in gitlog.stdout.splitlines()), \
+    assert not any(linea.startswith("dedalo:") for linea in gitlog.stdout.splitlines()), \
         "no debe haber commit de una tarea bloqueada"
 
     # incidencias.jsonl registra cada gate_fail y el bloqueo final, y el
@@ -220,7 +220,7 @@ def test_integracion_en_rama_de_trabajo(tmp_path):
     integra = subprocess.run(
         ["git", "log", "--format=%s", "integra"], cwd=str(proyecto),
         capture_output=True, text=True, check=True)
-    assert any(linea.startswith("autopiloto:") for linea in integra.stdout.splitlines()), \
+    assert any(linea.startswith("dedalo:") for linea in integra.stdout.splitlines()), \
         integra.stdout
 
 

@@ -9,7 +9,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from autopiloto_gui import plantillas
+from dedalo import plantillas
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PYPROJECT = os.path.join(RAIZ, "pyproject.toml")
@@ -24,7 +24,7 @@ def _globs_de_package_data():
     with open(PYPROJECT, encoding="utf-8") as f:
         texto = f.read()
     m = re.search(
-        r"^\[tool\.setuptools\.package-data\][^\[]*?autopiloto_gui\s*=\s*\[(.*?)\]",
+        r"^\[tool\.setuptools\.package-data\][^\[]*?dedalo\s*=\s*\[(.*?)\]",
         texto,
         re.S | re.M,
     )
@@ -53,7 +53,7 @@ def test_package_data_cubre_lo_que_instala():
     detectaban porque la CI instala siempre con `-e`.
     """
     patrones = _globs_de_package_data()
-    base = os.path.join(RAIZ, "autopiloto_gui")
+    base = os.path.join(RAIZ, "dedalo")
     cubiertos = set()
     for patron in patrones:
         cubiertos.update(os.path.relpath(p, base) for p in glob.glob(
@@ -79,7 +79,7 @@ for nombre in _lo_que_instala_en_runtime()
 
 def test_package_data_no_declara_ficheros_inexistentes():
     """Los globs no deben apuntar a nada: globs fantasma promoción a bugs."""
-    base = os.path.join(RAIZ, "autopiloto_gui")
+    base = os.path.join(RAIZ, "dedalo")
     for patron in _globs_de_package_data():
         assert glob.glob(os.path.join(base, patron)), (
             f"[tool.setuptools.package-data] declara {patron!r} pero no "
@@ -199,11 +199,11 @@ def test_actualizar_no_toca_gate_checks_custom():
     try:
         plantillas.instalar(tmp)
 
-        # Personalizar un check y forzar diferencia en autopiloto.sh
+        # Personalizar un check y forzar diferencia en dedalo.sh
         custom = os.path.join(tmp, "gate_checks", "99_custom.sh")
         with open(custom, "w", encoding="utf-8") as f:
             f.write("echo 'check custom'\n")
-        script = os.path.join(tmp, "autopiloto.sh")
+        script = os.path.join(tmp, "dedalo.sh")
         with open(script, encoding="utf-8") as f:
             original = f.read()
         with open(script, "w", encoding="utf-8") as f:
@@ -212,7 +212,7 @@ def test_actualizar_no_toca_gate_checks_custom():
         desact = plantillas._desactualizados(tmp)
         assert "gate_checks/99_custom.sh" not in desact
         assert "gate_checks/98_criterio.sh" not in desact
-        assert "autopiloto.sh" in desact
+        assert "dedalo.sh" in desact
 
         plantillas.actualizar(tmp)
         with open(custom, encoding="utf-8") as f:
@@ -233,11 +233,11 @@ def test_instalar_crea_gitignore_del_framework():
         assert os.path.exists(ruta)
         with open(ruta, encoding="utf-8") as f:
             contenido = f.read()
-        # El repo del proyecto jamás debe commitear/pushear archivos del autopiloto
-        for entrada in ("autopiloto.sh", "gate.sh", "gate_checks/", "plan.md",
+        # El repo del proyecto jamás debe commitear/pushear archivos de Dédalo
+        for entrada in ("dedalo.sh", "gate.sh", "gate_checks/", "plan.md",
                         "lecciones.md", "CONTEXTO.md", "progreso.log",
                         "metrics.jsonl", "incidencias.jsonl",
-                        ".autopiloto_review/"):
+                        ".dedalo_review/"):
             assert entrada in contenido, f"falta entrada {entrada!r}"
     finally:
         import shutil
@@ -261,7 +261,7 @@ def test_instalar_no_pisa_gitignore_existente():
 
 
 def test_asegurar_gitignore_anade_bloque_existente():
-    """asegurar_gitignore añade el bloque autopiloto a un .gitignore existente."""
+    """asegurar_gitignore añade el bloque de Dédalo a un .gitignore existente."""
     import shutil
     tmp = tempfile.mkdtemp()
     try:
@@ -272,15 +272,15 @@ def test_asegurar_gitignore_anade_bloque_existente():
         with open(ruta, encoding="utf-8") as f:
             contenido = f.read()
         assert "node_modules/" in contenido, "lo del usuario no se toca"
-        for entrada in ("autopiloto.sh", "gate.sh", "gate_checks/", "plan.md",
+        for entrada in ("dedalo.sh", "gate.sh", "gate_checks/", "plan.md",
                         "lecciones.md", "CONTEXTO.md", "progreso.log",
                         "metrics.jsonl", "incidencias.jsonl",
-                        ".autopiloto_review/"):
+                        ".dedalo_review/"):
             assert entrada in contenido, f"falta entrada {entrada!r}"
         # Idempotente: segunda llamada no duplica
         assert plantillas.asegurar_gitignore(tmp) is False
         with open(ruta, encoding="utf-8") as f:
-            assert f.read().count("autopiloto.sh") == 1
+            assert f.read().count("dedalo.sh") == 1
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -295,7 +295,7 @@ def test_asegurar_gitignore_crea_si_falta():
         assert os.path.exists(ruta)
         with open(ruta, encoding="utf-8") as f:
             contenido = f.read()
-        assert "Autopiloto:" in contenido
+        assert "Dédalo:" in contenido
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -307,7 +307,7 @@ def test_quitar_framework_del_git():
     tmp = tempfile.mkdtemp()
     try:
         subprocess.run(["git", "init", "-q"], cwd=tmp, check=True)
-        for nombre in ["autopiloto.sh", "gate.sh", "plan.md", "lecciones.md",
+        for nombre in ["dedalo.sh", "gate.sh", "plan.md", "lecciones.md",
                        "CONTEXTO.md", "progreso.log", "metrics.jsonl",
                        "incidencias.jsonl", "mapeo.txt", "endpoints.txt",
                        "gate_checks/01_db.sh", "readme.md"]:
@@ -321,18 +321,18 @@ def test_quitar_framework_del_git():
 
         salidos = plantillas.quitar_framework_del_git(tmp)
 
-        assert "autopiloto.sh" in salidos
+        assert "dedalo.sh" in salidos
         assert "gate_checks/01_db.sh" in salidos
         assert "CONTEXTO.md" in salidos
         assert "readme.md" not in salidos, "lo del usuario no se toca"
         # En disco siguen
-        assert os.path.exists(os.path.join(tmp, "autopiloto.sh"))
+        assert os.path.exists(os.path.join(tmp, "dedalo.sh"))
         assert os.path.exists(os.path.join(tmp, "plan.md"))
         # Dejaron de estar en el índice
         out = subprocess.run(["git", "ls-files"], cwd=tmp, capture_output=True,
                              text=True, check=True)
         trackeados = out.stdout.splitlines()
-        assert "autopiloto.sh" not in trackeados
+        assert "dedalo.sh" not in trackeados
         assert "plan.md" not in trackeados
         assert "readme.md" in trackeados
     finally:

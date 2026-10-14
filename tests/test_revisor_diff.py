@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests del diff que recibe el revisor (diff_revision en autopiloto.sh).
+"""Tests del diff que recibe el revisor (diff_revision en dedalo.sh).
 
 El bug que motivó este fichero: `revisar_diff` pasaba la lista multilínea de
 ficheros modificados como UN único argumento entrecomillado a `git diff`, es
@@ -22,7 +22,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 RAIZ = Path(__file__).resolve().parent.parent
-PLANTILLA = RAIZ / "autopiloto_gui" / "plantillas_data" / "autopiloto.sh"
+PLANTILLA = RAIZ / "dedalo" / "plantillas_data" / "dedalo.sh"
 
 pytestmark = pytest.mark.skipif(
     shutil.which("bash") is None or shutil.which("git") is None
@@ -103,7 +103,7 @@ def test_diff_revision_un_solo_fichero(tmp_path):
 
 
 def test_diff_revision_excluye_los_archivos_control(tmp_path):
-    """plan.md/progreso.log son trazabilidad del autopiloto, no de la tarea."""
+    """plan.md/progreso.log son trazabilidad de Dédalo, no de la tarea."""
     repo, env = _repo(tmp_path)
     (repo / "app.py").write_text("print('y')\n", encoding="utf-8")
     (repo / "plan.md").write_text("- [x] algo\n", encoding="utf-8")

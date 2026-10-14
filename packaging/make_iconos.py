@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Genera packaging/icono.icns (macOS) y packaging/icono.ico (Windows)
-a partir de autopiloto_gui/icono.svg.
+a partir de dedalo/icono.svg.
 
 Uso:
     python3 packaging/make_iconos.py
@@ -26,7 +26,7 @@ from PySide6.QtGui import QImage, QPainter  # noqa: E402
 from PySide6.QtSvg import QSvgRenderer  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
-SVG = RAIZ / "autopiloto_gui" / "icono.svg"
+SVG = RAIZ / "dedalo" / "icono.svg"
 ICNS = Path(__file__).resolve().parent / "icono.icns"
 ICO = Path(__file__).resolve().parent / "icono.ico"
 TAMANOS = [16, 32, 64, 128, 256, 512, 1024]

@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from autopiloto_gui import sensor  # noqa: E402
+from dedalo import sensor  # noqa: E402
 
 
 def _fichero(tmp_path, nombre, contenido):

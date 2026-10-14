@@ -34,7 +34,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 RAIZ = Path(__file__).resolve().parent.parent
-CHECK = RAIZ / "autopiloto_gui" / "plantillas_data" / "gate_checks" / "03_backend.sh"
+CHECK = RAIZ / "dedalo" / "plantillas_data" / "gate_checks" / "03_backend.sh"
 
 pytestmark = pytest.mark.skipif(
     shutil.which("bash") is None or os.name == "nt",

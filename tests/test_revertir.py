@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests de revertir() en autopiloto.sh.
+"""Tests de revertir() en dedalo.sh.
 
 El bug que motivó este fichero: revertir() usaba comm -13 sobre snapshots que
 sólo listaban nombres (sin prefijo de estado), así que en una rama recién
@@ -24,7 +24,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 RAIZ = Path(__file__).resolve().parent.parent
-PLANTILLA = RAIZ / "autopiloto_gui" / "plantillas_data" / "autopiloto.sh"
+PLANTILLA = RAIZ / "dedalo" / "plantillas_data" / "dedalo.sh"
 
 pytestmark = pytest.mark.skipif(
     shutil.which("bash") is None or shutil.which("git") is None
@@ -63,7 +63,7 @@ def _repo(tmp_path):
     subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t",
                     "commit", "-qm", "base"],
                    cwd=d, check=True, env=env, timeout=30)
-    # Crear rama de tarea (simula lo que hace autopiloto.sh)
+    # Crear rama de tarea (simula lo que hace dedalo.sh)
     subprocess.run(["git", "checkout", "-q", "-b", "tarea", "master"],
                    cwd=d, check=True, env=env, timeout=30)
     return d, env

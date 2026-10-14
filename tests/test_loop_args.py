@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from autopiloto_gui.loop_args import parse_args
+from dedalo.loop_args import parse_args
 
 
 def test_valores_por_defecto():
@@ -39,7 +39,7 @@ def test_opciones_pasadas():
 
 
 def test_opcion_sin_valor_sale_con_64():
-    """Exit 64 (EX_USAGE): mismo fix que autopiloto.sh para flags sin valor."""
+    """Exit 64 (EX_USAGE): mismo fix que dedalo.sh para flags sin valor."""
     try:
         parse_args(["--hasta"])
     except SystemExit as e:

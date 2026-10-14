@@ -63,9 +63,9 @@ jobs:
             packaging/out/SHA256SUMS
           if-no-files-found: error
 
-  # Windows: el onedir (autopiloto-gui.exe) + .zip. El smoke valida lo más
+  # Windows: el onedir (dedalo.exe) + .zip. El smoke valida lo más
   # delicado del binario windowed: arranca la GUI y el motor via
-  # `--autopiloto-loop` corre empaquetado (sus prints van a devnull, no hay
+  # `--dedalo-loop` corre empaquetado (sus prints van a devnull, no hay
   # consola) y devuelve su código de salida.
   windows:
     name: Windows (.zip)
@@ -174,5 +174,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --generate-notes \
-            --title "Autopiloto $GITHUB_REF_NAME" \
+            --title "Dédalo $GITHUB_REF_NAME" \
             dist/*

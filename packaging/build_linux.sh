@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# build_linux.sh — empaqueta autopiloto-gui para Linux.
+# build_linux.sh — empaqueta Dédalo para Linux.
 #
 # Salidas (en packaging/out/):
-#   autopiloto-gui-<v>-linux-x86_64.tar.gz   portátil (descomprimir y ejecutar)
-#   autopiloto-gui_<v>_amd64.deb             Debian/Ubuntu (+ derivadas)
-#   autopiloto-gui-<v>-x86_64.AppImage       cualquier distro (un fichero)
+#   dedalo-<v>-linux-x86_64.tar.gz   portátil (descomprimir y ejecutar)
+#   dedalo_<v>_amd64.deb             Debian/Ubuntu (+ derivadas)
+#   dedalo-<v>-x86_64.AppImage       cualquier distro (un fichero)
 #
 # Uso:
 #   bash packaging/build_linux.sh             # todo lo que se pueda aquí
@@ -28,7 +28,7 @@ EOF
 )"
 
 OUT="$RAIZ/packaging/out"
-NOMBRE="autopiloto-gui"
+NOMBRE="dedalo"
 APPDIR="$OUT/AppDir"
 STAGE="$OUT/deb"
 
@@ -52,8 +52,8 @@ normalizar() {
 normalizar "$APP"
 
 # ── 1) tar.gz portátil ──────────────────────────────────────────────────────
-# Estructura: autopiloto-gui-<v>-linux-x86_64/
-#               autopiloto-gui     ← lanzador (./autopiloto-gui)
+# Estructura: dedalo-<v>-linux-x86_64/
+#               dedalo     ← lanzador (./dedalo)
 #               app/               ← onedir (exe + libs + datos)
 echo "==> tar.gz portátil"
 TAR="$OUT/$NOMBRE-$VERSION-linux-x86_64.tar.gz"
@@ -66,7 +66,7 @@ cat > "$DESP/$NOMBRE" <<'EOF'
 # Lanzador del binario portátil: se auto-localiza y no instala nada.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$DIR/app/autopiloto-gui" "$@"
+exec "$DIR/app/dedalo" "$@"
 EOF
 chmod +x "$DESP/$NOMBRE"
 normalizar "$DESP"
@@ -93,18 +93,18 @@ if command -v dpkg-deb >/dev/null 2>&1; then
 exec /opt/$NOMBRE/$NOMBRE "\$@"
 EOF
     chmod 755 "$STAGE/usr/bin/$NOMBRE"
-    cp autopiloto_gui/icono.svg \
+    cp dedalo/icono.svg \
        "$STAGE/usr/share/icons/hicolor/scalable/apps/$NOMBRE.svg"
     cat > "$STAGE/usr/share/applications/$NOMBRE.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Autopiloto
-Comment=Panel de control del autopiloto
+Name=Dédalo
+Comment=Panel de control de Dédalo
 Exec=/usr/bin/$NOMBRE
 Icon=$NOMBRE
 Terminal=false
 Categories=Development;Utility;
-Keywords=autopiloto;ia;
+Keywords=dedalo;ia;
 EOF
     # Qt va dentro del onedir; el sistema sólo aporta GL/X y las herramientas
     # que el framework invoca (bash y git) o el loop no arranca.
@@ -116,7 +116,7 @@ Priority: optional
 Architecture: amd64
 Maintainer: BenReynor <benreynor@users.noreply.github.com>
 Depends: bash, git, libgl1, libegl1, libxkbcommon-x11-0, libdbus-1-3, libfontconfig1, libglib2.0-0
-Description: Panel de control del autopiloto (GUI PySide6)
+Description: Panel de control de Dédalo (GUI PySide6)
  GUI de escritorio para orquestar agentes IA (opencode/codex/claude)
  sobre un proyecto, con gate de calidad, revisiones, métricas y alertas.
 EOF
@@ -160,17 +160,17 @@ cp -a "$APP/." "$APPDIR/"
 # raíz), así que AppRun apunta al exe, no a una subcarpeta. El .desktop y el
 # icono van también en la raíz (requisito del formato AppImage).
 ln -sf "$NOMBRE" "$APPDIR/AppRun"
-cp autopiloto_gui/icono.svg "$APPDIR/$NOMBRE.svg"
+cp dedalo/icono.svg "$APPDIR/$NOMBRE.svg"
 cat > "$APPDIR/$NOMBRE.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Autopiloto
-Comment=Panel de control del autopiloto
+Name=Dédalo
+Comment=Panel de control de Dédalo
 Exec=$NOMBRE
 Icon=$NOMBRE
 Terminal=false
 Categories=Development;Utility;
-Keywords=autopiloto;ia;
+Keywords=dedalo;ia;
 EOF
 normalizar "$APPDIR"
 ARCH=x86_64 "$IMAGEN" "$APPDIR" "$OUT/$NOMBRE-$VERSION-x86_64.AppImage" 2>/dev/null \

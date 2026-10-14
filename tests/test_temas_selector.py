@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import pytest  # noqa: E402
 from PySide6.QtGui import QColor  # noqa: E402
 
-from autopiloto_gui import selector_modelo, temas  # noqa: E402
+from dedalo import selector_modelo, temas  # noqa: E402
 
 # ---------- temas ----------
 

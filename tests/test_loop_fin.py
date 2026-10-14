@@ -26,10 +26,10 @@ from unittest.mock import MagicMock  # noqa: E402
 
 from PySide6.QtCore import QProcess  # noqa: E402
 
-from autopiloto_gui.app import Ventana  # noqa: E402
-from autopiloto_gui.proceso import Trabajo  # noqa: E402
+from dedalo.app import Ventana  # noqa: E402
+from dedalo.proceso import Trabajo  # noqa: E402
 
-PROYECTO = "/tmp/autopiloto-test-proyecto"
+PROYECTO = "/tmp/dedalo-test-proyecto"
 
 
 def _stub(orden=None, limpieza_real=False):
