@@ -24,6 +24,22 @@ import sys
 
 from . import gate_env
 
+def _proteger_salidas():
+    """Protege stdout/stderr ante codificaciones que no admiten emojis."""
+    for nombre in ("stdout", "stderr"):
+        try:
+            st = getattr(sys, nombre, None)
+            if st is None:
+                setattr(sys, nombre, open(os.devnull, "w", encoding="utf-8", errors="replace"))
+            elif hasattr(st, "reconfigure"):
+                try:
+                    st.reconfigure(encoding="utf-8", errors="replace")
+                except (OSError, ValueError):
+                    pass
+        except Exception:
+            pass
+
+
 _PREFIJO = re.compile(r"^(\d+)_")
 
 
@@ -118,6 +134,7 @@ def _correr_sh(proyecto, check, bash):
 
 def correr(proyecto, bash=None):
     """Ejecuta el gate del proyecto. Devuelve 0=OK, 1=FAIL."""
+    _proteger_salidas()
     if bash is None:
         bash = shutil.which("bash")
     grupos = _grupos(proyecto)
