@@ -80,6 +80,7 @@ class Config:
         self.mapa = os.path.join(self.proyecto, "mapeo.txt")
         self.log = os.path.join(self.proyecto, "progreso.log")
         self.lecciones = os.path.join(self.proyecto, "lecciones.md")
+        self.contexto = os.path.join(self.proyecto, "CONTEXTO.md")
         self.incidencias = os.path.join(self.proyecto, "incidencias.jsonl")
         self.metrics = os.path.join(self.proyecto, "metrics.jsonl")
         self.ultimo_motivo = None  # dict del último fallo de la tarea actual
@@ -522,6 +523,10 @@ def run(cfg):
             if os.path.exists(cfg.lecciones) and \
                     os.path.getsize(cfg.lecciones) > 0:
                 lecciones_ctx = _leer(cfg.lecciones)
+            contexto_ctx = ""
+            if os.path.exists(cfg.contexto) and \
+                    os.path.getsize(cfg.contexto) > 0:
+                contexto_ctx = _leer(cfg.contexto)
             nav_ctx = ""
             if (cfg.navegador == "1" and agente_ok(cfg.agente_tarea, cfg)
                     and cfg.modelo_navegador):
@@ -537,6 +542,10 @@ def run(cfg):
                     pass
 
             criterio_texto = criterio or "<sin criterio explícito; usa los tests/mapeo.txt como contrato>"
+            contexto_block = ("CONTEXTO DEL PROYECTO (de qué trata, requisitos, "
+                              "filosofía y estructura — respétalo):\n"
+                              + contexto_ctx + "\n"
+                              if contexto_ctx else "")
             memoria_ctx = ("MEMORIA DEL PROYECTO (lecciones aprendidas, evita "
                            "repetir estos errores):\n" + lecciones_ctx + "\n"
                            if lecciones_ctx else "")
@@ -548,13 +557,13 @@ def run(cfg):
                       "Lee plan.md y progreso.log antes de tocar nada. Lee también "
                       "mapeo.txt (mapa módulos→tests): localiza el/los test del "
                       "código que vas a tocar y úsalos como contrato.\n"
-                      f"{nav_ctx}{memoria_ctx}"
+                      f"{nav_ctx}{contexto_block}{memoria_ctx}"
                       "Ejecuta ÚNICAMENTE esta tarea.\n"
                       "NO hagas commits, NO crees, cambies ni borres ramas: el "
                       "script gestiona git.\n"
                       "NO edites autopiloto.sh, gate.sh, mapear.sh, mapeo.txt, "
-                      "plan.md, progreso.log, lecciones.md, endpoints.txt, .env "
-                      "ni SECURITY.md.\n"
+                      "plan.md, progreso.log, lecciones.md, CONTEXTO.md, "
+                      "endpoints.txt, .env ni SECURITY.md.\n"
                       "Al terminar, responde con un resumen conciso de qué "
                       "cambiaste y qué tests corriste.")
 

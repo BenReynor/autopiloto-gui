@@ -266,10 +266,15 @@ def revisar_diff(cfg, rev, tarea, vdiff):
                  intento) cuando fail.
     """
     rev_out = cfg.tmp("rev_out")
+    ruta_ctx = getattr(cfg, "contexto", "")
+    contexto = _leer_fichero(ruta_ctx).strip() if ruta_ctx else ""
+    contexto_block = (f"Contexto del proyecto (respétalo al juzgar):\n"
+                      f"{contexto}\n\n" if contexto else "")
     prompt = ("Eres el REVISOR en modo autopiloto. Usa únicamente las skills "
               "que tu sesión ya tenga cargadas; no intentes cargar ninguna otra.\n"
               "Revisas el diff COMPLETO de una tarea, en frío, sin haber "
               "participado de ella.\n"
+              f"{contexto_block}"
               f"Tarea: {tarea}\n\n{vdiff}\n\n"
               "Evalúa SOLO: (1) la tarea satisface su criterio, (2) no rompe "
               "nada obvio del proyecto,\n(3) sin secretos, (4) sin scope creep "

@@ -301,3 +301,25 @@ def test_revisar_diff_auth_con_veredicto_es_falso_positivo(tmp_path):
     cfg.timeout_por_tarea = 30
     resultado, _fb = revisar_diff(cfg, "claude", "t1", "diff")
     assert resultado == "pass"
+
+
+def test_revisar_diff_incluye_contexto_del_proyecto(tmp_path):
+    """El revisor recibe CONTEXTO.md para juzgar con el marco del proyecto."""
+    bin_ = tmp_path / "bin" / "claude"
+    bin_.parent.mkdir(parents=True, exist_ok=True)
+    bin_.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$@\" > prompt_revisor.txt\n"
+        "echo 'VERDICT: PASS'\n", encoding="utf-8")
+    bin_.chmod(0o755)
+    (tmp_path / "CONTEXTO.md").write_text(
+        "MARCADOR_REVISOR_XYZ: app de finanzas personales\n", encoding="utf-8")
+
+    cfg = _config(tmp_path, {"CLI_CLAUDE": str(bin_)})
+    cfg.revisor = "claude"
+    cfg.timeout_por_tarea = 30
+    resultado, _fb = revisar_diff(cfg, "claude", "t1", "diff")
+    assert resultado == "pass"
+
+    prompt = _leer(str(tmp_path / "prompt_revisor.txt"))
+    assert "MARCADOR_REVISOR_XYZ" in prompt, prompt[-2000:]

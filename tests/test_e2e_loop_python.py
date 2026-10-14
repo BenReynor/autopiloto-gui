@@ -222,3 +222,37 @@ def test_integracion_en_rama_de_trabajo(tmp_path):
         capture_output=True, text=True, check=True)
     assert any(linea.startswith("autopiloto:") for linea in integra.stdout.splitlines()), \
         integra.stdout
+
+
+def test_contexto_del_proyecto_llega_al_prompt_del_agente(tmp_path):
+    """CONTEXTO.md se inyecta en el prompt del agente (contexto permanente)."""
+    gate = "#!/usr/bin/env bash\nexit 0\n"
+    proyecto = _escenario(tmp_path, gate)
+    (proyecto / "CONTEXTO.md").write_text(
+        "MARCADOR_CONTEXTO_XYZ: es un juego de cartas\n", encoding="utf-8")
+
+    bin_falso = tmp_path / "bin" / "opencode"
+    bin_falso.parent.mkdir(parents=True, exist_ok=True)
+    bin_falso.write_text(
+        "#!/usr/bin/env bash\n"
+        'if [ "$1" = "session" ]; then\n'
+        '    case "$2" in\n'
+        '        list) echo "[]"; exit 0 ;;\n'
+        '        delete) exit 0 ;;\n'
+        '    esac\n'
+        'fi\n'
+        "printf '%s\\n' \"$@\" > prompt_agente.txt\n"
+        'mkdir -p src\n'
+        'printf \'print("nuevo")\\n\' > src/nuevo.py\n'
+        'echo \'{"usage":{"input_tokens":10,"output_tokens":10}}\'\n'
+        'exit 0\n', encoding="utf-8")
+    bin_falso.chmod(0o755)
+
+    rc, _cfg = _correr(proyecto, _entorno(bin_falso))
+    log = (proyecto / "progreso.log").read_text(
+        encoding="utf-8", errors="replace")
+    assert rc == 0, log[-3000:]
+
+    prompt = (proyecto / "prompt_agente.txt").read_text(encoding="utf-8")
+    assert "MARCADOR_CONTEXTO_XYZ" in prompt, prompt[-2000:]
+    assert "CONTEXTO DEL PROYECTO" in prompt

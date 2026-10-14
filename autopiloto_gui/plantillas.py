@@ -8,7 +8,7 @@ from datetime import datetime
 
 PLANTILLA_DIR = os.path.join(os.path.dirname(__file__), "plantillas_data")
 SCRIPTS = ("autopiloto.sh", "gate.sh", "mapear.sh")
-ARCHIVOS = SCRIPTS + ("plan.md", "lecciones.md")
+ARCHIVOS = SCRIPTS + ("plan.md", "lecciones.md", "CONTEXTO.md")
 GATE_CHECKS_DIR = "gate_checks"
 GATE_CHECKS = tuple(
     # Nombres relativos SIEMPRE con "/": el listado de `instalar()` (que la GUI
@@ -26,7 +26,7 @@ def quitar(ruta):
     """Borra los archivos que la app instaló. Devuelve los eliminados.
 
     Solo toca autopiloto.sh, gate.sh, mapear.sh, plan.md, lecciones.md,
-    progreso.log y gate_checks/: jamás el resto del proyecto.
+    CONTEXTO.md, progreso.log y gate_checks/: jamás el resto del proyecto.
     """
     eliminados = []
     log = os.path.join(ruta, "progreso.log")
@@ -98,9 +98,10 @@ def _desactualizados(ruta):
     Solo se comparan/renuevan los SCRIPTS (autopiloto.sh, gate.sh, mapear.sh):
     son código de soporte que debe seguir la versión de plantilla.
 
-    plan.md, lecciones.md y gate_checks/*.sh NO se comparan: son contenido del
-    usuario (sus tareas, su memoria y sus verificaciones). Se crean si faltan,
-    pero nunca se sobreescriben con la plantilla.
+    plan.md, lecciones.md, CONTEXTO.md y gate_checks/*.sh NO se comparan: son
+    contenido del usuario (sus tareas, su memoria, su contexto y sus
+    verificaciones). Se crean si faltan, pero nunca se sobreescriben con la
+    plantilla.
     """
     diff = []
     for nombre in SCRIPTS:
@@ -220,6 +221,6 @@ def actualizar(ruta):
 
 
 def faltan(ruta):
-    """Scripts y memoria que faltan (lecciones.md se crea si no existe)."""
-    return [s for s in SCRIPTS + ("lecciones.md",)
+    """Scripts y memoria que faltan (lecciones.md/CONTEXTO.md se crean si no existen)."""
+    return [s for s in SCRIPTS + ("lecciones.md", "CONTEXTO.md")
             if not os.path.exists(os.path.join(ruta, s))]

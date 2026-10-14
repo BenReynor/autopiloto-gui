@@ -105,8 +105,30 @@ def test_faltan_incluye_lecciones():
     tmp = _proyecto_tmp()
     try:
         assert "lecciones.md" in plantillas.faltan(tmp)
+        assert "CONTEXTO.md" in plantillas.faltan(tmp)
     finally:
         import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_instalar_crea_contexto():
+    """CONTEXTO.md se instala con esqueleto y nunca se sobreescribe."""
+    import shutil
+    tmp = _proyecto_tmp()
+    try:
+        creados = plantillas.instalar(tmp)
+        assert "CONTEXTO.md" in creados
+        ruta = os.path.join(tmp, "CONTEXTO.md")
+        with open(ruta, encoding="utf-8") as f:
+            assert "CONTEXTO DEL PROYECTO" in f.read()
+        # Contenido propio del usuario: no se pisa en la segunda instalación
+        with open(ruta, "w", encoding="utf-8") as f:
+            f.write("# Mi contexto propio")
+        creados2 = plantillas.instalar(tmp)
+        assert "CONTEXTO.md" not in creados2
+        with open(ruta, encoding="utf-8") as f:
+            assert f.read() == "# Mi contexto propio"
+    finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -138,7 +160,9 @@ def test_quitar_borra_lecciones():
         plantillas.instalar(tmp)
         eliminados = plantillas.quitar(tmp)
         assert "lecciones.md" in eliminados
+        assert "CONTEXTO.md" in eliminados
         assert not os.path.exists(os.path.join(tmp, "lecciones.md"))
+        assert not os.path.exists(os.path.join(tmp, "CONTEXTO.md"))
         assert not os.path.exists(os.path.join(tmp, "plan.md"))
         assert not os.path.exists(os.path.join(tmp, "progreso.log"))
     finally:
@@ -211,8 +235,9 @@ def test_instalar_crea_gitignore_del_framework():
             contenido = f.read()
         # El repo del proyecto jamás debe commitear/pushear archivos del autopiloto
         for entrada in ("autopiloto.sh", "gate.sh", "gate_checks/", "plan.md",
-                        "lecciones.md", "progreso.log", "metrics.jsonl",
-                        "incidencias.jsonl", ".autopiloto_review/"):
+                        "lecciones.md", "CONTEXTO.md", "progreso.log",
+                        "metrics.jsonl", "incidencias.jsonl",
+                        ".autopiloto_review/"):
             assert entrada in contenido, f"falta entrada {entrada!r}"
     finally:
         import shutil
@@ -248,8 +273,9 @@ def test_asegurar_gitignore_anade_bloque_existente():
             contenido = f.read()
         assert "node_modules/" in contenido, "lo del usuario no se toca"
         for entrada in ("autopiloto.sh", "gate.sh", "gate_checks/", "plan.md",
-                        "lecciones.md", "progreso.log", "metrics.jsonl",
-                        "incidencias.jsonl", ".autopiloto_review/"):
+                        "lecciones.md", "CONTEXTO.md", "progreso.log",
+                        "metrics.jsonl", "incidencias.jsonl",
+                        ".autopiloto_review/"):
             assert entrada in contenido, f"falta entrada {entrada!r}"
         # Idempotente: segunda llamada no duplica
         assert plantillas.asegurar_gitignore(tmp) is False
@@ -282,8 +308,9 @@ def test_quitar_framework_del_git():
     try:
         subprocess.run(["git", "init", "-q"], cwd=tmp, check=True)
         for nombre in ["autopiloto.sh", "gate.sh", "plan.md", "lecciones.md",
-                       "progreso.log", "metrics.jsonl", "incidencias.jsonl", "mapeo.txt",
-                       "endpoints.txt", "gate_checks/01_db.sh", "readme.md"]:
+                       "CONTEXTO.md", "progreso.log", "metrics.jsonl",
+                       "incidencias.jsonl", "mapeo.txt", "endpoints.txt",
+                       "gate_checks/01_db.sh", "readme.md"]:
             p = os.path.join(tmp, nombre)
             os.makedirs(os.path.dirname(p), exist_ok=True)
             with open(p, "w", encoding="utf-8"):
@@ -296,6 +323,7 @@ def test_quitar_framework_del_git():
 
         assert "autopiloto.sh" in salidos
         assert "gate_checks/01_db.sh" in salidos
+        assert "CONTEXTO.md" in salidos
         assert "readme.md" not in salidos, "lo del usuario no se toca"
         # En disco siguen
         assert os.path.exists(os.path.join(tmp, "autopiloto.sh"))
@@ -349,6 +377,7 @@ def test_inicializar_git_no_rompe_repo_existente():
 if __name__ == "__main__":
     test_faltan_incluye_lecciones()
     test_instalar_crea_lecciones()
+    test_instalar_crea_contexto()
     test_quitar_borra_lecciones()
     test_instalar_propaga_checks_nuevos_sin_pisar_custom()
     test_actualizar_no_toca_gate_checks_custom()
