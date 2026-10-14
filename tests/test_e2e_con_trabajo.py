@@ -90,7 +90,11 @@ def _escenario(tmp_path, con_trabajo: bool):
     (proyecto / "plan.md").write_text(
         "# PLAN\n\n- [ ] t1: crear modulo nuevo\n"
         "      criterio: existe src/nuevo.py\n", encoding="utf-8")
-    for nombre in ("autopiloto.sh", "gate.sh", "mapear.sh", "lecciones.md"):
+    # El .gitignore es parte de la instalación real (plantillas.asegurar_gitignore):
+    # excluye gate_checks/ y el resto del framework. Sin él, `ruff check .` del
+    # gate lintearía los .py del port y el baseline abortaría.
+    for nombre in ("autopiloto.sh", "gate.sh", "mapear.sh", "lecciones.md",
+                   ".gitignore"):
         origen = PLANTILLAS / nombre
         if origen.exists():
             shutil.copy2(origen, proyecto / nombre)

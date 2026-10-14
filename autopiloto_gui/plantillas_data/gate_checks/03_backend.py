@@ -9,7 +9,6 @@
 #
 # Si existe endpoints.txt en la raíz, tiene prioridad (lo resuelve gate_env).
 import json
-import os
 import re
 import shutil
 import subprocess

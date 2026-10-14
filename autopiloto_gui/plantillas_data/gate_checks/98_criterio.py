@@ -52,7 +52,7 @@ def _prompt(env, criterio):
     ruta_mapeo = os.path.join(env.proyecto, "mapeo.txt")
     if os.path.isfile(ruta_mapeo):
         with open(ruta_mapeo, encoding="utf-8", errors="replace") as f:
-            cabeceras = [l for l in f.read().splitlines() if l.startswith("# ")][:5]
+            cabeceras = [ln for ln in f.read().splitlines() if ln.startswith("# ")][:5]
         detectado = "\n".join(cabeceras)
     return (
         "Eres el JUEZ de una tarea del autopiloto. Evalúas si el CRITERIO de la "
@@ -126,7 +126,7 @@ def run(env):
     razon = r[-1] if r else ""
 
     if "true" in veredicto or "PASS" in veredicto:
-        print(f"[GATE] \u2713 juez: criterio cumplido" + (f" — {razon}" if razon else ""))
+        print("[GATE] \u2713 juez: criterio cumplido" + (f" — {razon}" if razon else ""))
         return 0
     if "false" in veredicto or "FAIL" in veredicto:
         env.fail(f"juez: criterio NO cumplido ({razon or 'sin detalle'})")
