@@ -27,19 +27,6 @@ from PySide6.QtWidgets import (  # noqa: E402
 )
 
 
-@pytest.fixture(scope="session")
-def app():
-    a = QApplication.instance() or QApplication(sys.argv)
-    yield a
-    # Teardown sin a.deleteLater(): borrar el QApplication de sesión provoca
-    # "shared QObject was deleted directly" / "Pure virtual function called"
-    # al salir del proceso (SIGABRT). Igual que en tests/conftest.py.
-    a.processEvents()
-    a.closeAllWindows()
-    a.quit()
-    a.processEvents()
-
-
 @pytest.fixture
 def cerrar_modales(app):
     t = QTimer()
