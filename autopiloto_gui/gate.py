@@ -24,6 +24,7 @@ import sys
 
 from . import gate_env
 
+
 def _proteger_salidas():
     """Protege stdout/stderr ante codificaciones que no admiten emojis."""
     for nombre in ("stdout", "stderr"):
