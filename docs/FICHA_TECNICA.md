@@ -85,19 +85,19 @@ Servidor por **stdio** (JSON-RPC), pensado para que un cliente MCP (opencode,
 etc.) controle Dédalo sin GUI. Protocolo `2024-11-05`.
 
 - **Arranque**: `python -m dedalo.mcp_server`
-- **17 herramientas**: `listar_proyectos`, `estado_proyecto`, `estado_loop`,
-  `iniciar_loop`, `detener_loop`, `resolver_revision`, `correr_gate`,
-  `leer_contexto`, `leer_fichero`, `leer_incidencias`, `leer_lecciones`,
-  `leer_plan`, `resumen_metricas`, `cola_log`, `estado_agentes`,
-  `estado_agentes`… (ver `dedalo/mcp_server.py`).
-- **17 tools**: `listar_proyectos`, `estado_proyecto`, `leer_fichero`,
+- **17 herramientas**: `listar_proyectos`, `estado_proyecto`, `leer_fichero`,
   `leer_plan`, `leer_lecciones`, `leer_contexto`, `leer_incidencias`,
   `resumen_metricas`, `cola_log`, `estado_agentes`, `listar_modelos`,
   `instalar_proyecto`, `correr_gate`, `iniciar_loop`, `estado_loop`,
   `detener_loop`, `resolver_revision`.
-- **Plantilla de recurso**: `dedalo://{nombre}/{fichero}` (ficheros permitidos:
-  `plan.md`, `lecciones.md`, `CONTEXTO.md`, `progreso.log`, `metrics.jsonl`,
-  `incidencias.jsonl`, `mapeo.txt`).
+- **Instrucciones** (`instructions` del `initialize`): manual curado de Dédalo
+  (qué es, cómo funciona el loop, ficheros del proyecto y flujo de uso), que el
+  cliente entrega al modelo como contexto de arranque.
+- **Recursos**:
+  - `dedalo://{nombre}/{fichero}` — ficheros permitidos: `plan.md`,
+    `lecciones.md`, `CONTEXTO.md`, `progreso.log`, `metrics.jsonl`,
+    `incidencias.jsonl`, `mapeo.txt`.
+  - `dedalo://manual` — el manual completo bajo demanda.
 
 Ejemplo de configuración en un cliente MCP (opencode):
 

@@ -38,7 +38,51 @@ except ImportError as exc:  # pragma: no cover
         "Instálala con: pip install 'dedalo[mcp]'"
     ) from exc
 
-mcp = MCPServer("dedalo")
+# Manual curado del programa: se entrega como `instructions` en el initialize
+# (contexto que los clientes MCP muestran al modelo) y como recurso
+# `dedalo://manual`. Va embebido en el código para estar disponible también en
+# la app empaquetada/frozen, donde docs/ no se distribuye.
+MANUAL = """\
+Dédalo es un panel de escritorio (PySide6) y un servidor MCP para orquestar
+agentes de IA CLI (opencode, codex, claude) que trabajan de forma autónoma
+sobre un proyecto, iterando tarea a tarea sobre `plan.md`.
+
+CÓMO FUNCIONA EL LOOP
+- Toma la primera tarea pendiente de `plan.md`, se la pasa a un agente y,
+  tras ejecutarla, corre el "gate" (tests + lint) del proyecto.
+- Sólo commitea si el gate pasa; si falla, la iteración no commitea.
+- Con `revision_manual` activo, el loop PAUSA antes de commitear y espera una
+  decisión (APPROVE / REJECT) del humano o de un agente piloto.
+- Si no hay internet, el loop se detiene.
+
+FICHEROS DEL PROYECTO (los mismos que expone dedalo://{nombre}/{fichero})
+- plan.md ......... tareas: `- [ ]` pendiente, `- [x]` hecha, `- [B]` bloqueada.
+- lecciones.md .... aprendizajes acumulados entre iteraciones.
+- CONTEXTO.md ..... estado resumido / notas de continuidad.
+- progreso.log .... traza de las iteraciones (texto).
+- metrics.jsonl ... métricas por iteración (una línea JSON cada una).
+- incidencias.jsonl incidencias estructuradas (una línea JSON cada una).
+- mapeo.txt ....... mapa/índice del proyecto.
+
+CONCEPTOS
+- "proyecto": directorio registrado en Dédalo (nombre -> ruta).
+- "gate": comando de verificación del proyecto (tests + lint).
+- "revisión manual": pausa del loop esperando aprobación del diff.
+- "agente tarea" / "agente revisor": CLIs asignados a ejecutar y a revisar.
+
+FLUJO TÍPICO CON ESTAS HERRAMIENTAS
+1. listar_proyectos / estado_proyecto: qué hay y en qué estado.
+2. leer_plan / leer_contexto / leer_lecciones / cola_log: contexto.
+3. instalar_proyecto: crear y registrar un proyecto nuevo (opcional).
+4. iniciar_loop: arrancar el loop en segundo plano (devuelve el pid).
+5. estado_loop / cola_log: seguir el avance.
+6. resolver_revision(APPROVE|REJECT): resolver una revisión pendiente.
+7. correr_gate: validar a mano; detener_loop: parar el loop.
+
+El texto completo de este manual está en el recurso `dedalo://manual`.
+"""
+
+mcp = MCPServer("dedalo", instructions=MANUAL)
 
 # Ficheros que un cliente puede leer vía el recurso dedalo://{nombre}/{fichero}.
 FICHEROS_RECURSO = (
@@ -440,6 +484,11 @@ def leer_recurso(nombre: str, fichero: str) -> str:
     return _leer_fichero(nombre, fichero)
 
 
+def manual() -> str:
+    """Manual de Dédalo: qué es el programa y cómo usarlo (recurso dedalo://manual)."""
+    return MANUAL
+
+
 # ---------------------------------------------------------------------------
 # Registro
 # ---------------------------------------------------------------------------
@@ -451,7 +500,15 @@ def _registrar(server):
                correr_gate, iniciar_loop, estado_loop, detener_loop,
                resolver_revision):
         server.tool()(fn)
-    server.resource("dedalo://{nombre}/{fichero}")(leer_recurso)
+    server.resource("dedalo://{nombre}/{fichero}",
+                    name="fichero_proyecto",
+                    description="Lee un fichero permitido del proyecto",
+                    mime_type="text/markdown")(leer_recurso)
+    server.resource("dedalo://manual",
+                    name="manual",
+                    title="Manual de Dédalo",
+                    description="Qué es Dédalo y cómo usarlo",
+                    mime_type="text/markdown")(manual)
     return server
 
 
@@ -463,7 +520,7 @@ def servidor():
     global _MCPSERVER
     if _MCPSERVER is None:
         from mcp.server.mcpserver import MCPServer
-        _MCPSERVER = _registrar(MCPServer("dedalo"))
+        _MCPSERVER = _registrar(MCPServer("dedalo", instructions=MANUAL))
     return _MCPSERVER
 
 

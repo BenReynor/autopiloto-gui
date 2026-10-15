@@ -114,6 +114,18 @@ def test_registro_tools_y_recurso():
     assert "dedalo://{nombre}/{fichero}" in plantillas
 
 
+def test_recurso_manual_y_instructions():
+    async def _leer(server):
+        recursos = [str(r.uri) for r in await server.list_resources()]
+        contenido = await server.read_resource("dedalo://manual")
+        return recursos, contenido
+
+    recursos, contenido = asyncio.run(_leer(m.servidor()))
+    assert "dedalo://manual" in recursos
+    assert contenido[0].content == m.MANUAL
+    assert m.servidor().instructions == m.MANUAL
+
+
 def test_iniciar_loop_sin_agentes(proyecto, monkeypatch):
     monkeypatch.setattr(m.modelos, "agentes_operativos",
                         lambda preferidos=None: [])

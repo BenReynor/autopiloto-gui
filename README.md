@@ -382,9 +382,15 @@ Configuración de un cliente MCP (ejemplo `opencode`/Claude Desktop):
 **Herramientas de acción:** `instalar_proyecto`, `correr_gate`, `iniciar_loop`
 (segundo plano), `estado_loop`, `detener_loop`, `resolver_revision`.
 
+**Contexto del programa:** el servidor manda un manual curado en el campo
+`instructions` del `initialize` (qué es Dédalo, cómo funciona el loop, los
+ficheros y el flujo de uso), que el cliente muestra al modelo como contexto sin
+tener que leer el código. El manual completo también está en el recurso
+`dedalo://manual` para leerlo bajo demanda.
+
 **Recursos:** `dedalo://{proyecto}/{fichero}` con lista blanca (`plan.md`,
 `lecciones.md`, `CONTEXTO.md`, `progreso.log`, `metrics.jsonl`,
-`incidencias.jsonl`, `mapeo.txt`).
+`incidencias.jsonl`, `mapeo.txt`) y `dedalo://manual` (manual completo).
 
 La revisión manual del loop se resuelve escribiendo en
 `<proyecto>/.dedalo_review/decision`: `resolver_revision(nombre, "APPROVE")`
