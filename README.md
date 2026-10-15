@@ -2,13 +2,16 @@
 
 Panel de control gráfico (PySide6) para el sistema **Dédalo**: gestiona agentes IA (opencode, codex, claude) que iteran sobre tareas de un `plan.md`, ejecutan tests (`gate.sh`), piden revisión de código y commitean automáticamente.
 
+> **Ficha técnica** (requisitos, dependencias, plataformas, MCP, seguridad):
+> [`docs/FICHA_TECNICA.md`](docs/FICHA_TECNICA.md).
+
 ---
 
 ## 🚀 Instalación rápida
 
 ```bash
 # Clonar
-git clone <repo>
+git clone https://github.com/BenReynor/dedalo.git
 cd dedalo
 
 # Entorno virtual (recomendado)
@@ -26,7 +29,7 @@ pip install -e ".[dev]"
 python -m dedalo
 ```
 
-> **Python**: Requiere 3.10+. En este repo se usa el venv en `../Sistema_Pos/frontend/venv/`.
+> **Python**: Requiere 3.10+.
 
 ---
 
