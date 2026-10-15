@@ -17,7 +17,13 @@ cd dedalo
 # Instalación automática: crea .venv, instala con soporte MCP y
 # genera el acceso directo en el escritorio.
 bash install.sh
+
+# Ejecutar: doble clic en el icono "Dédalo" del escritorio,
+# o desde la terminal:
+./lanzar.sh
 ```
+
+> En Debian/Ubuntu, si falta el módulo venv: `sudo apt install python3-venv`.
 
 <details>
 <summary>Instalación manual (paso a paso)</summary>
