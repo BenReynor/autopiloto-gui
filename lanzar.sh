@@ -26,7 +26,6 @@ for p in \
     "$PROYECTO/venv/bin/python" \
     "$PROYECTO/../.venv/bin/python" \
     "$PROYECTO/../venv/bin/python" \
-    "$HOME/Escritorio/Sistema_Pos/frontend/venv/bin/python" \
     "$(command -v python3)" \
 ; do
     [ -n "$p" ] && [ -x "$p" ] || continue
@@ -38,7 +37,7 @@ done
 
 if [ -z "$PYTHON" ]; then
     echo "Dédalo: no se encontró ningún Python con PySide6 instalado." >&2
-    echo "Instálalo con:  python3 -m pip install -e \"$PROYECTO\"" >&2
+    echo "Instálalo con:  bash \"$PROYECTO/install.sh\"" >&2
     exit 1
 fi
 

@@ -28,16 +28,22 @@ PROYECTO="$(dirname "$PAQUETE")"
 
 BIN="$HOME/.local/bin"
 DIR_ICONOS="$HOME/.local/share/icons"
-DIR_DESKTOP="$HOME/Escritorio"
 LANZADOR="dedalo"
-DESKTOP_FILE="$DIR_DESKTOP/dedalo.desktop"
 
+# Carpeta de escritorio real del usuario: preferimos xdg-user-dir (respeta
+# locales como ~/Bureau o ~/Schreibtisch) y caemos a las rutas habituales.
+DIR_DESKTOP=""
+if command -v xdg-user-dir >/dev/null 2>&1; then
+    DIR_DESKTOP="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
+fi
+[ -d "$DIR_DESKTOP" ] || DIR_DESKTOP="$HOME/Escritorio"
 [ -d "$DIR_DESKTOP" ] || DIR_DESKTOP="$HOME/Desktop"
 if [ ! -d "$DIR_DESKTOP" ]; then
-    echo "No encuentro tu carpeta de escritorio ($HOME/Escritorio ni /Desktop)." >&2
-    echo "Edita DIR_DESKTOP en $0 y vuelve a ejecutarlo." >&2
+    echo "No encuentro tu carpeta de escritorio (~/Escritorio ni ~/Desktop)." >&2
+    echo "Re-genera el acceso con:  bash <ruta-del-proyecto>/dedalo/acceso.sh" >&2
     exit 1
 fi
+DESKTOP_FILE="$DIR_DESKTOP/dedalo.desktop"
 
 mkdir -p "$BIN" "$DIR_ICONOS"
 cp "$PAQUETE/icono.svg" "$DIR_ICONOS/dedalo.svg"
@@ -58,7 +64,7 @@ buscar_proyecto() {
         [ -d "$base" ] || continue
         while IFS= read -r dir; do
             case "$dir" in
-                *"/.git/"*|*"/venv/"*|*"/.venv/"*|*"/node_modules/"*|*"/__pycache__/"*) continue ;;
+                *"/.git/"*|*"/venv/"*|*"/.venv/"*|*"/env/"*|*"/.env/"*|*"/site-packages/"*|*"/node_modules/"*|*"/__pycache__/"*) continue ;;
             esac
             [ -f "$dir/__init__.py" ] || continue
             [ -f "$dir/icono.svg" ] || continue

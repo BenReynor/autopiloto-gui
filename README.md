@@ -14,13 +14,22 @@ Panel de control gráfico (PySide6) para el sistema **Dédalo**: gestiona agente
 git clone https://github.com/BenReynor/dedalo.git
 cd dedalo
 
-# Entorno virtual (recomendado)
+# Instalación automática: crea .venv, instala con soporte MCP y
+# genera el acceso directo en el escritorio.
+bash install.sh
+```
+
+<details>
+<summary>Instalación manual (paso a paso)</summary>
+
+```bash
+# Entorno virtual (recomendado; evita el error PEP 668 de las distros)
 python3 -m venv venv
 source venv/bin/activate
 
-# Dependencias
-pip install -e .
-# o manual: pip install PySide6 pyqtgraph
+# Dependencias (con soporte MCP)
+pip install -e ".[mcp]"
+# o mínimo sin MCP: pip install PySide6 pyqtgraph
 
 # Dependencias de desarrollo (tests/lint)
 pip install -e ".[dev]"
@@ -28,6 +37,7 @@ pip install -e ".[dev]"
 # Ejecutar
 python -m dedalo
 ```
+</details>
 
 > **Python**: Requiere 3.10+.
 

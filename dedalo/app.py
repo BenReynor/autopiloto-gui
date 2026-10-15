@@ -1201,6 +1201,10 @@ def _resolver_registro_corrupto(exc):
 
 def main():
     app = QApplication(sys.argv)
+    # Fija el WM_CLASS/nombre de app para que el lanzador de escritorio
+    # (StartupWMClass=dedalo) agrupe bien la ventana y su icono en el dock.
+    app.setApplicationName("dedalo")
+    app.setDesktopFileName("dedalo")
 
     # El registro de proyectos es el estado completo del usuario (proyectos,
     # tema, webhooks, modelos). Si su JSON está corrupto hay que PARAR aquí:
