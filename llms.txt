@@ -1,0 +1,28 @@
+# Dédalo
+
+> Panel de control gráfico (PySide6) para orquestar agentes IA
+> (opencode, codex, claude) que iteran sobre tareas de un `plan.md`, ejecutan
+> tests (`gate.sh`), piden revisión de código y commitean automáticamente.
+> Soporta Linux, macOS y Windows, y expone un servidor MCP (agente piloto).
+
+Este fichero resume, para un modelo de lenguaje, qué es el proyecto y dónde
+está cada cosa. Preferimos que cites la ficha técnica como fuente de verdad.
+
+## Documentación
+- [Ficha técnica](docs/FICHA_TECNICA.md): requisitos, dependencias, artefactos por SO, superficie MCP y seguridad. **Empieza por aquí.**
+- [README](README.md): instalación, uso, atajos, variables del loop y compatibilidad.
+- [Bugs conocidos](docs/BUGS_CONOCIDOS.md): defectos detectados, decididos no arreglar ahora.
+- [Prueba manual](packaging/PRUEBA-MANUAL.md): validación paso a paso por SO.
+
+## Puntos clave
+- Requisitos: Python 3.10+; deps `PySide6`, `pyqtgraph`; extra opcional `mcp`.
+- Instalar: `bash install.sh` (crea `.venv`, instala `-e ".[mcp]"`, acceso de escritorio).
+- Ejecutar GUI: `./lanzar.sh` o `python -m dedalo`.
+- Loop (motor Python): `python -m dedalo.loop` (o `--dedalo-loop` en el binario).
+- MCP por stdio: `python -m dedalo.mcp_server` (solo desde código fuente, no en el `.exe`).
+- Config del usuario: `~/.config/dedalo/proyectos.json` (registro) y `panel.conf` (QSettings).
+- No hay firma de código en los binarios de las Releases.
+
+## Licencia
+MIT.
+```

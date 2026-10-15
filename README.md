@@ -1,9 +1,40 @@
 # Dédalo
 
+[![CI](https://github.com/BenReynor/dedalo/actions/workflows/ci.yml/badge.svg)](https://github.com/BenReynor/dedalo/actions/workflows/ci.yml)
+[![Release](https://github.com/BenReynor/dedalo/actions/workflows/release.yml/badge.svg)](https://github.com/BenReynor/dedalo/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/BenReynor/dedalo?sort=semver&color=blue)](https://github.com/BenReynor/dedalo/releases)
+[![License: MIT](https://img.shields.io/github/license/BenReynor/dedalo?color=green)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)](#-compatibilidad)
+
 Panel de control gráfico (PySide6) para el sistema **Dédalo**: gestiona agentes IA (opencode, codex, claude) que iteran sobre tareas de un `plan.md`, ejecutan tests (`gate.sh`), piden revisión de código y commitean automáticamente.
 
-> **Ficha técnica** (requisitos, dependencias, plataformas, MCP, seguridad):
-> [`docs/FICHA_TECNICA.md`](docs/FICHA_TECNICA.md).
+> **¿Usas una IA para trabajar con este proyecto?** Pásale
+> [`docs/FICHA_TECNICA.md`](docs/FICHA_TECNICA.md) —requisitos, dependencias,
+> plataformas, superficie MCP y seguridad en un único fichero pensado para que
+> un modelo (y una persona técnica) entienda de un vistazo qué es y qué tiene
+> Dédalo— o el índice [`llms.txt`](llms.txt), pensado para que un LLM sepa qué
+> hay aquí sin recorrer el repositorio entero.
+
+---
+
+## 📑 Índice
+
+- [Instalación rápida](#-instalación-rápida)
+- [Qué hace](#-qué-hace)
+- [Tips de uso](#-tips-de-uso)
+- [Atajos](#-atajos)
+- [Temas (9 curados)](#-temas-9-curados)
+- [Configuración persistente](#-configuración-persistente)
+- [Agregar un proyecto que ya tiene contenido](#-agregar-un-proyecto-que-ya-tiene-contenido)
+- [Catálogo de modelos (models.dev)](#-catálogo-de-modelos-modelsdev)
+- [Requisitos del proyecto gestionado](#-requisitos-del-proyecto-gestionado)
+- [Compatibilidad y descargas](#-compatibilidad)
+- [Variables del loop (env)](#-variables-del-loop-env)
+- [Servidor MCP (agente piloto)](#-servidor-mcp-agente-piloto)
+- [Desarrollo](#-desarrollo)
+- [Estructura clave](#-estructura-clave)
+- [Bugs conocidos pendientes](#-bugs-conocidos-pendientes)
 
 ---
 
@@ -59,7 +90,7 @@ python -m dedalo
 | **Ejecución** | Lanza el loop: agente → gate → revisor → commit. Parámetros: hora límite, iteraciones, rama base, coste máx, revisión dual/manual. |
 | **Logs** | Salida en vivo de `progreso.log` (loop) y `gate.sh`. Colapsable (⛶) con header siempre visible. Auto-scroll. |
 | **Mapa** | Visor de `mapeo.txt` (módulos → tests). Botón **Regenerar** ejecuta `bash mapear.sh`. |
-| **Métricas** | Dashboard temps-real: tareas/hora, coste acumulado (ámbar), gate OK/FAIL, revisor PASS/FAIL. Exporta CSV. |
+| **Métricas** | Dashboard en tiempo real: tareas/hora, coste acumulado (ámbar), gate OK/FAIL, revisor PASS/FAIL. Exporta CSV. |
 | **Git** | Historial de commits del proyecto, revert rápido. |
 | **Seguridad** | Límite temperatura CPU (apagado seguro), webhooks (Telegram, Discord, WhatsApp). |
 
@@ -71,6 +102,31 @@ python -m dedalo
 > contexto es estable y lo escribes tú. Se instala con un esqueleto en cada
 > proyecto y **nunca se sobreescribe**. No tiene panel en la GUI: se edita con
 > tu editor.
+
+---
+
+## 💡 Tips de uso
+
+- **Empieza por el contexto.** Un `CONTEXTO.md` claro y un `plan.md` con tareas
+  pequeñas y verificables dan mejores resultados que prompts largos: el loop
+  inyecta `CONTEXTO.md` al agente y al revisor en *cada* iteración.
+- **`auto` ya elige bien.** Toma el primer CLI instalado *y con sesión*; si un
+  agente aparece como `claude (sin login)`, loguéalo o elige otro.
+- **Primer contacto con un repo ajeno: activa revisión manual.** Con
+  `REVISION_MANUAL=1` el loop pausa antes de cada commit y espera tu `APPROVE`.
+- **Pon un tope de gasto.** `MAX_COSTO` es un límite duro en USD; fíjalo antes
+  de dejar el loop desatendido.
+- **No edites a mano los 3 scripts del framework** (`dedalo.sh`, `gate.sh`,
+  `mapear.sh`): se renuevan solos al abrir el proyecto. Si los tocas, haz commit
+  antes.
+- **Mantén el gate rápido.** Corre en cada iteración; un gate lento frena todo
+  el ciclo.
+- **Tu configuración vive en `~/.config/dedalo/`.** Cópiala antes de
+  experimentar; si quieres empezar de cero, bórrala.
+- **El binario empaquetado no trae el MCP por stdio** (se compila sin consola):
+  para el "agente piloto" MCP usa el código fuente.
+- **Verifica las descargas.** Comprueba los `SHA256SUMS*` de cada Release antes
+  de ejecutar un binario.
 
 ---
 
@@ -219,6 +275,24 @@ Cada Release lleva sus `SHA256SUMS*`; se verifican con
 La validación de puntas (GUI + un run real del loop con un agente como
 opencode) está documentada, paso a paso y por SO, en
 [packaging/PRUEBA-MANUAL.md](packaging/PRUEBA-MANUAL.md).
+
+#### 🏷️ Etiquetas (tags) y estado de las Releases
+
+Los tags actuales son `v2.0.0` y `v2.0.1`. Cada tag `v*` dispara
+`.github/workflows/release.yml`, que construye y publica una Release con los
+binarios de los tres SO. Conviene saber que:
+
+- Las Releases **v2.0.0 / v2.0.1 son anteriores al renombrado**: su título es
+  *"Autopiloto v2.0.x"* y sus assets se llaman `autopiloto-gui-*`. **Siguen
+  descargándose** (son código funcional de la era pre-Dédalo), pero **no
+  reflejan el código actual** del repo.
+- A partir del **próximo tag `v*`** (p. ej. `v2.0.2`) los assets se generarán
+  como `dedalo-<versión>-…` y el título de la Release será *"Dédalo"*.
+- Los enlaces *Full Changelog* de las Releases antiguas apuntan al nombre viejo
+  `autopiloto-gui`; GitHub **redirige** los repos renombrados, así que no dan
+  404.
+- **Topics del repositorio**: se gestionan con
+  `gh repo edit --add-topic <tema>` (independientes de los tags git).
 
 ---
 
