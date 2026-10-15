@@ -14,7 +14,7 @@ depende de la GUI: se puede manejar por CLI o por MCP.
 - **Paquete / CLI / binario**: `dedalo`
 - **Nombre visible**: Dédalo
 - **Repositorio**: <https://github.com/BenReynor/dedalo>
-- **Versión**: 2.0.1
+- **Versión**: 2.0.2
 - **Licencia**: MIT (código propio)
 
 ## Requisitos

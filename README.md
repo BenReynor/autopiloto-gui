@@ -278,16 +278,16 @@ opencode) está documentada, paso a paso y por SO, en
 
 #### 🏷️ Etiquetas (tags) y estado de las Releases
 
-Los tags actuales son `v2.0.0` y `v2.0.1`. Cada tag `v*` dispara
-`.github/workflows/release.yml`, que construye y publica una Release con los
-binarios de los tres SO. Conviene saber que:
+Los tags actuales son `v2.0.0`, `v2.0.1` (pre-renombrado) y `v2.0.2` (ya como
+Dédalo). Cada tag `v*` dispara `.github/workflows/release.yml`, que construye y
+publica una Release con los binarios de los tres SO. Conviene saber que:
 
 - Las Releases **v2.0.0 / v2.0.1 son anteriores al renombrado**: su título es
   *"Autopiloto v2.0.x"* y sus assets se llaman `autopiloto-gui-*`. **Siguen
   descargándose** (son código funcional de la era pre-Dédalo), pero **no
   reflejan el código actual** del repo.
-- A partir del **próximo tag `v*`** (p. ej. `v2.0.2`) los assets se generarán
-  como `dedalo-<versión>-…` y el título de la Release será *"Dédalo"*.
+- A partir de **v2.0.2** los assets se generan como `dedalo-<versión>-…` y el
+  título de la Release es *"Dédalo"*.
 - Los enlaces *Full Changelog* de las Releases antiguas apuntan al nombre viejo
   `autopiloto-gui`; GitHub **redirige** los repos renombrados, así que no dan
   404.
