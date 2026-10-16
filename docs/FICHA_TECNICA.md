@@ -147,32 +147,57 @@ Release itself (`shasum -a 256 -c SHA256SUMS*`).
 - **Native Windows**: WSL2 is not packaged; the bash engine is replaced by
   Python in the bundle (`dedalo.exe`), without requiring Git Bash.
 - **macOS Intel**: pending (arm64 only for now).
-- Integrity verification via `SHA256SUMS` on every Release (no GPG signature).
+- Integrity verification via `SHA256SUMS` on every Release, plus keyless
+  **build provenance** (Sigstore/OIDC); no GPG signature.
 
 ## Security (current posture)
 
 Implemented:
 
-- No HTTP server of its own and no `eval`/`exec`/`os.system`/`pickle.load`.
+- No HTTP server of its own, and no `eval`/`os.system`/`pickle.load` in our
+  own code. Project gate checks are the exception by design: the portable gate
+  loads a project's `.py` checks with `exec(compile(...))` and runs its `.sh`
+  checks with `bash`, i.e. it executes the project's code (see *First-run gate
+  consent* below).
+- **First-run gate consent**: a project's gate is not run until the user
+  consents. Interactive prompt per project, or `DEDALO_GATE_CONSENT=1` for
+  CI; non-interactive without consent aborts with exit code `3`. The trust
+  decision is stored per project (hashed contents) in
+  `~/.config/dedalo/confianza.json` (`0o600`, outside the repo, so a repo can
+  never grant itself trust).
+- **Manual review is not self-approvable**: by default an agent's `APPROVE`
+  is ignored (`REVISION_APRUEBA_AGENTE=1` opts in) and the loop keeps waiting
+  for a human. Every decision is audited in `progreso.log` with its origin
+  (`gui`/`mcp`/`humano`); `.dedalo_review/decision` is written `0o600`.
+- **Push safety**: `--push` only pushes the work branch (`dedalo/*`), aborts if
+  the branch resolves to the base/`main`/`master`, and prints the target origin
+  URL before pushing.
+- **Credentials**: the bundled dev credentials (`admin`/`admin123`) are only
+  applied when the backend target is `localhost`; a remote URL never receives
+  them.
 - Atomic registry writes (temp file + `os.replace`).
 - **CI `seguridad`**: `gitleaks` over the full history + `pip-audit
   --strict` on `requirements.lock` + a check that the lock is up to date.
 - Dependency lock with hashes (`requirements.lock`).
 - `_sanitizar()` masks tokens (telegram/whatsapp/discord) in errors.
 - The gate restores `gate.sh`/`gate_checks/` if the agent modifies them.
+- **Supply chain**: GitHub Actions pinned by commit SHA; every Release carries
+  keyless **build provenance** (Sigstore via GitHub OIDC), verifiable with
+  `gh attestation verify <file> --repo BenReynor/dedalo`.
 
 Known risks (accepted, see [BUGS_CONOCIDOS.md](BUGS_CONOCIDOS.md)):
 
 - Webhook tokens are stored **in plaintext** in
   `~/.config/dedalo/proyectos.json` (`0700` folder; unencrypted file).
 - The AI agent runs as the full user, **with no sandbox** (the tool's
-  model, documented as a risk).
+  model, documented as a risk). The gate consent gate above mitigates, but does
+  not eliminate, running untrusted project code.
 
 ## Quality and CI
 
 | Aspect | Status |
 |---------|--------|
-| Tests | 414 passed, 4 skipped (`pytest`) |
+| Tests | 435 passed, 4 skipped (`pytest`) |
 | Lint | `ruff` (rules E, F, W, I, UP, B) — clean |
 | Portability | `test_portabilidad.py` as a guardrail (bash BSD/GNU) |
 | CI | 5 jobs: Linux, Windows, macOS, macOS portability, security |

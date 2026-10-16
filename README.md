@@ -32,6 +32,7 @@ Orchestrates AI agents (opencode, codex, claude) to iterate over tasks in `plan.
 - [Compatibility and Downloads](#-compatibility)
 - [Loop Environment Variables](#-loop-environment-variables)
 - [MCP Server (Pilot Agent)](#-mcp-server-pilot-agent)
+- [Security](#-security)
 - [Development](#-development)
 - [Key Structure](#-key-structure)
 - [Known Open Bugs](#-known-open-bugs)
@@ -318,11 +319,12 @@ fills them in from the Run form). The most useful ones:
 | `VOZ` | `1` enables alerts via `notify-send`/`spd-say`. |
 | `NAVEGADOR` / `MODELO_NAVEGADOR` | Automatic context browser before each task. |
 | `CRITERIO` | Extracted from the `criterio:` line under the task in `plan.md`. |
+| `REVISION_APRUEBA_AGENTE` | `1` lets a pilot agent approve its own manual review (default `0`: an agent's `APPROVE` is ignored and the loop keeps waiting for a human). |
+| `DEDALO_GATE_CONSENT` | `1` trusts the project's gate without prompting (for CI/scripts). Unset = ask once per project (interactive) or abort. |
 
 > While waiting on `REVISION_MANUAL`, if the network goes down the loop aborts
 > (rather than hanging); and if `TIMEOUT_REVISION_MANUAL` expires, the task is
 > marked `[B]`.
-
 ### CLI Agents
 
 `auto` (default) picks the first installed CLI according to `AGENTES_PREFERIDOS`
@@ -404,10 +406,68 @@ questionable.
 
 ---
 
+## 🔒 Security
+
+Dédalo runs an autonomous agent inside **your** project: it can edit files, run
+the project's gate and push branches. These are the guardrails it ships with.
+
+### First-run gate consent
+
+A project's gate runs the project's own checks (`gate_checks/*`), so pointing
+Dédalo at an **untrusted repository** means executing that repository's code.
+The first time you run a project, Dédalo asks for explicit consent:
+
+- **Interactive** (terminal or GUI): you get a one-time prompt per project.
+- **Non-interactive** (CI, scripts): it **aborts by default** (exit code `3`).
+  Set `DEDALO_GATE_CONSENT=1` to trust without prompting.
+
+The decision is persisted per project (hashed contents) in
+`~/.config/dedalo/confianza.json` (`0o600`), **outside** the repo, so the repo
+itself can never grant itself trust. Re-run with a changed gate to be asked
+again.
+
+### Manual review cannot be self-approved
+
+When `REVISION_MANUAL=1`, the loop waits for a human `APPROVE`/`REJECT`. An
+agent's approval is **ignored by default**, even if a pilot agent (MCP) writes
+it. Set `REVISION_APRUEBA_AGENTE=1` to allow it, and the decision is still
+audited in `progreso.log` with its origin (`gui`, `mcp` or `humano`).
+
+The decision file `.dedalo_review/decision` is written with `0o600`. Its first
+line stays `APPROVE` / `REJECT <reason>`; the second line carries the origin
+marker (`# origen=gui|mcp`).
+
+### Push safety
+
+`--push` (or the GUI's push option) only ever pushes the work branch
+(`dedalo/*`), **never** the base branch: if the resolved branch were `main`,
+`master` or the configured base, the push is aborted. The target remote URL is
+printed before pushing, and the GUI/CLI tells you which PR to open. Protect the
+base branch on GitHub (branch protection rules) as the final backstop.
+
+### Credentials
+
+The gate can smoke-test a backend's endpoints. The bundled dev credentials
+(`admin`/`admin123`) are applied **only when the target is `localhost`**; a
+remote `SERVE_URL` with no `USUARIO`/`CLAVE` never receives them and prints a
+warning instead.
+
+### Supply chain
+
+- GitHub Actions are **pinned by commit SHA** (not by tag) to prevent a moved
+  tag from running different code.
+- Each Release carries **keyless build provenance** (Sigstore via GitHub OIDC):
+  verify any asset with
+  `gh attestation verify <file> --repo BenReynor/dedalo`.
+- Releases also ship `SHA256SUMS*`; the binaries themselves are **not
+  code-signed** (see [Downloads](#-downloads-release)).
+
+---
+
 ## 🐛 Development
 
 ```bash
-# Instalar deps de desarrollo
+# Install dev dependencies
 pip install -e ".[dev]"
 
 # Tests

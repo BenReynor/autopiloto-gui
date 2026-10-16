@@ -7,7 +7,8 @@ The recommended test agent is **opencode** (CLI-agnostic; on Windows it is
 section for each OS.
 
 Engine exit codes (`--dedalo-loop`): `0` = loop completed,
-`2` = agent unavailable, `4` = no internet, `7` = internal error.
+`2` = agent unavailable, `3` = gate not trusted (no consent), `4` = no
+internet, `7` = internal error.
 
 ---
 
@@ -25,6 +26,15 @@ Engine exit codes (`--dedalo-loop`): `0` = loop completed,
 2. Have **opencode installed and visible on the PATH** of the shell it will be
    launched from (in the GUI, the PATH the app inherits from the desktop).
    Check with `opencode --version`.
+
+3. (Optional) Verify the build provenance of an asset, if `gh` is available:
+   `gh attestation verify dedalo-*.AppImage --repo BenReynor/dedalo`.
+
+> **First run per project**: Dédalo asks once for consent to trust and run the
+> project's gate (interactive prompt, or the GUI dialog). If you decline, or run
+> non-interactively without `DEDALO_GATE_CONSENT=1`, the loop aborts with
+> rc `3`. The trust decision is remembered in
+> `~/.config/dedalo/confianza.json`.
 
 ---
 
@@ -84,6 +94,7 @@ Engine exit codes (`--dedalo-loop`): `0` = loop completed,
 | Loop blocks the task (Windows) | Git for Windows missing (the gate uses bash). |
 | Unexpected rc `2` | The agent is not on the PATH the app inherits: use `CLI_OPENCODE` or fix the PATH. |
 | rc `4` | No network at the time of the run. |
+| rc `3` | The project's gate was not trusted: accept the prompt or set `DEDALO_GATE_CONSENT=1`. |
 | Temperature "no data" | Expected on macOS; on Linux only if `/sys/class/thermal` does not exist. |
 
 If something does not fit: open an issue with the text of the `progreso.log`.

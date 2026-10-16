@@ -21,7 +21,8 @@ each thing lives. We prefer you cite the technical spec as the source of truth.
 - Loop (Python engine): `python -m dedalo.loop` (or `--dedalo-loop` on the binary).
 - MCP over stdio: `python -m dedalo.mcp_server` (source only, not in the `.exe`).
 - User config: `~/.config/dedalo/proyectos.json` (registry) and `panel.conf` (QSettings).
-- Release binaries are not code-signed.
+- Release binaries are not code-signed; each Release carries Sigstore build provenance.
+- Safety: the project gate needs first-run consent (per project), manual review cannot be self-approved by an agent, and `--push` never pushes the base branch.
 
 ## License
 MIT.
