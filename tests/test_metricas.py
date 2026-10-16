@@ -7,7 +7,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dedalo.metricas import parsear_log
+from dedalo.metricas import invalidar_cache_metricas, parsear_log
 
 SAMPLE_LOG = """[2025-01-15 10:00:00] [1/40] Tarea 1: arreglar login -> dedalo/2025-01-15/t1
 [2025-01-15 10:02:00] ✔ commit: Tarea 1: arreglar login
@@ -246,6 +246,64 @@ def test_iteraciones_legadas_siguen_parseando():
         assert result["resumen"]["hechas"] == 2, result["resumen"]
     finally:
         os.unlink(log_path)
+
+
+def test_cache_no_reparsea_si_no_cambia():
+    """Dos llamadas seguidas sin tocar el fichero devuelven el mismo objeto."""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
+        f.write(SAMPLE_LOG)
+        log_path = f.name
+    try:
+        primero = parsear_log(log_path)
+        segundo = parsear_log(log_path)
+        assert primero is segundo
+    finally:
+        os.unlink(log_path)
+        invalidar_cache_metricas(log_path)
+
+
+def test_cache_se_invalida_al_cambiar_el_log():
+    """Si el log crece, el parseo se rehace y ve las iteraciones nuevas."""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
+        f.write(SAMPLE_LOG)
+        log_path = f.name
+    try:
+        primero = parsear_log(log_path)
+        assert len(primero["iteraciones"]) == 3
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write("[2025-01-15 10:25:00] == Iteración 4: nueva (rama "
+                    "dedalo/tareas/2025-01-15/t4) ==\n")
+            f.write("[2025-01-15 10:26:00] ✔ commit: nueva\n")
+        segundo = parsear_log(log_path)
+        assert segundo is not primero
+        assert len(segundo["iteraciones"]) == 4
+    finally:
+        os.unlink(log_path)
+        invalidar_cache_metricas(log_path)
+
+
+def test_invalidar_cache_metricas_global():
+    """invalidar_cache_metricas() sin argumento vacía toda la caché."""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
+        f.write(SAMPLE_LOG)
+        log_path = f.name
+    try:
+        primero = parsear_log(log_path)
+        invalidar_cache_metricas()
+        segundo = parsear_log(log_path)
+        assert segundo is not primero
+        assert segundo == primero
+    finally:
+        os.unlink(log_path)
+        invalidar_cache_metricas(log_path)
+
+
+def test_cache_log_inexistente_no_se_guarda():
+    """Un log que no existe devuelve el vacío y no contamina la caché."""
+    ruta = os.path.join(tempfile.gettempdir(), "no_existe_dedalo_metricas.log")
+    if os.path.exists(ruta):
+        os.unlink(ruta)
+    assert parsear_log(ruta)["iteraciones"] == []
 
 
 if __name__ == "__main__":

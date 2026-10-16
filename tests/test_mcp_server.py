@@ -69,10 +69,10 @@ def test_cola_log_devuelve_ultimas(proyecto):
 def test_resolver_revision_escribe_decision(proyecto):
     m.resolver_revision("p1", "approve")
     decision = (proyecto / ".dedalo_review" / "decision").read_text(encoding="utf-8")
-    assert decision == "APPROVE"
+    assert decision == "APPROVE\n# origen=mcp\n"
     m.resolver_revision("p1", "REJECT", "no me convence")
     decision = (proyecto / ".dedalo_review" / "decision").read_text(encoding="utf-8")
-    assert decision == "REJECT no me convence"
+    assert decision == "REJECT no me convence\n# origen=mcp\n"
     with pytest.raises(ValueError):
         m.resolver_revision("p1", "quizas")
 

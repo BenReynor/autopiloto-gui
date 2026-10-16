@@ -57,6 +57,8 @@
 #   REVISION_MANUAL   "1" pausa antes de commit y espera aprobación GUI, "0" automático.
 #   TIMEOUT_REVISION_MANUAL  segundos máximos esperando la aprobación manual antes
 #                     de marcar la tarea [B] y seguir (0 = esperar indefinidamente). def: 1800.
+#   REVISION_APRUEBA_AGENTE  "1" permite que un APPROVE emitido por un agente (origen=mcp)
+#                     zanje la revisión manual; "0" (def) lo ignora y espera a una persona.
 #   MAX_COSTO         presupuesto en USD (0 = sin límite). Costo estimado por iteración.
 #   COSTO_POR_ITER    costo estimado USD por tarea+revisión (def 0.50).
 #   VOZ               "1" activa alertas al bloquearte/terminar (notify-send, spd-say).
@@ -101,6 +103,7 @@ JUEZ_AGENTE_JUEZ="${OPENCODE_AGENT_JUEZ:-build}"
 REVISION_DUAL="${REVISION_DUAL:-1}"
 REVISION_MANUAL="${REVISION_MANUAL:-0}"
 TIMEOUT_REVISION_MANUAL="${TIMEOUT_REVISION_MANUAL:-1800}"
+REVISION_APRUEBA_AGENTE="${REVISION_APRUEBA_AGENTE:-0}"
 VOZ="${VOZ:-0}"
 MAX_COSTO="${MAX_COSTO:-0}"
 COSTO_POR_ITER="${COSTO_POR_ITER:-0.50}"
@@ -828,6 +831,34 @@ gate_intacto() {
     return 0
 }
 
+# Consentimiento de primer uso: el gate ejecuta código del repo (gate_checks/)
+# sin sandbox, así que un proyecto desconocido no arranca sin aprobación.
+# Opt-in por entorno (DEDALO_GATE_CONSENT=1, ideal en CI) o por terminal.
+# El motor nativo (loop.py) además recuerda la aprobación por hash de contenido.
+consentimiento_gate() {
+    local dir="$PROYECTO/gate_checks"
+    [ -d "$dir" ] || return 0
+    if [ "${DEDALO_GATE_CONSENT:-0}" = "1" ]; then
+        logx "GATE: checks aprobados por entorno (DEDALO_GATE_CONSENT=1)"
+        return 0
+    fi
+    echo "[dedalo] ⚠ El gate va a ejecutar código del repo SIN sandbox:"
+    ls -1 "$dir" 2>/dev/null | sed 's/^/  • /'
+    if [ -t 0 ]; then
+        printf '[dedalo] ¿Confiar y ejecutar el gate? [y/N] '
+        read -r resp
+        case "$resp" in
+            y|Y|yes|YES|s|S|si|SI|sí|SÍ)
+                logx "GATE: checks aprobados por el usuario"
+                return 0 ;;
+        esac
+    fi
+    echo "[dedalo] ✗ gate_checks sin consentimiento; abortando."
+    echo "[dedalo]   Aprueba con DEDALO_GATE_CONSENT=1 o desde la GUI."
+    logx "ABORTADO: gate_checks sin consentimiento"
+    exit 3
+}
+
 restaurar_gate() {
     cp -f "$GATE_BACKUP_DIR/gate.sh" "$GATE" 2>/dev/null
     [ -d "$GATE_BACKUP_DIR/gate_checks" ] && cp -rf "$GATE_BACKUP_DIR/gate_checks/." "$PROYECTO/gate_checks/" 2>/dev/null
@@ -899,42 +930,74 @@ esperar_revision_manual() {
     echo "[dedalo] ⏸ Esperando revisión manual en $dir_revision..."
     logx "ESPERANDO REVISIÓN MANUAL: $TAREA"
 
-    local decision="" esperado=0
-    while [ ! -f "$dir_revision/decision" ]; do
-        sleep 2
-        esperado=$((esperado + 2))
+    local decision="" esperado=0 origen=""
+    while true; do
+        while [ ! -f "$dir_revision/decision" ]; do
+            sleep 2
+            esperado=$((esperado + 2))
 
-        # Criterio de infraestructura: si se cae la red, abortar como el resto del loop.
-        if [ $((esperado % 30)) -eq 0 ] && ! hay_internet; then
-            echo "[dedalo] ✗ sin internet durante la revisión manual: abortando." | tee -a "$LOG"
-            logx "ABORTADO: sin internet durante revisión manual"
-            alerta "Sin internet, se aborta el dedalo"
-            rm -f "$dir_revision/waiting" "$dir_revision/decision"
-            exit 4
-        fi
+            # Criterio de infraestructura: si se cae la red, abortar como el resto del loop.
+            if [ $((esperado % 30)) -eq 0 ] && ! hay_internet; then
+                echo "[dedalo] ✗ sin internet durante la revisión manual: abortando." | tee -a "$LOG"
+                logx "ABORTADO: sin internet durante revisión manual"
+                alerta "Sin internet, se aborta el dedalo"
+                rm -f "$dir_revision/waiting" "$dir_revision/decision"
+                exit 4
+            fi
 
-        if [ "$TIMEOUT_REVISION_MANUAL" -gt 0 ] && [ "$esperado" -ge "$TIMEOUT_REVISION_MANUAL" ]; then
-            echo "[dedalo] ✗ timeout de revisión manual (${TIMEOUT_REVISION_MANUAL}s): tarea bloqueada." | tee -a "$LOG"
-            logx "REVISIÓN MANUAL: timeout sin respuesta"
-            alerta "Revisión manual sin respuesta, tarea marcada como bloqueada"
-            rm -f "$dir_revision/waiting" "$dir_revision/decision"
-            return 2
-        fi
+            if [ "$TIMEOUT_REVISION_MANUAL" -gt 0 ] && [ "$esperado" -ge "$TIMEOUT_REVISION_MANUAL" ]; then
+                echo "[dedalo] ✗ timeout de revisión manual (${TIMEOUT_REVISION_MANUAL}s): tarea bloqueada." | tee -a "$LOG"
+                logx "REVISIÓN MANUAL: timeout sin respuesta"
+                alerta "Revisión manual sin respuesta, tarea marcada como bloqueada"
+                rm -f "$dir_revision/waiting" "$dir_revision/decision"
+                return 2
+            fi
+        done
+        decision="$(cat "$dir_revision/decision")"
+
+        # Origen de la decisión: la GUI escribe "# origen=gui" y el servidor MCP
+        # "# origen=mcp" (respuesta al final del fichero). Sin marca = humano.
+        origen=""
+        while IFS= read -r linea; do
+            case "$linea" in
+                "# origen="*) origen="${linea#\# origen=}"; break ;;
+            esac
+        done <<< "$decision"
+        origen="$(printf '%s' "$origen" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+
+        # Seguridad: un agente no puede aprobar su propio trabajo. Por defecto
+        # (REVISION_APRUEBA_AGENTE=0) un APPROVE con origen=mcp se ignora y se
+        # sigue esperando una aprobación humana; con 1 se acepta.
+        case "$decision" in
+            APPROVE*)
+                if [ "$origen" = "mcp" ] && [ "${REVISION_APRUEBA_AGENTE:-0}" != "1" ]; then
+                    echo "[dedalo] ⚠ aprobación emitida por un agente ignorada (política REVISION_APRUEBA_AGENTE=0); sigue esperando aprobación humana." | tee -a "$LOG"
+                    logx "REVISIÓN MANUAL: APROBACIÓN POR AGENTE IGNORADA (política)"
+                    rm -f "$dir_revision/waiting" "$dir_revision/decision"
+                    echo "waiting" > "$dir_revision/waiting"
+                    continue
+                fi
+                ;;
+        esac
+        break
     done
-    decision="$(cat "$dir_revision/decision")"
     rm -f "$dir_revision/waiting" "$dir_revision/decision"
 
+    local quien="origen=humano"
+    [ -n "$origen" ] && quien="origen=$origen"
     case "$decision" in
         APPROVE*)
             echo "[dedalo] ✔ Diff aprobado manualmente"
-            logx "REVISIÓN MANUAL: APROBADO"
+            logx "REVISIÓN MANUAL: APROBADO ($quien)"
             return 0
             ;;
         REJECT*)
             local motivo="${decision#REJECT}"
+            motivo="$(printf '%s' "$motivo" | grep -v '^# origen=')"
             motivo="${motivo#$'\n'}"
+            motivo="$(printf '%s' "$motivo" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
             echo "[dedalo] ✗ Diff rechazado: $motivo"
-            logx "REVISIÓN MANUAL: RECHAZADO - $motivo"
+            logx "REVISIÓN MANUAL: RECHAZADO - $motivo ($quien)"
             RECHAZO_MOTIVO="$motivo"
             return 1
             ;;
@@ -985,6 +1048,11 @@ if ! hay_internet; then
     exit 4
 fi
 logx "Internet OK"
+
+# Consentimiento de primer uso del gate (ver loop.py/consentimiento.py):
+# el gate corre código del repo sin sandbox, así que un repo desconocido no
+# se ejecuta sin aprobación explícita (entorno o terminal interactivo).
+consentimiento_gate
 
 # Respaldo del gate prístino ANTES de que el agente pueda tocar nada.
 backup_gate
@@ -1391,17 +1459,23 @@ _asegurar_remote_origin() {
 if [ -n "$PUSH" ]; then
     _asegurar_remote_origin
     PUSH_RAMA="${RAMA_TRABAJO:-$RAMA_RUN}"
-    if git -C "$PROYECTO" remote get-url origin >/dev/null 2>&1; then
-        if git -C "$PROYECTO" push -u origin "$PUSH_RAMA"; then
-            logx "push: origin/$PUSH_RAMA"
-            echo "[dedalo] ✔ push OK: origin/$PUSH_RAMA"
-            if [ "$PUSH_RAMA" != "$RAMA_RUN" ]; then
+    ORIGIN_URL="$(git -C "$PROYECTO" remote get-url origin 2>/dev/null)"
+    if [ -n "$ORIGIN_URL" ]; then
+        # Salvaguarda: nunca empujar la rama base (protegida) por accidente.
+        if [ "$PUSH_RAMA" = "$RAMA_BASE" ] || [ "$PUSH_RAMA" = "master" ] || [ "$PUSH_RAMA" = "main" ]; then
+            echo "[dedalo] ✗ push abortado: '$PUSH_RAMA' es la rama base; el trabajo debe ir en una rama dedalo/*." | tee -a "$LOG"
+            logx "push abortado: '$PUSH_RAMA' es rama base"
+        else
+            # Visibilidad: deja claro a qué remoto se sube antes de hacerlo.
+            echo "[dedalo] push → origin ($ORIGIN_URL) rama $PUSH_RAMA"
+            logx "push: origin ($ORIGIN_URL) $PUSH_RAMA"
+            if git -C "$PROYECTO" push -u origin "$PUSH_RAMA"; then
+                logx "push: origin/$PUSH_RAMA"
+                echo "[dedalo] ✔ push OK: origin/$PUSH_RAMA"
                 echo "[dedalo] abre el PR de $PUSH_RAMA -> $RAMA_BASE"
             else
-                echo "[dedalo] abre el PR de $RAMA_RUN -> $RAMA_BASE"
+                echo "[dedalo] ⚠ falló el push a origin/$PUSH_RAMA. El trabajo queda local." | tee -a "$LOG"
             fi
-        else
-            echo "[dedalo] ⚠ falló el push a origin/$PUSH_RAMA. El trabajo queda local." | tee -a "$LOG"
         fi
     else
         echo "[dedalo] ℹ sin remote origin (repo no creado). Trabajo queda local." | tee -a "$LOG"

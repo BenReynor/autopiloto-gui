@@ -226,6 +226,67 @@ def test_manual_rechazada_rellena_motivo(tmp_path):
     assert "REVISIÓN MANUAL: RECHAZADO - malisimo" in _leer(cfg.log)
 
 
+def test_manual_aprobacion_de_agente_ignorada_por_defecto(tmp_path, monkeypatch):
+    """Un APPROVE con origen=mcp no zanja la revisión si no hay opt-in."""
+    dir_rev = tmp_path / ".dedalo_review"
+    dir_rev.mkdir(exist_ok=True)
+    (dir_rev / "decision").write_text("APPROVE\n# origen=mcp\n", encoding="utf-8")
+    cfg = _cfg(tmp_path, {"REVISION_MANUAL": "1",
+                          "TIMEOUT_REVISION_MANUAL": "2"})
+    import dedalo.loop as loop_m
+    monkeypatch.setattr(loop_m.time, "sleep", lambda s: None)
+
+    rc = _esperar_revision_manual(cfg, "t1")
+
+    assert rc == 2
+    log = _leer(cfg.log)
+    assert "APROBACIÓN POR AGENTE IGNORADA" in log
+    assert "APROBADO" not in log
+
+
+def test_manual_aprobacion_de_agente_permitida_con_opt_in(tmp_path, monkeypatch):
+    """Con REVISION_APRUEBA_AGENTE=1 el APPROVE de origen=mcp se acepta."""
+    dir_rev = tmp_path / ".dedalo_review"
+    dir_rev.mkdir(exist_ok=True)
+    (dir_rev / "decision").write_text("APPROVE\n# origen=mcp\n", encoding="utf-8")
+    cfg = _cfg(tmp_path, {"REVISION_MANUAL": "1",
+                          "REVISION_APRUEBA_AGENTE": "1"})
+
+    rc = _esperar_revision_manual(cfg, "t1")
+
+    assert rc == 0
+    assert "APROBADO (origen=mcp)" in _leer(cfg.log)
+
+
+def test_manual_aprobacion_gui_siempre_valida(tmp_path):
+    """La GUI (origen=gui) aprueba como una persona, sin opt-in."""
+    dir_rev = tmp_path / ".dedalo_review"
+    dir_rev.mkdir(exist_ok=True)
+    (dir_rev / "decision").write_text("APPROVE\n# origen=gui\n", encoding="utf-8")
+    cfg = _cfg(tmp_path, {"REVISION_MANUAL": "1"})
+
+    rc = _esperar_revision_manual(cfg, "t1")
+
+    assert rc == 0
+    assert "APROBADO (origen=gui)" in _leer(cfg.log)
+
+
+def test_manual_rechazo_de_agente_no_se_bloquea(tmp_path):
+    """Un REJECT de agente se respeta (no es auto-aprobación)."""
+    dir_rev = tmp_path / ".dedalo_review"
+    dir_rev.mkdir(exist_ok=True)
+    (dir_rev / "decision").write_text("REJECT\nmejora tests\n# origen=mcp\n",
+                                      encoding="utf-8")
+    cfg = _cfg(tmp_path, {"REVISION_MANUAL": "1"})
+    _RECHAZO_MOTIVO["txt"] = ""
+
+    rc = _esperar_revision_manual(cfg, "t1")
+
+    assert rc == 1
+    assert _RECHAZO_MOTIVO["txt"] == "mejora tests"
+    assert "origen=mcp" in _leer(cfg.log)
+
+
 def test_manual_timeout_marca_2(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, {"REVISION_MANUAL": "1",
                           "TIMEOUT_REVISION_MANUAL": "2"})

@@ -128,6 +128,7 @@ def _entorno(dir_bin):
         # Sin fijar el agente, la autodeteccion puede elegir claude segun
         # el PATH y el test no miraria al binario falso.
         "AGENTE_TAREA": "opencode",
+        "DEDALO_GATE_CONSENT": "1",
     }
 
 

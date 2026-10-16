@@ -64,9 +64,42 @@ def _inicio_iteracion(linea: str):
     return None
 
 
+# Caché de parseo por (tamaño, mtime_ns): el panel refresca cada 5 s y antes
+# reparseaba el log completo en cada tick (coste lineal con el tamaño del log).
+# El dict cacheado se comparte: los llamadores deben tratarlo como solo-lectura.
+_CACHE_LOG: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}
+
+
+def invalidar_cache_metricas(ruta_log: str | None = None) -> None:
+    """Invalida la caché de parseo (todo, o solo `ruta_log`)."""
+    if ruta_log is None:
+        _CACHE_LOG.clear()
+    else:
+        _CACHE_LOG.pop(ruta_log, None)
+
+
 def parsear_log(ruta_log: str) -> dict[str, Any]:
+    """Parsea progreso.log y devuelve series temporales y tabla.
+
+    Resultado cacheado por (tamaño, mtime): si el fichero no cambió desde la
+    última llamada, devuelve el dict ya parseado sin releerlo. El dict devuelto
+    se comparte con la caché: trátalo como solo-lectura.
     """
-    Parsea progreso.log y devuelve diccionario con series temporales y tabla.
+    try:
+        st = os.stat(ruta_log)
+        clave = (st.st_size, st.st_mtime_ns)
+    except OSError:
+        return _vacío()
+    guardado = _CACHE_LOG.get(ruta_log)
+    if guardado is not None and guardado[0] == clave:
+        return guardado[1]
+    datos = _parsear_log(ruta_log)
+    _CACHE_LOG[ruta_log] = (clave, datos)
+    return datos
+
+
+def _parsear_log(ruta_log: str) -> dict[str, Any]:
+    """Parsea progreso.log desde cero (sin caché). Ver `parsear_log`.
 
     Returns:
         {

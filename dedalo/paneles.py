@@ -52,6 +52,19 @@ def _fuente_monospace(objeto):
     objeto.setFont(fuente)
 
 
+def _escribir_privado(ruta, texto):
+    """Writes a review decision file with 0o600 (it is user-sensitive data).
+
+    Swallows OSError like the previous plain `open()` did, so a failed write
+    never breaks the UI."""
+    try:
+        fd = os.open(ruta, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(texto)
+    except OSError:
+        pass
+
+
 def _fuente_ui(objeto):
     from PySide6.QtGui import QFont
     fuente = QFont(objeto.font())
@@ -1064,11 +1077,7 @@ class PanelRevision(QWidget):
 
     def _emitir_aprobado(self):
         if self._archivo_senal:
-            try:
-                with open(self._archivo_senal, "w") as f:
-                    f.write("APPROVE\n")
-            except OSError:
-                pass
+            _escribir_privado(self._archivo_senal, "APPROVE\n# origen=gui\n")
         self.aprobado.emit()
         self.ocultar()
 
@@ -1078,11 +1087,9 @@ class PanelRevision(QWidget):
             "Explica qué debe corregir el agente (se inyectará en el siguiente intento):")
         if ok and motivo.strip():
             if self._archivo_senal:
-                try:
-                    with open(self._archivo_senal, "w") as f:
-                        f.write(f"REJECT\n{motivo.strip()}\n")
-                except OSError:
-                    pass
+                _escribir_privado(
+                    self._archivo_senal,
+                    f"REJECT\n{motivo.strip()}\n# origen=gui\n")
             self.rechazado.emit(motivo.strip())
             self.ocultar()
 

@@ -91,6 +91,7 @@ def _entorno(binario):
         "CLI_OPENCODE": str(binario),
         "AGENTE_TAREA": "opencode",
         "MODELO_TAREA": "",
+        "DEDALO_GATE_CONSENT": "1",
     })
     return env
 
@@ -185,6 +186,26 @@ def test_tarea_que_no_pasa_el_gate_se_bloquea(tmp_path, capsys):
     salida = capsys.readouterr().out
     assert "TAREAS SIN COMPLETAR" in salida
     assert "- [B] t1" in salida
+
+
+def test_gate_sin_consentimiento_aborta_con_3(tmp_path, monkeypatch):
+    """Sin consentimiento (no interactivo) el gate de un repo desconocido no
+    se ejecuta: el run aborta con rc 3 antes del baseline."""
+    import dedalo.consentimiento as consentimiento
+    monkeypatch.setattr(consentimiento, "CONFIG_DIR",
+                        str(tmp_path / "cfg_aislado"))
+    gate = "#!/usr/bin/env bash\nexit 0\n"
+    proyecto = _escenario(tmp_path, gate)
+    bin_falso = _agente_falso(tmp_path / "bin")
+    env = _entorno(bin_falso)
+    env["DEDALO_GATE_CONSENT"] = "0"
+
+    rc, _cfg = _correr(proyecto, env)
+    log = (proyecto / "progreso.log").read_text(
+        encoding="utf-8", errors="replace")
+
+    assert rc == 3, log[-3000:]
+    assert "sin consentimiento" in log
 
 
 def test_sin_agente_aborta_con_2(tmp_path):

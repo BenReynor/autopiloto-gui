@@ -122,6 +122,7 @@ def _entorno(dir_bin):
         "VOZ": "0",
         "CLI_OPENCODE": str(dir_bin / "opencode"),
         "AGENTE_TAREA": "opencode",
+        "DEDALO_GATE_CONSENT": "1",
     })
     return env
 

@@ -15,6 +15,13 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass
+from urllib.parse import urlparse
+
+
+def _es_local(url):
+    """True if `url` points at the local machine (where the dev server runs)."""
+    host = (urlparse(url or "").hostname or "").lower()
+    return host in ("localhost", "127.0.0.1", "::1", "0.0.0.0", "[::1]")
 
 
 @dataclass
@@ -145,8 +152,15 @@ def detectar(proyecto, environ=None):
             serve = [py_backend, "manage.py", "runserver", "8000", "--noreload"]
             serve_url = serve_url or "http://localhost:8000"
             token_url = token_url or "http://localhost:8000/api/token/"
-            usuario = usuario or "admin"
-            clave = clave or "admin123"
+            # Dev-only scaffold credentials. They are NEVER sent outside the
+            # local machine: only applied when the target is localhost. For a
+            # remote URL, USUARIO/CLAVE must be set explicitly.
+            if not usuario and _es_local(serve_url or token_url):
+                usuario = "admin"
+                clave = "admin123"
+            if not usuario:
+                print("[GATE] ⚠ USUARIO/CLAVE no configurados para un backend "
+                      "remoto; define credenciales o el login fallará.")
             endpoints = endpoints or (
                 "productos/productos/ ventas/clientes/ usuarios/usuarios/ "
                 "caja/caja/ kardex/movimientos/ compras/compras/ "

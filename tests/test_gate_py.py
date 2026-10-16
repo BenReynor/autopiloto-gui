@@ -125,3 +125,47 @@ def test_env_django_define_db_check_por_defecto(tmp_path):
                             environ={"PY_BACKEND": "/usr/bin/python3"})
     assert env.db_check is not None
     assert "pg_isready" in env.db_check.shell
+
+
+def _proyecto_django(tmp_path):
+    proyecto = tmp_path / "p"
+    (proyecto / "Backend").mkdir(parents=True)
+    (proyecto / "Backend" / "manage.py").write_text("", encoding="utf-8")
+    return proyecto
+
+
+def test_es_local_detecta_hosts_locales():
+    from dedalo.gate_env import _es_local
+    assert _es_local("http://localhost:8000")
+    assert _es_local("http://127.0.0.1:8000/api/token/")
+    assert _es_local("http://0.0.0.0:8000")
+    assert not _es_local("https://miservidor.com")
+    assert not _es_local("http://10.0.0.5:8000")
+    assert not _es_local("")
+
+
+def test_credenciales_dev_solo_para_localhost(tmp_path):
+    """admin/admin123 es un andamio de desarrollo: NUNCA a un host remoto."""
+    from dedalo import gate_env
+    proyecto = _proyecto_django(tmp_path)
+
+    local = gate_env.detectar(str(proyecto), environ={
+        "PY_BACKEND": "/usr/bin/python3",
+        "SERVE_URL": "http://localhost:8000"})
+    assert local.usuario == "admin" and local.clave == "admin123"
+
+    remoto = gate_env.detectar(str(proyecto), environ={
+        "PY_BACKEND": "/usr/bin/python3",
+        "SERVE_URL": "https://produccion.example.com",
+        "TOKEN_URL": "https://produccion.example.com/api/token/"})
+    assert remoto.usuario == "" and remoto.clave == ""
+
+
+def test_credenciales_explicitas_se_respetan(tmp_path):
+    from dedalo import gate_env
+    proyecto = _proyecto_django(tmp_path)
+    env = gate_env.detectar(str(proyecto), environ={
+        "PY_BACKEND": "/usr/bin/python3",
+        "SERVE_URL": "https://produccion.example.com",
+        "USUARIO": "ana", "CLAVE": "secreta"})
+    assert env.usuario == "ana" and env.clave == "secreta"

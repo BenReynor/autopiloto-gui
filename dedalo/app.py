@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import configuracion as cfg
-from . import loop_launch, modelos, net, plantillas, sensor
+from . import consentimiento, loop_launch, modelos, net, plantillas, sensor
 from .gate import argv_gate
 from .paneles import (
     AvisoTemperatura,
@@ -662,6 +662,35 @@ class Ventana(QMainWindow):
 
     # ---------- Loop ----------
 
+    def _consentimiento_gate(self, ruta):
+        """Pide aprobación la primera vez que se ejecuta el gate de un repo.
+
+        El gate corre código del proyecto (gate_checks/*.sh|.py) sin sandbox:
+        un repo clonado puede traer comandos arbitrarios. Se lista lo que se
+        va a ejecutar y, si el usuario acepta, se recuerda por hash de
+        contenido (si los checks cambian, se vuelve a preguntar).
+
+        Devuelve True si se puede arrancar el loop.
+        """
+        if consentimiento.concedido(ruta, os.environ):
+            return True
+        fichas = consentimiento.ficheros(ruta)
+        detalle = "\n".join(f"  • {f}" for f in fichas) or "  (ninguno)"
+        resp = QMessageBox.warning(
+            self, "Ejecutar el gate del proyecto",
+            "El gate ejecutará código de este repositorio con tus permisos, "
+            "sin sandbox:\n\n"
+            f"{detalle}\n\n"
+            "Ejecútalo solo si confías en este proyecto. ¿Confiar y ejecutar?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if resp != QMessageBox.Yes:
+            return False
+        try:
+            consentimiento.confiar(ruta)
+        except OSError:
+            pass
+        return True
+
     def _iniciar_loop(self):
         p = self._proyecto_actual()
         if not p:
@@ -677,6 +706,8 @@ class Ventana(QMainWindow):
                 "Conecta la red e inténtalo de nuevo.")
             return
         ruta = p[1]
+        if not self._consentimiento_gate(ruta):
+            return
         self._capturar_lanzamiento()
         self._guardar_config_proyecto()
         conf = self._lanzamiento

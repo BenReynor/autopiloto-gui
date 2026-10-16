@@ -29,7 +29,7 @@ import threading
 import time
 import urllib.request
 
-from . import net
+from . import consentimiento, net
 from .gate import argv_gate
 from .loop_agentes import (
     agente_ok,
@@ -106,6 +106,9 @@ class Config:
         self.revision_manual = env.get("REVISION_MANUAL", "0")
         self.timeout_revision_manual = int(
             env.get("TIMEOUT_REVISION_MANUAL", "1800"))
+        # Security: an agent (MCP origin) may only APPROVE its own diff when
+        # explicitly opted in. Default is safe: agent approvals are ignored.
+        self.revision_aprueba_agente = env.get("REVISION_APRUEBA_AGENTE", "0")
         self.voz = env.get("VOZ", "0")
         self.max_costo = float(env.get("MAX_COSTO", "0") or 0)
         self.costo_por_iter = env.get("COSTO_POR_ITER", "0.50")
@@ -421,6 +424,32 @@ def run(cfg):
         alerta(cfg.voz, "Sin internet, se aborta el dedalo")
         return 4
     logx(cfg.log, "Internet OK")
+
+    if not consentimiento.concedido(cfg.proyecto, cfg.environ):
+        fichas = consentimiento.ficheros(cfg.proyecto)
+        mensaje(cfg, "[dedalo] ⚠ El gate va a ejecutar código del repo SIN "
+                     "sandbox: " + ", ".join(fichas))
+        if sys.stdin is not None and sys.stdin.isatty():
+            try:
+                resp = input("[dedalo] ¿Confiar y ejecutar el gate? [y/N] ")
+            except EOFError:
+                resp = ""
+            if resp.strip().lower() in ("y", "yes", "s", "si", "sí"):
+                consentimiento.confiar(cfg.proyecto)
+                logx(cfg.log, "GATE: checks aprobados por el usuario")
+            else:
+                mensaje(cfg, "[dedalo] ✗ gate no aprobado; abortando.")
+                logx(cfg.log, "ABORTADO: gate_checks sin consentimiento")
+                _incidencia(cfg, "aborto_consentimiento",
+                            "el usuario no aprobó los gate_checks")
+                return 3
+        else:
+            print(f"[dedalo] ✗ gate_checks sin consentimiento (sin terminal). "
+                  f"Aprueba con {consentimiento.CONSENT_ENV}=1 o desde la GUI.")
+            logx(cfg.log, "ABORTADO: gate_checks sin consentimiento")
+            _incidencia(cfg, "aborto_consentimiento",
+                        "gate_checks sin consentimiento (no interactivo)")
+            return 3
 
     dir_gate = backup_gate(cfg)
     print("[dedalo] Baseline: gate.sh...")
@@ -840,22 +869,28 @@ def run(cfg):
 
     if cfg.push:
         asegurar_remote_origin(cfg)
-        rc, _, _ = run_git(cfg.proyecto, "remote", "get-url", "origin")
+        rc, url, _ = run_git(cfg.proyecto, "remote", "get-url", "origin")
         if rc == 0:
             push_rama = cfg.rama_trabajo or rama_run
-            if run_git(cfg.proyecto, "push", "-u", "origin", push_rama,
-                       timeout=300)[0] == 0:
-                logx(cfg.log, f"push: origin/{push_rama}")
-                print(f"[dedalo] ✔ push OK: origin/{push_rama}")
-                if cfg.rama_trabajo:
+            # Salvaguarda: nunca empujar la rama base (protegida) por accidente.
+            if push_rama in (cfg.rama_base, "master", "main"):
+                mensaje(cfg, f"[dedalo] ✗ push abortado: '{push_rama}' es la "
+                             "rama base; el trabajo debe ir en una rama dedalo/*.")
+                logx(cfg.log, f"push abortado: '{push_rama}' es rama base")
+            else:
+                # Visibilidad: deja claro a qué remoto se sube antes de hacerlo.
+                print(f"[dedalo] push → origin ({url.strip()}) rama "
+                      f"{push_rama}")
+                logx(cfg.log, f"push: origin ({url.strip()}) {push_rama}")
+                if run_git(cfg.proyecto, "push", "-u", "origin", push_rama,
+                           timeout=300)[0] == 0:
+                    logx(cfg.log, f"push: origin/{push_rama}")
+                    print(f"[dedalo] ✔ push OK: origin/{push_rama}")
                     print(f"[dedalo] abre el PR de {push_rama} -> "
                           f"{cfg.rama_base}")
                 else:
-                    print(f"[dedalo] abre el PR de {rama_run} -> "
-                          f"{cfg.rama_base}")
-            else:
-                mensaje(cfg, f"[dedalo] ⚠ falló el push a origin/"
-                             f"{push_rama}. El trabajo queda local.")
+                    mensaje(cfg, f"[dedalo] ⚠ falló el push a origin/"
+                                 f"{push_rama}. El trabajo queda local.")
         else:
             mensaje(cfg, "[dedalo] ℹ sin remote origin (repo no creado). "
                          "Trabajo queda local.")
@@ -954,6 +989,30 @@ def asegurar_remote_origin(cfg):
                       "credenciales)")
 
 
+def _origen_decision(crudo):
+    """Origin marker of the review decision file ("mcp", "gui" or "").
+
+    The writer adds a `# origen=<quien>` line (GUI: `gui`, MCP tool: `mcp`).
+    Files without a marker (older clients, manual writes) return "" and are
+    treated as human, so the historical behavior is preserved."""
+    for linea in crudo.splitlines()[1:]:
+        linea = linea.strip()
+        if linea.startswith("# origen="):
+            return linea[len("# origen="):].strip().lower()
+    return ""
+
+
+def _motivo_rechazo(crudo):
+    """REJECT reason: everything after the word REJECT, without the origin
+    marker line (`# origen=...` and any other `#` bookkeeping line)."""
+    lineas = crudo.splitlines()
+    if not lineas or not lineas[0].strip().upper().startswith("REJECT"):
+        return ""
+    partes = [lineas[0].strip()[len("REJECT"):]]
+    partes += [ln for ln in lineas[1:] if not ln.strip().startswith("#")]
+    return "\n".join(partes).strip()
+
+
 def _esperar_revision_manual(cfg, tarea):
     """Port de esperar_revision_manual(): devuelve 0 aprobado, 2 timeout,
     1 rechazado (deja el motivo en _RECHAZO_MOTIVO), 4 sin internet
@@ -973,51 +1032,77 @@ def _esperar_revision_manual(cfg, tarea):
     print(f"[dedalo] ⏸ Esperando revisión manual en {dir_rev}...")
     logx(cfg.log, f"ESPERANDO REVISIÓN MANUAL: {tarea}")
 
+    decision_path = os.path.join(dir_rev, "decision")
     esperado = 0
-    while not os.path.exists(os.path.join(dir_rev, "decision")):
-        time.sleep(2)
-        esperado += 2
-        if esperado % 30 == 0 and not net.hay_internet():
-            mensaje(cfg, "[dedalo] ✗ sin internet durante la revisión "
-                         "manual: abortando.")
-            logx(cfg.log, "ABORTADO: sin internet durante revisión manual")
-            alerta(cfg.voz, "Sin internet, se aborta el dedalo")
+    while True:
+        while not os.path.exists(decision_path):
+            time.sleep(2)
+            esperado += 2
+            if esperado % 30 == 0 and not net.hay_internet():
+                mensaje(cfg, "[dedalo] ✗ sin internet durante la revisión "
+                             "manual: abortando.")
+                logx(cfg.log, "ABORTADO: sin internet durante revisión manual")
+                alerta(cfg.voz, "Sin internet, se aborta el dedalo")
+                for f in ("waiting", "decision"):
+                    try:
+                        os.unlink(os.path.join(dir_rev, f))
+                    except OSError:
+                        pass
+                return 4
+            if (cfg.timeout_revision_manual > 0
+                    and esperado >= cfg.timeout_revision_manual):
+                mensaje(cfg, f"[dedalo] ✗ timeout de revisión manual "
+                             f"({cfg.timeout_revision_manual}s): tarea "
+                             f"bloqueada.")
+                logx(cfg.log, "REVISIÓN MANUAL: timeout sin respuesta")
+                alerta(cfg.voz, "Revisión manual sin respuesta, tarea marcada "
+                                "como bloqueada")
+                for f in ("waiting", "decision"):
+                    try:
+                        os.unlink(os.path.join(dir_rev, f))
+                    except OSError:
+                        pass
+                return 2
+        crudo = _leer(decision_path)
+        origen = _origen_decision(crudo)
+        if (crudo.strip().upper().startswith("APPROVE") and origen == "mcp"
+                and cfg.revision_aprueba_agente != "1"):
+            # Policy: an agent must not approve its own work. Ignore the
+            # decision and keep waiting so a human can still approve in the GUI.
+            mensaje(cfg, "[dedalo] ⚠ aprobación emitida por un agente ignorada "
+                         "(política REVISION_APRUEBA_AGENTE=0); sigue esperando "
+                         "aprobación humana.")
+            logx(cfg.log, "REVISIÓN MANUAL: APROBACIÓN POR AGENTE IGNORADA "
+                          "(política)")
+            _incidencia(cfg, "revision_agente",
+                        "aprobación por agente ignorada", tarea)
             for f in ("waiting", "decision"):
                 try:
                     os.unlink(os.path.join(dir_rev, f))
                 except OSError:
                     pass
-            return 4
-        if (cfg.timeout_revision_manual > 0
-                and esperado >= cfg.timeout_revision_manual):
-            mensaje(cfg, f"[dedalo] ✗ timeout de revisión manual "
-                         f"({cfg.timeout_revision_manual}s): tarea bloqueada.")
-            logx(cfg.log, "REVISIÓN MANUAL: timeout sin respuesta")
-            alerta(cfg.voz, "Revisión manual sin respuesta, tarea marcada "
-                            "como bloqueada")
-            for f in ("waiting", "decision"):
-                try:
-                    os.unlink(os.path.join(dir_rev, f))
-                except OSError:
-                    pass
-            return 2
-    decision = _leer(os.path.join(dir_rev, "decision"))
+            with open(os.path.join(dir_rev, "waiting"), "w",
+                      encoding="utf-8") as f:
+                f.write("waiting")
+            continue
+        break
     for f in ("waiting", "decision"):
         try:
             os.unlink(os.path.join(dir_rev, f))
         except OSError:
             pass
-    if decision.startswith("APPROVE"):
+    quien = f"origen={origen}" if origen else "origen=humano"
+    if crudo.startswith("APPROVE"):
         print("[dedalo] ✔ Diff aprobado manualmente")
-        logx(cfg.log, "REVISIÓN MANUAL: APROBADO")
+        logx(cfg.log, f"REVISIÓN MANUAL: APROBADO ({quien})")
         return 0
-    if decision.startswith("REJECT"):
-        motivo = decision[len("REJECT"):].strip()
+    if crudo.startswith("REJECT"):
+        motivo = _motivo_rechazo(crudo)
         print(f"[dedalo] ✗ Diff rechazado: {motivo}")
-        logx(cfg.log, f"REVISIÓN MANUAL: RECHAZADO - {motivo}")
+        logx(cfg.log, f"REVISIÓN MANUAL: RECHAZADO - {motivo} ({quien})")
         _RECHAZO_MOTIVO["txt"] = motivo
         return 1
-    print(f"[dedalo] ⚠ Decisión desconocida: {decision}")
+    print(f"[dedalo] ⚠ Decisión desconocida: {crudo}")
     return 1
 
 

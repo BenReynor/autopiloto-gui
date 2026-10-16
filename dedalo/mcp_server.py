@@ -444,14 +444,23 @@ def resolver_revision(nombre: str, decision: str, motivo: str = "") -> str:
     `decision`: "APPROVE" (aceptar el diff) o "REJECT" (rechazar; usa `motivo`).
     Es lo que permite a un agente piloto ocupar el asiento del humano cuando el
     loop pausa esperando aprobación.
+
+    El fichero lleva una marca `# origen=mcp` para que el loop pueda auditar
+    quién decidió y aplicar la política `REVISION_APRUEBA_AGENTE`: por defecto
+    (0) el loop IGNORA un APPROVE emitido por un agente y sigue esperando a una
+    persona. Con `REVISION_APRUEBA_AGENTE=1` el agente puede aprobar.
     """
     decision = decision.strip().upper()
     if decision not in ("APPROVE", "REJECT"):
         raise ValueError("decision debe ser APPROVE o REJECT")
     fondo = os.path.join(_ruta_de(nombre), ".dedalo_review")
     os.makedirs(fondo, exist_ok=True)
-    texto = "APPROVE" if decision == "APPROVE" else "REJECT " + (motivo or "").strip()
-    with open(os.path.join(fondo, "decision"), "w", encoding="utf-8") as f:
+    texto = ("APPROVE" if decision == "APPROVE"
+             else "REJECT " + (motivo or "").strip()) + "\n# origen=mcp\n"
+    destino = os.path.join(fondo, "decision")
+    # 0o600: la decisión es sensible y solo la lee el loop del mismo usuario.
+    fd = os.open(destino, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(texto)
     return json.dumps({"nombre": nombre, "decision": decision,
                        "detalle": texto.strip()}, ensure_ascii=False, indent=2)

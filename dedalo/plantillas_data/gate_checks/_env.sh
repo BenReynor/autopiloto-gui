@@ -17,7 +17,8 @@
 #   SERVE_CMD       command that starts the backend to test endpoints
 #   SERVE_URL       base URL to test endpoints ("" = not tested)
 #   TOKEN_URL       login URL for token ("" = no token)
-#   USUARIO/CLAVE   login credentials ("" = no auth)
+#   USUARIO/CLAVE   login credentials ("" = no auth). Default dev-only
+#                   (admin/admin123) applied ONLY for a localhost backend.
 #   ENDPOINTS       list of endpoints ("/api/...") separated by spaces
 
 if [ -z "${PROYECTO:-}" ] || [ "$PROYECTO" = "" ]; then
@@ -67,8 +68,17 @@ if [ -n "$PY_BACKEND" ] && [ -f "$BACKEND_DIR/manage.py" ]; then
         SERVE_CMD="cd \"$BACKEND_DIR\" && \"$PY_BACKEND\" manage.py runserver 8000 --noreload"
         SERVE_URL="${SERVE_URL:-http://localhost:8000}"
         TOKEN_URL="${TOKEN_URL:-http://localhost:8000/api/token/}"
-        USUARIO="${USUARIO:-admin}"
-        CLAVE="${CLAVE:-admin123}"
+        # Dev-only scaffold credentials. They are NEVER sent outside the local
+        # machine: only applied when the target is localhost. For a remote URL,
+        # USUARIO/CLAVE must be set explicitly.
+        case "${SERVE_URL}${TOKEN_URL}" in
+            *//localhost*|*//127.0.0.1*|*//0.0.0.0*|*//\[::1\]*)
+                USUARIO="${USUARIO:-admin}"
+                CLAVE="${CLAVE:-admin123}" ;;
+        esac
+        if [ -z "$USUARIO" ]; then
+            echo "[GATE] ⚠ USUARIO/CLAVE no configurados para un backend remoto; define credenciales o el login fallará."
+        fi
         ENDPOINTS="${ENDPOINTS:-productos/productos/ ventas/clientes/ usuarios/usuarios/ caja/caja/ kardex/movimientos/ compras/compras/ config/config/}"
     fi
 elif [ -n "$PY_BACKEND" ]; then
