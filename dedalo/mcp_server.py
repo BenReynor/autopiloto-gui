@@ -83,7 +83,7 @@ The full text of this manual is in the resource `dedalo://manual`.
 
 mcp = MCPServer("dedalo", instructions=MANUAL)
 
-# Ficheros que un cliente puede leer vía el recurso dedalo://{nombre}/{fichero}.
+# Files a client can read via resource dedalo://{name}/{file}.
 FICHEROS_RECURSO = (
     "plan.md",
     "lecciones.md",
