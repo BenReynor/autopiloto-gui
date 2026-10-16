@@ -7,9 +7,9 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)](#-compatibility)
 
-Graphical control panel (PySide6) for the **Dédalo** system: manages AI agents (opencode, codex, claude) that iterate over tasks from a `plan.md`, run tests (`gate.sh`), request code review, and commit automatically.
+Orchestrates AI agents (opencode, codex, claude) to iterate over tasks in `plan.md`, run tests, request code review, and commit automatically.
 
-> **Using an AI to work on this project?** Point it at
+> **Working with an AI on this project?** See
 > [`docs/FICHA_TECNICA.md`](docs/FICHA_TECNICA.md) —requirements, dependencies,
 > platforms, MCP surface, and security in a single file designed so that a model
 > (and a technical person) can grasp at a glance what Dédalo is and what it

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dedalo"
 version = "2.0.2"
-description = "Dédalo control panel: a PySide6 GUI to manage AI agents across projects"
+description = "Orchestrates AI agents to iterate on tasks, run tests, and commit automatically."
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
