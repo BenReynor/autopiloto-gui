@@ -1,21 +1,21 @@
 name: Release
 
-# Genera los binarios de la release cuando se etiqueta un tag v*.
+# Generates the release binaries when a v* tag is pushed.
 #   git tag v2.1.0 && git push origin v2.1.0
-# workflow_dispatch sirve para probar el pipeline sin publicar (el job de
-# release sólo se activa con tag).
+# workflow_dispatch serves to test the pipeline without publishing (the
+# release job only activates with a tag).
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-  # Semanal (lunes 07:00 UTC): compila los 3 SO aunque no haya cambios, para
-  # detectar que una actualización de runner/PyInstaller/PySide6 rompa el
-  # empaquetado. El job `release` está limitado a tags, así que esto NO publica.
+  # Weekly (Monday 07:00 UTC): compiles the 3 OSes even if there are no
+  # changes, to detect that a runner/PyInstaller/PySide6 update breaks the
+  # packaging. The `release` job is limited to tags, so this does NOT publish.
   schedule:
     - cron: "0 7 * * 1"
 
 permissions:
-  contents: write  # crea la release y sube artefactos
+  contents: write  # creates the release and uploads artifacts
 
 jobs:
   linux:
@@ -29,8 +29,8 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      # El binario arranca Qt: además de las libs de build, el runtime
-      # necesita GL/X/DBus (coincide con los Depends del .deb).
+      # The binary boots Qt: besides the build libs, the runtime needs
+      # GL/X/DBus (matches the .deb Depends).
       - name: Dependencias del sistema
         run: |
           sudo apt-get update
@@ -63,16 +63,16 @@ jobs:
             packaging/out/SHA256SUMS
           if-no-files-found: error
 
-  # Windows: el onedir (dedalo.exe) + .zip. El smoke valida lo más
-  # delicado del binario windowed: arranca la GUI y el motor via
-  # `--dedalo-loop` corre empaquetado (sus prints van a devnull, no hay
-  # consola) y devuelve su código de salida.
+  # Windows: the onedir (dedalo.exe) + .zip. The smoke validates the most
+  # delicate part of the windowed binary: it boots the GUI and the engine via
+  # `--dedalo-loop` runs packaged (its prints go to devnull, there is no
+  # console) and returns its exit code.
   windows:
     name: Windows (.zip)
     runs-on: windows-latest
-    # Consola del runner = cp1252: el smoke del motor escribe ✗/→ y sin
-    # UTF-8 el exe reventaría con UnicodeEncodeError (el código ya se
-    # protege, esta es la doble barrera del build).
+    # Runner console = cp1252: the engine smoke writes ✗/→ and without
+    # UTF-8 the exe would blow up with UnicodeEncodeError (the code already
+    # protects itself, this is the build's second barrier).
     env:
       PYTHONUTF8: "1"
     steps:
@@ -111,8 +111,8 @@ jobs:
   macos:
     name: macOS (.dmg)
     runs-on: macos-latest
-    # Secretos opcionales: sin ellos el .dmg sale sin firmar (sirve para
-    # probar el pipeline). Con ellos: codesign + notarytool + stapler.
+    # Optional secrets: without them the .dmg ships unsigned (enough for
+    # testing the pipeline). With them: codesign + notarytool + stapler.
     env:
       APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
       APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -154,13 +154,13 @@ jobs:
   release:
     name: Crear release en GitHub
     needs: [linux, macos, windows]
-    # Sólo al etiquetar un v*: el workflow_dispatch no publica nada.
+    # Only when tagging a v*: workflow_dispatch publishes nothing.
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # para --generate-notes
+          fetch-depth: 0  # for --generate-notes
 
       - uses: actions/download-artifact@v4
         with:

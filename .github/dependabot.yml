@@ -1,10 +1,10 @@
 version: 2
 
 updates:
-  # Dependencias de Python (pyproject.toml). Dependabot abre PRs cuando salen
-  # versiones nuevas; el CI corre en esos PRs. El workflow "Dependabot lock"
-  # regenera requirements.lock en la misma rama para que la comprobación del
-  # lock no bloquee el PR.
+  # Python dependencies (pyproject.toml). Dependabot opens PRs when new
+  # versions come out; the CI runs on those PRs. The "Dependabot lock"
+  # workflow regenerates requirements.lock on the same branch so the lock
+  # check does not block the PR.
   - package-ecosystem: pip
     directory: "/"
     schedule:
@@ -18,8 +18,8 @@ updates:
       python-deps:
         patterns: ["*"]
 
-  # Versiones de las propias GitHub Actions (actions/checkout, setup-python…).
-  # Un cambio incompatible en una Action rompería el CI; aquí llega como PR.
+  # Versions of the GitHub Actions themselves (actions/checkout, setup-python…).
+  # An incompatible change in an Action would break the CI; here it arrives as a PR.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

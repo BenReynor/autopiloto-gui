@@ -1,4 +1,4 @@
-"""Lectura de la temperatura de la CPU (Linux) para la protección térmica."""
+"""Reading the CPU temperature (Linux) for thermal protection."""
 
 import glob
 import re
@@ -11,8 +11,8 @@ from . import configuracion as cfg
 LIMITE_SUPERIOR = 150
 LIMITE_INFERIOR = 5
 
-# La GUI llama a leer_temperatura() cada segundo; cacheamos el resultado
-# unos segundos para no lanzar `sensors` en cada tick.
+# The GUI calls leer_temperatura() every second; we cache the result
+# for a few seconds so we don't launch `sensors` on every tick.
 _CACHE_SEG = 2
 _cache = (0.0, None)
 
@@ -56,7 +56,7 @@ def _sensors():
 
 
 def leer_temperatura():
-    """Devuelve la temperatura máxima (en °C) o None si no se puede leer."""
+    """Returns the maximum temperature (in °C) or None if it cannot be read."""
     momento, valor = _cache
     if time.monotonic() - momento < _CACHE_SEG:
         return valor

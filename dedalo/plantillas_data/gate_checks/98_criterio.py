@@ -1,9 +1,9 @@
-# 98_criterio.py — JUEZ de criterio en lenguaje natural (goal-worker).
-# Port de 98_criterio.sh para el orquestador portable (Windows sin bash).
+# 98_criterio.py — Natural-language criteria JUDGE (goal-worker).
+# Port of 98_criterio.sh for the portable orchestrator (Windows without bash).
 #
-# Dédalo extrae la línea "criterio: ..." de la primera tarea pendiente y
-# la exporta como CRITERIO. Un juez (modelo barato) evalúa si se cumple contra
-# el estado real del repo. CRITERIO vacío -> se omite.
+# Dédalo extracts the "criterio: ..." line from the first pending task and
+# exports it as CRITERIO. A judge (cheap model) evaluates whether it is met
+# against the real state of the repo. Empty CRITERIO -> skipped.
 #
 # Configurable: CRITERIO, AGENTE_JUEZ (opencode|codex|claude|auto), MODELO_JUEZ,
 # OPENCODE_AGENT_JUEZ, CLI_OPENCODE/CLI_CODEX/CLI_CLAUDE, AGENTE_TAREA,

@@ -1,7 +1,7 @@
-"""Widgets de las pestañas del panel y el aviso de sobrecalentamiento.
+"""Widgets for the panel tabs and the overheat warning.
 
-Cada clase construye su UI y expone señales/métodos; la ventana (app.py) solo
-orquesta: conecta señales, gestiona procesos y actualiza estado.
+Each class builds its UI and exposes signals/methods; the window (app.py) only
+orchestrates: connects signals, manages processes and updates state.
 """
 
 import json
@@ -60,7 +60,7 @@ def _fuente_ui(objeto):
 
 
 def _numero(texto, defv, tipo=float, minimo=None):
-    """Parsea un texto numérico tolerante (ignora caracteres extraños)."""
+    """Parses a tolerant numeric text (ignores weird characters)."""
     try:
         valor = tipo(re.sub(r"[^\d.-]", "", texto or "").strip() or defv)
     except ValueError:
@@ -71,44 +71,44 @@ def _numero(texto, defv, tipo=float, minimo=None):
 
 
 class _LabelMuted(QLabel):
-    """Label con color de texto secundario."""
+    """Label with secondary text color."""
     def __init__(self, text="", parent=None):
         super().__init__(text, parent)
         self.setProperty("status", "muted")
 
 
 class _LabelStatus(QLabel):
-    """Label con estado semántico (success/warning/error/info)."""
+    """Label with semantic status (success/warning/error/info)."""
     def __init__(self, text="", status="info", parent=None):
         super().__init__(text, parent)
         self.setProperty("status", status)
 
 
 class _BtnPrimary(QPushButton):
-    """Botón principal (acción principal)."""
+    """Primary button (main action)."""
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
 
 
 class _BtnGhost(QPushButton):
-    """Botón secundario (ghost)."""
+    """Secondary (ghost) button."""
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
         self.setProperty("ghost", True)
 
 
 class _BtnDanger(QPushButton):
-    """Botón destructivo (danger)."""
+    """Destructive (danger) button."""
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
         self.setProperty("danger", True)
 
 
 class _BtnDangerGhost(QPushButton):
-    """Botón destructivo sutil (borde/fuente en rojo, fondo transparente).
+    """Subtle destructive button (red border/text, transparent background).
 
-    Para acciones de riesgo en tablas (revertir, eliminar) donde un bloque
-    sólido rojo sería demasiado pesado visualmente.
+    For risky actions in tables (revert, delete) where a solid red block
+    would be visually too heavy.
     """
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
@@ -116,25 +116,25 @@ class _BtnDangerGhost(QPushButton):
 
 
 class _BtnSmallGhost(QPushButton):
-    """Botón ghost compacto (tablas/listas), consistente con el tema."""
+    """Compact ghost button (tables/lists), consistent with the theme."""
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
         self.setProperty("ghost", True)
         self.setProperty("small", True)
 
 
-# ─── CABINA: pipeline, píldora y detección de fase ────────────────
+# ─── COCKPIT: pipeline, pill and phase detection ──────────────────
 
-# Orden canónico de las fases del loop (mirror de dedalo.sh)
+# Canonical order of the loop phases (mirrors dedalo.sh)
 PIPELINE_FASES = ["Plan", "Agente", "Gate", "Revisor", "Commit"]
 
 
 def _sincronizar_modelo(selector, cmb_cli):
-    """El selector de modelo sólo aplica a opencode.
+    """The model selector only applies to opencode.
 
-    codex y claude toman su modelo de su propia cuenta, así que el selector se
-    deshabilita con una nota: evita que la GUI ofrezca un modelo opencode que el
-    script luego ignora en silencio.
+    codex and claude take their model from their own account, so the selector is
+    disabled with a note: it prevents the GUI from offering an opencode model
+    that the script later silently ignores.
     """
     if selector is None or cmb_cli is None:
         return
@@ -148,10 +148,10 @@ def _sincronizar_modelo(selector, cmb_cli):
 
 
 def fase_actual(log_ruta: str) -> str:
-    """Deduce la fase actual del loop desde progreso.log (últimas ~40 líneas).
+    """Deduces the current loop phase from progreso.log (last ~40 lines).
 
-    El programa decide la fase: revisor/gate/commit se detectan por marcadores
-    que ya emite dedalo.sh. Devuelve una de PIPELINE_FASES o "" si no corre.
+    The program decides the phase: reviewer/gate/commit are detected by
+    markers dedalo.sh already emits. Returns PIPELINE_FASES or "" if not running.
     """
     if not log_ruta or not os.path.isfile(log_ruta):
         return ""
@@ -182,10 +182,10 @@ def fase_actual(log_ruta: str) -> str:
 
 
 class PipelineLoop(QWidget):
-    """Flujo del pipeline pintado: nodos redondeados unidos por conectores.
+    """Painted pipeline flow: rounded nodes joined by connectors.
 
-    Colores del tema activo (temas.colores_tema) para que vaya a juego con el
-    QSS. Con cfg.MOTION el nodo activo "respira" (halo expansivo suave).
+    Colors from the active theme (temas.colores_tema) so it matches the
+    QSS. With cfg.MOTION the active node "breathes" (soft expanding halo).
     """
 
     def __init__(self, parent=None):
@@ -206,7 +206,7 @@ class PipelineLoop(QWidget):
             self._timer_pulso.start()
         self.update()
 
-    # ---- API pública -------------------------------------------------
+    # ---- Public API -------------------------------------------------
 
     def set_tema(self, nombre: str):
         from .temas import colores_tema
@@ -220,7 +220,7 @@ class PipelineLoop(QWidget):
         self.update()
 
     def setFase(self, fase: str):
-        """Marca la fase actual como 'active', las anteriores 'ok'."""
+        """Marks the current phase as 'active', the earlier ones as 'ok'."""
         if not fase or fase not in self._estados:
             self.setPendiente()
             return
@@ -245,7 +245,7 @@ class PipelineLoop(QWidget):
             self._estados[nombre] = "fail"
         self.update()
 
-    # ---- Animación / pintado -----------------------------------------
+    # ---- Animation / painting -----------------------------------------
 
     def _tick_pulso(self):
         self._pulso = (self._pulso + 0.05) % 1.0
@@ -269,7 +269,7 @@ class PipelineLoop(QWidget):
         def centro(i):
             return margen + i * (pill_w + separacion) + pill_w / 2.0
 
-        # Conectores (línea + nodo pequeño en el punto medio)
+        # Connectors (line + small node at the midpoint)
         p.setPen(QPen(c["border"], 2.0))
         for i in range(1, n):
             x0 = centro(i - 1) + pill_w / 2.0 + 3.0
@@ -289,7 +289,7 @@ class PipelineLoop(QWidget):
             p.setPen(QPen(c["bg_panel"], 1.0))
             p.drawEllipse(QPointF((x0 + x1) / 2.0, cy), 4.0, 4.0)
 
-        # Nodos
+        # Nodes
         for i, nombre in enumerate(PIPELINE_FASES):
             estado = self._estados[nombre]
             cx = centro(i)
@@ -334,9 +334,9 @@ class PipelineLoop(QWidget):
 
 
 class LoopPill(QLabel):
-    """Píldora de estado del loop: '● 3/40 · fase: Gate'.
+    """Loop status pill: '● 3/40 · fase: Gate'.
 
-    Con cfg.MOTION la píldora "respira" (opacidad ámbar, QPropertyAnimation).
+    With cfg.MOTION the pill "breathes" (amber opacity, QPropertyAnimation).
     """
 
     def __init__(self, parent=None):
@@ -380,9 +380,9 @@ class LoopPill(QLabel):
 
 
 class AvisoTemperatura(QDialog):
-    """Aviso de sobrecalentamiento con cuenta regresiva.
+    """Overheat warning with countdown.
 
-    Si nadie toca los botones antes de que llegue a 0, apaga la aplicación.
+    If nobody clicks the buttons before it reaches 0, the application shuts down.
     """
 
     def __init__(self, temp, segundos, parent=None):
@@ -445,7 +445,7 @@ class AvisoTemperatura(QDialog):
 
 
 class KanbanWidget(QWidget):
-    """Vista Kanban de tareas: 3 columnas (Pendiente, Hecha, Bloqueada)."""
+    """Kanban view of tasks: 3 columns (Pending, Done, Blocked)."""
 
     tarea_seleccionada = Signal(str)
 
@@ -480,7 +480,7 @@ class KanbanWidget(QWidget):
         v.setContentsMargins(8, 8, 8, 8)
         v.setSpacing(8)
 
-        # Header con título + contador
+        # Header with title + counter
         header = QHBoxLayout()
         header.setSpacing(8)
         lbl = QLabel(titulo)
@@ -555,12 +555,12 @@ class KanbanWidget(QWidget):
         for t in self._plan.tareas:
             item = QListWidgetItem(t["texto"])
             item.setToolTip(f"Línea {t['linea']}")
-            # Estados visuales
+            # Visual states
             if t["estado"] == "pendiente":
                 self.col_pend.lista.addItem(item)
                 pend += 1
             elif t["estado"] == "hecha":
-                # Tachado visual
+                # Visual strikethrough
                 font = item.font()
                 font.setStrikeOut(True)
                 item.setFont(font)
@@ -568,14 +568,14 @@ class KanbanWidget(QWidget):
                 self.col_hecha.lista.addItem(item)
                 hecha += 1
             elif t["estado"] == "bloqueada":
-                # Rojo + negrita
+                # Red + bold
                 font = item.font()
                 font.setBold(True)
                 item.setFont(font)
                 item.setForeground(Qt.red)
                 self.col_bloq.lista.addItem(item)
                 bloq += 1
-        # Actualizar badges
+        # Update badges
         self.col_pend.badge.setText(str(pend))
         self.col_hecha.badge.setText(str(hecha))
         self.col_bloq.badge.setText(str(bloq))
@@ -587,7 +587,7 @@ class KanbanWidget(QWidget):
 
 
 class PanelPlan(QWidget):
-    """Editor de plan.md con contador de tareas y vista Kanban."""
+    """plan.md editor with task counter and Kanban view."""
 
     guardado = Signal(str)
 
@@ -604,7 +604,7 @@ class PanelPlan(QWidget):
         self.lbl_conteo = _LabelMuted("")
         v.addWidget(self.lbl_conteo)
 
-        # Splitter: Kanban arriba, editor abajo
+        # Splitter: Kanban on top, editor below
         self.splitter = QSplitter(Qt.Vertical)
         self.splitter.setHandleWidth(4)
         self.splitter.setChildrenCollapsible(False)
@@ -632,7 +632,7 @@ class PanelPlan(QWidget):
         v.addLayout(h)
 
     def _en_editor_seleccionar(self, texto):
-        """Scroll al editor a la línea de la tarea seleccionada en Kanban."""
+        """Scrolls the editor to the line of the task selected in Kanban."""
         if not self._plan:
             return
         for i, linea in enumerate(self.editor.toPlainText().splitlines(), 1):
@@ -664,7 +664,7 @@ class PanelPlan(QWidget):
         self._huella_guardada = self._huella_plan()
 
     def _huella_plan(self):
-        """(mtime, tamaño) del plan.md en disco; None si no se puede leer."""
+        """(mtime, size) of plan.md on disk; None if it cannot be read."""
         if not self._plan:
             return None
         try:
@@ -674,7 +674,7 @@ class PanelPlan(QWidget):
             return None
 
     def _recargar_si_cambio(self):
-        """Recarga plan.md si cambió en disco; nunca pisa ediciones sin guardar."""
+        """Reloads plan.md if it changed on disk; never overwrites unsaved edits."""
         if not self._plan or self._modificado:
             return
         huella = self._huella_plan()
@@ -715,10 +715,10 @@ class PanelPlan(QWidget):
 
 
 class PanelLecciones(QWidget):
-    """Memoria del proyecto (lecciones.md): editor + nueva lección + auto-recarga.
+    """Project memory (lecciones.md): editor + new lesson + auto-reload.
 
-    El contenido se inyecta al agente en cada tarea (corrección única de
-    errores); el dedalo también añade lecciones al bloquear tareas.
+    The content is injected into the agent on every task (single correction of
+    errors); dedalo also adds lessons when tasks get blocked.
     """
 
     guardado = Signal(str)
@@ -771,7 +771,7 @@ class PanelLecciones(QWidget):
             self._modificado = True
 
     def _nueva_leccion(self):
-        """Añade una plantilla de lección al final del editor y la enfoca."""
+        """Appends a lesson template to the end of the editor and focuses it."""
         from datetime import datetime
         bloque = (
             f"\n## {datetime.now().strftime('%Y-%m-%d %H:%M')} — Título breve de la lección\n"
@@ -817,7 +817,7 @@ class PanelLecciones(QWidget):
             return None
 
     def _recargar_si_cambio(self):
-        """Recarga lecciones.md si cambió en disco; nunca pisa ediciones sin guardar."""
+        """Reloads lecciones.md if it changed on disk; never overwrites unsaved edits."""
         if not self._ruta or self._modificado:
             return
         huella = self._huella()
@@ -841,10 +841,10 @@ class PanelLecciones(QWidget):
 
 
 class PanelIncidencias(QWidget):
-    """Incidencias del loop (incidencias.jsonl): fallos y bloqueos, en tabla.
+    """Loop incidents (incidencias.jsonl): failures and blocks, in a table.
 
-    Una línea JSON por incidencia (ts, iteración, tarea, tipo, motivo). El panel
-    se relee solo cuando el fichero cambia en disco, igual que PanelLecciones.
+    One JSON line per incident (ts, iteration, task, type, reason). The panel
+    reloads itself when the file changes on disk, just like PanelLecciones.
     """
 
     def __init__(self, parent=None):
@@ -932,7 +932,7 @@ class PanelIncidencias(QWidget):
             return None
 
     def _recargar_si_cambio(self):
-        """Recarga si incidencias.jsonl cambió en disco (solo lectura)."""
+        """Reloads if incidencias.jsonl changed on disk (read-only)."""
         if not self._ruta:
             return
         huella = self._huella()
@@ -942,7 +942,7 @@ class PanelIncidencias(QWidget):
 
 
 class PanelMapa(QWidget):
-    """Visor de mapeo.txt (mapa módulos → tests)."""
+    """Viewer for mapeo.txt (module -> test map)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -999,7 +999,7 @@ class PanelMapa(QWidget):
 
 
 class PanelRevision(QWidget):
-    """Panel para revisar diff antes de commitear: muestra diff, botones Aprobar/Rechazar."""
+    """Panel to review the diff before committing: shows diff, Approve/Reject buttons."""
 
     aprobado = Signal()
     rechazado = Signal(str)
@@ -1032,7 +1032,7 @@ class PanelRevision(QWidget):
         _fuente_monospace(self.txt_diff)
         v.addWidget(self.txt_diff, 1)
 
-        # Botones
+        # Buttons
         h = QHBoxLayout()
         h.setSpacing(8)
         self.b_aprobar = _BtnPrimary("✓ Aprobar y commitear")
@@ -1088,7 +1088,7 @@ class PanelRevision(QWidget):
 
 
 class PanelEjecucion(QWidget):
-    """Opciones de lanzamiento, control del loop y salida en vivo."""
+    """Launch options, loop control and live output."""
 
     iniciar = Signal()
     detener = Signal()
@@ -1099,8 +1099,8 @@ class PanelEjecucion(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        # Scroll interno: las opciones se reajustan (y se pueden desplazar) si
-        # la ventana es baja; con altura suficiente ocupan todo el ancho.
+        # Internal scroll: the options readjust (and can scroll) if
+        # the window is short; with enough height they span the full width.
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
@@ -1117,11 +1117,11 @@ class PanelEjecucion(QWidget):
         v.setSpacing(8)
         v.setContentsMargins(0, 0, 0, 0)
 
-        # ===== CABECERA: pipeline del loop (fases iluminadas) =====
+        # ===== HEADER: loop pipeline (lit phases) =====
         self.pipeline = PipelineLoop()
         v.addWidget(self.pipeline)
 
-        # ===== ZONA 1: OPCIONES DE LANZAMIENTO =====
+        # ===== ZONE 1: LAUNCH OPTIONS =====
         grupo = QGroupBox("Opciones de lanzamiento")
         g = QGridLayout(grupo)
         g.setSpacing(8)
@@ -1138,10 +1138,10 @@ class PanelEjecucion(QWidget):
             g.addWidget(widget, row, 1)
 
         def _llenar_combo_agente(cmb_cli):
-            """Rellena el combo con lo que hay en la máquina ahora mismo.
+            """Fills the combo with whatever is on the machine right now.
 
-            Un agente instalado pero SIN SESIÓN se muestra marcado y
-            deshabilitado: elegirlo abortaría el loop en la primera iteración.
+            An agent installed but WITHOUT A SESSION is shown marked and
+            disabled: choosing it would abort the loop on the first iteration.
             """
             operativo = modelos.agentes_operativos()
             detectados = modelos.agentes_instalados()
@@ -1156,8 +1156,8 @@ class PanelEjecucion(QWidget):
                     cmb_cli.addItem(etiqueta, a)
                     idx = cmb_cli.count() - 1
                     if sin_sesion:
-                        # Deshabilitar sólo el ítem: el combo sigue siendo
-                        # utilizable, pero ese agente no se puede elegir.
+                        # Disable only the item: the combo remains
+                        # usable, but that agent cannot be chosen.
                         cmb_cli.model().item(idx).setEnabled(False)
                         cmb_cli.setItemData(
                             idx, f"{a}: instalado pero sin sesión iniciada",
@@ -1170,7 +1170,7 @@ class PanelEjecucion(QWidget):
                 + "\nCon sesión: " + (", ".join(operativo) or "ninguno")
                 + "\nModelos: sólo para opencode")
             cmb_cli.blockSignals(False)
-            # Respetar la selección si sigue existiendo tras el rellenado.
+            # Respect the selection if it still exists after filling.
             if previo and previo != "auto":
                 idx = cmb_cli.findData(previo)
                 if idx > 0 and cmb_cli.model().item(idx).isEnabled():
@@ -1178,11 +1178,11 @@ class PanelEjecucion(QWidget):
             return cmb_cli
 
         def contenedor_agente(selector):
-            """Fila agente=combo CLI + selector de modelo en un mismo widget.
+            """Agent row = CLI combo + model selector in a single widget.
 
-            El combo sólo ofrece los agentes INSTALADOS (más "auto"), para no
-            dejar elegir uno que no exista. El selector de modelo se activa
-            solo con opencode: codex y claude no aceptan --model aquí.
+            The combo only offers INSTALLED agents (plus "auto"), so it never
+            lets you pick one that doesn't exist. The model selector is enabled
+            only with opencode: codex and claude don't accept --model here.
             """
             h = QHBoxLayout()
             h.setSpacing(8)
@@ -1230,8 +1230,8 @@ class PanelEjecucion(QWidget):
         self.cmb_revisor.currentTextChanged.connect(self.modelos_modificados)
         self.cmb_revisor_cli.currentTextChanged.connect(self.modelos_modificados)
 
-        # Proyecto a trabajar (rama destino del trabajo; editable: permite
-        # escribir una rama aún inexistente, NoInsert).
+        # Project to work on (target branch of the work; editable: allows
+        # typing a branch that doesn't exist yet, NoInsert).
         self.cmb_trabajo = QComboBox()
         self.cmb_trabajo.setEditable(True)
         self.cmb_trabajo.setInsertPolicy(QComboBox.NoInsert)
@@ -1291,7 +1291,7 @@ class PanelEjecucion(QWidget):
 
         v.addWidget(grupo)
 
-        # ===== BOTONES DE CONTROL =====
+        # ===== CONTROL BUTTONS =====
         h_ctrl = QHBoxLayout()
         h_ctrl.setSpacing(8)
         self.b_iniciar = _BtnPrimary("▶ Iniciar loop")
@@ -1307,7 +1307,7 @@ class PanelEjecucion(QWidget):
         h_ctrl.addStretch()
         v.addLayout(h_ctrl)
 
-        # Panel de revisión de diff (oculto por defecto)
+        # Diff review panel (hidden by default)
         self.panel_revision = PanelRevision()
         self.panel_revision.setVisible(False)
         v.addWidget(self.panel_revision)
@@ -1319,12 +1319,12 @@ class PanelEjecucion(QWidget):
         return le
 
     def actualizar_ramas(self, ruta):
-        """Rellena los combos 'Padre' y 'Proyecto a trabajar' con las ramas
-        reales del repo (git).
+        """Fills the 'Padre' and 'Proyecto a trabajar' combos with the repo's
+        real branches (git).
 
-        Conserva la selección actual; permite igualmente escribir una rama
-        que aún no exista (NoInsert). Ante cualquier fallo de git deja los
-        combos como estaban.
+        Keeps the current selection; also allows typing a branch that doesn't
+        exist yet (NoInsert). On any git failure it leaves the combos as they
+        were.
         """
         if not ruta:
             return
@@ -1347,7 +1347,7 @@ class PanelEjecucion(QWidget):
                 cmb.setCurrentText(actual)
             cmb.blockSignals(False)
 
-    # ---------- API para la ventana ----------
+    # ---------- API for the window ----------
 
     def config(self):
         return {
@@ -1374,9 +1374,9 @@ class PanelEjecucion(QWidget):
         }
 
     def aplicar_config(self, conf):
-        """Rellena los widgets con la configuración guardada del proyecto.
+        """Fills the widgets with the project's saved configuration.
 
-        Bloquea las señales para no disparar guardados durante la carga.
+        Blocks signals so it doesn't trigger saves during loading.
         """
         c = dict(cfg.LAUNCH_DEFECTO)
         c.update(conf or {})
@@ -1422,7 +1422,7 @@ class PanelEjecucion(QWidget):
     def info_modelos(self, nmodelos, nprov):
         self.lbl_modelos.setText(
             f"{nmodelos} modelos · {nprov} proveedores de opencode cargados")
-        # Auto-hide después de 3 segundos
+        # Auto-hide after 3 seconds
         QTimer.singleShot(3000, lambda: self.lbl_modelos.clear())
 
     def aplicar_modelos(self, seleccion):
@@ -1434,10 +1434,10 @@ class PanelEjecucion(QWidget):
             self.cmb_revisor_cli.setCurrentText(seleccion["revisor_cli"])
 
     def refrescar_agentes(self):
-        """Vuelve a listar los agentes (tras el sondeo de sesión en segundo plano).
+        """Re-lists the agents (after the background session probe).
 
-        Conserva la selección actual si el agente sigue siendo utilizable y, si
-        no lo es, deja el combo en "auto".
+        Keeps the current selection if the agent is still usable and, if it
+        isn't, leaves the combo on "auto".
         """
         for combo, modelo in ((self.cmb_agente_cli, self.cmb_agente),
                               (self.cmb_revisor_cli, self.cmb_revisor)):
@@ -1475,13 +1475,13 @@ class PanelEjecucion(QWidget):
 
 
 class PanelGit(QWidget):
-    """Rama, git status, últimos commits y rollback visual.
+    """Branch, git status, recent commits and visual rollback.
 
-    Los comandos git se ejecutan en un hilo de fondo (Trabajo).
+    The git commands run on a background thread (Trabajo).
     """
 
     revertir_commit = Signal(str)  # sha
-    limpiar_git = Signal()  # pedido: asegurar .gitignore + dejar de trackear framework
+    limpiar_git = Signal()  # request: ensure .gitignore + stop tracking framework
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1509,7 +1509,7 @@ class PanelGit(QWidget):
         h.addWidget(b_ref)
         v.addLayout(h)
 
-        # TreeWidget para commits con botón Revertir
+        # TreeWidget for commits with a Revert button
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["SHA", "Mensaje", "Autor", "Fecha", "Acción"])
         self.tree.setColumnWidth(0, 80)
@@ -1537,8 +1537,8 @@ class PanelGit(QWidget):
 
         rama = run(["git", "branch", "--show-current"])
         status = run(["git", "status", "--short"])
-        # Todos los commits del repo (últimos 30), de cualquier rama, para que
-        # se vean también los "revert: ..." que genera el botón ↩ Revertir.
+        # All commits in the repo (last 30), from any branch, so that
+        # the "revert: ..." ones created by the ↩ Revert button show up too.
         log = run([
             "git", "log", "--oneline", "--all", "-30",
             "--format=%H|%s|%an|%ad", "--date=short",
@@ -1554,10 +1554,10 @@ class PanelGit(QWidget):
         rama, status, log = datos
         self.lbl_rama.setText(f"Rama: {rama}" if rama else "Rama: —")
 
-        # Limpiar árbol
+        # Clear the tree
         self.tree.clear()
 
-        # Parsear log y crear items con botón revertir
+        # Parse the log and create items with a revert button
         if log:
             for linea in log.splitlines():
                 if not linea.strip():
@@ -1567,17 +1567,17 @@ class PanelGit(QWidget):
                     continue
                 sha, msg, autor, fecha = parts
                 item = QTreeWidgetItem([sha[:8], msg, autor, fecha, ""])
-                item.setData(0, Qt.UserRole, sha)  # SHA completo en role
+                item.setData(0, Qt.UserRole, sha)  # full SHA in role
                 self.tree.addTopLevelItem(item)
 
-                # Botón Revertir (compacto, sigue el tema activo)
+                # Revert button (compact, follows the active theme)
                 btn = _BtnSmallGhost("↩ Revertir")
                 btn.setProperty("sha", sha)
                 btn.clicked.connect(lambda _, s=sha: self.revertir_commit.emit(s))
                 btn.setToolTip("Crea un nuevo commit que deshace este cambio")
                 self.tree.setItemWidget(item, 4, btn)
 
-        # Status en tooltip del primer item o label
+        # Status in the tooltip of the first item or the label
         if status:
             self.tree.setToolTip(f"Status:\n{status}")
 
@@ -1598,7 +1598,7 @@ class PanelGit(QWidget):
 
 
 class PanelSeguridad(QWidget):
-    """Protección térmica y notificaciones push."""
+    """Thermal protection and push notifications."""
 
     guardar_ajustes = Signal(dict)
 
@@ -1608,11 +1608,11 @@ class PanelSeguridad(QWidget):
         v.setSpacing(8)
         v.setContentsMargins(0, 0, 0, 0)
 
-        # Tabs: Temperatura / Notificaciones
+        # Tabs: Temperature / Notifications
         self.tabs = QTabWidget()
         v.addWidget(self.tabs, 1)
 
-        # --- Tab Temperatura ---
+        # --- Temperature tab ---
         tab_temp = QWidget()
         vt = QVBoxLayout(tab_temp)
         vt.setSpacing(12)
@@ -1666,13 +1666,13 @@ class PanelSeguridad(QWidget):
 
         self.tabs.addTab(tab_temp, "🌡 Temperatura")
 
-        # --- Tab Notificaciones (Webhooks) ---
+        # --- Notifications tab (Webhooks) ---
         self.panel_webhooks = PanelWebhooks(webhooks_config)
         self.panel_webhooks.guardado.connect(self._webhooks_guardado)
         self.tabs.addTab(self.panel_webhooks, "🔔 Notificaciones")
 
     def _webhooks_guardado(self, config: dict):
-        """Re-emitir señal completa con seguridad + webhooks"""
+        """Re-emits the full signal with security + webhooks"""
         self.guardar_ajustes.emit({
             "seguridad": self.ajustes(),
             "webhooks": config,
@@ -1687,7 +1687,7 @@ class PanelSeguridad(QWidget):
         }
 
     def aplicar_config(self, seguridad, webhooks=None):
-        """Rellena los controles con la configuración del proyecto activo."""
+        """Fills the controls with the active project's configuration."""
         seguridad = seguridad or {}
         self.chk_activo.setChecked(bool(seguridad.get("activo")))
         self.chk_ver.setChecked(bool(seguridad.get("ver")))
@@ -1698,7 +1698,7 @@ class PanelSeguridad(QWidget):
             self.panel_webhooks.aplicar_config(webhooks)
 
     def _emitir_ajustes(self):
-        # Solo seguridad; webhooks se emiten por separado
+        # Only security; webhooks are emitted separately
         self.guardar_ajustes.emit({
             "seguridad": self.ajustes(),
             "webhooks": self.panel_webhooks.obtener_config(),
@@ -1730,7 +1730,7 @@ class PanelSeguridad(QWidget):
 
 
 class PanelLogs(QWidget):
-    """Pestaña dedicada a logs: Loop + Gate en splitter vertical con headers."""
+    """Dedicated logs tab: Loop + Gate in a vertical splitter with headers."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1738,7 +1738,7 @@ class PanelLogs(QWidget):
         v.setSpacing(8)
         v.setContentsMargins(0, 0, 0, 0)
 
-        # Splitter vertical principal
+        # Main vertical splitter
         self.splitter = QSplitter(Qt.Vertical)
         self.splitter.setHandleWidth(6)
         self.splitter.setChildrenCollapsible(False)
@@ -1747,7 +1747,7 @@ class PanelLogs(QWidget):
             QSplitter::handle:hover { background: palette(highlight); }
         """)
 
-        # ---- LOOP (arriba) ----
+        # ---- LOOP (top) ----
         self.loop_container = self._crear_panel_log(
             "Salida del loop (progreso en vivo)",
             "loop"
@@ -1755,7 +1755,7 @@ class PanelLogs(QWidget):
         self.panel_loop = self.loop_container.log_widget
         self.splitter.addWidget(self.loop_container)
 
-        # ---- GATE (abajo) ----
+        # ---- GATE (bottom) ----
         self.gate_container = self._crear_panel_log(
             "Salida del gate",
             "gate"
@@ -1764,12 +1764,12 @@ class PanelLogs(QWidget):
         self.gate_container.setMaximumHeight(300)
         self.splitter.addWidget(self.gate_container)
 
-        # Proporción inicial 70/30
+        # Initial 70/30 proportion
         self.splitter.setSizes([500, 200])
         v.addWidget(self.splitter, 1)
 
     def _crear_panel_log(self, titulo, tipo):
-        """Crea un contenedor con header + log widget."""
+        """Creates a container with header + log widget."""
         container = QWidget()
         container.log_widget = PanelTarea()
         _fuente_monospace(container.log_widget)
@@ -1779,7 +1779,7 @@ class PanelLogs(QWidget):
         layout.setSpacing(4)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Header (siempre visible, solo colapsa el log_widget)
+        # Header (always visible, only the log_widget collapses)
         header = QHBoxLayout()
         header.setSpacing(8)
         header.setContentsMargins(0, 0, 0, 0)
@@ -1814,7 +1814,7 @@ class PanelLogs(QWidget):
         return container
 
     def _toggle_maximizar(self, tipo):
-        """Colapsa/expandir solo el log_widget, el header queda visible."""
+        """Collapses/expands only the log_widget, the header stays visible."""
         idx = 0 if tipo == "loop" else 1
         w = self.splitter.widget(idx)
         log = w.log_widget

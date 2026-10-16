@@ -1,4 +1,4 @@
-"""Helpers de procesos: captura de salida en vivo y trabajos en segundo plano."""
+"""Process helpers: live output capture and background jobs."""
 
 from PySide6.QtCore import QProcess, Qt, QThread, Signal
 from PySide6.QtWidgets import QPlainTextEdit
@@ -15,14 +15,14 @@ class PanelTarea(QPlainTextEdit):
 
 
 class Trabajo(QThread):
-    """Ejecuta una función sin bloqueo; devuelve su resultado por señal.
+    """Runs a function without blocking; returns its result via a signal.
 
-    El resultado se entrega SIEMPRE en el hilo de la UI (QueuedConnection),
-    de modo que el slot conectado puede tocar widgets sin peligro. Emite
-    None si la función lanza una excepción.
+    The result is ALWAYS delivered on the UI thread (QueuedConnection),
+    so that the connected slot can touch widgets safely. Emits
+    None if the function raises an exception.
 
-    IMPORTANTE: no liberes la referencia Python al objeto mientras el hilo
-    siga corriendo; usa `finished` (o `Trabajo.liberar`) para soltarla.
+    IMPORTANT: do not release the Python reference to the object while the
+    thread is still running; use `finished` (or `Trabajo.liberar`) to drop it.
     """
 
     listo = Signal(object)
@@ -32,14 +32,15 @@ class Trabajo(QThread):
         self._fn = fn
 
     def conectar(self, slot):
-        """Conecta `listo` al slot garantizando entrega en el hilo de UI."""
+        """Connects `listo` to the slot guaranteeing delivery on the UI thread."""
         self.listo.connect(slot, SIGNAL_UI)
 
     def liberar(self, widget, attr="worker"):
-        """Conecta `finished` para liberar la referencia del hilo.
+        """Connects `finished` to release the thread reference.
 
-        Pone `widget.<attr> = None` (por defecto `widget.worker`) TAN SOLO
-        cuando el hilo ya terminó, evitando destruir un QThread en marcha.
+        Sets `widget.<attr> = None` (by default `widget.worker`) ONLY
+        when the thread has already finished, avoiding destroying a
+        running QThread.
         """
 
         def _fin():
@@ -66,9 +67,9 @@ class Proceso(QProcess):
         self.readyReadStandardOutput.connect(self._leer)
         self.readyReadStandardError.connect(self._leer)
         self.finished.connect(self._terminado)
-        # Si el proceso no arranca (dir inexistente, binario no ejecutable, etc.)
-        # Qt emite errorOccurred(FailedToStart) y NO emite finished → sin esto
-        # el callback on_fin nunca se llama y la UI queda bloqueada.
+        # If the process does not start (nonexistent dir, non-executable binary, etc.)
+        # Qt emits errorOccurred(FailedToStart) and does NOT emit finished → without this
+        # the on_fin callback is never called and the UI stays blocked.
         self.errorOccurred.connect(self._error)
 
     def _leer(self):

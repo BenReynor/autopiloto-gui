@@ -1,6 +1,6 @@
-# 01_db.py — Verifica la base de datos (comando configurable).
-# Port de 01_db.sh para el orquestador portable (Windows sin bash).
-# Sobreescribe con DB_CHECK_CMD. Ej: pg_isready -q, mysqladmin ping, ""
+# 01_db.py — Checks the database (configurable command).
+# Port of 01_db.sh for the portable orchestrator (Windows without bash).
+# Override with DB_CHECK_CMD. E.g.: pg_isready -q, mysqladmin ping, ""
 
 
 def run(env):

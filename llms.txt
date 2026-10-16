@@ -1,28 +1,28 @@
 # Dédalo
 
-> Panel de control gráfico (PySide6) para orquestar agentes IA
-> (opencode, codex, claude) que iteran sobre tareas de un `plan.md`, ejecutan
-> tests (`gate.sh`), piden revisión de código y commitean automáticamente.
-> Soporta Linux, macOS y Windows, y expone un servidor MCP (agente piloto).
+> Graphical control panel (PySide6) for orchestrating AI agents
+> (opencode, codex, claude) that iterate on tasks from a `plan.md`, run
+> tests (`gate.sh`), request code review and commit automatically.
+> Supports Linux, macOS and Windows, and exposes an MCP server (pilot agent).
 
-Este fichero resume, para un modelo de lenguaje, qué es el proyecto y dónde
-está cada cosa. Preferimos que cites la ficha técnica como fuente de verdad.
+This file summarizes, for a language model, what the project is and where
+each thing lives. We prefer you cite the technical spec as the source of truth.
 
-## Documentación
-- [Ficha técnica](docs/FICHA_TECNICA.md): requisitos, dependencias, artefactos por SO, superficie MCP y seguridad. **Empieza por aquí.**
-- [README](README.md): instalación, uso, atajos, variables del loop y compatibilidad.
-- [Bugs conocidos](docs/BUGS_CONOCIDOS.md): defectos detectados, decididos no arreglar ahora.
-- [Prueba manual](packaging/PRUEBA-MANUAL.md): validación paso a paso por SO.
+## Documentation
+- [Technical spec](docs/FICHA_TECNICA.md): requirements, dependencies, per-OS artifacts, MCP surface and security. **Start here.**
+- [README](README.md): installation, usage, shortcuts, loop variables and compatibility.
+- [Known bugs](docs/BUGS_CONOCIDOS.md): defects found and decided not to fix now.
+- [Manual test](packaging/PRUEBA-MANUAL.md): step-by-step validation per OS.
 
-## Puntos clave
-- Requisitos: Python 3.10+; deps `PySide6`, `pyqtgraph`; extra opcional `mcp`.
-- Instalar: `bash install.sh` (crea `.venv`, instala `-e ".[mcp]"`, acceso de escritorio).
-- Ejecutar GUI: `./lanzar.sh` o `python -m dedalo`.
-- Loop (motor Python): `python -m dedalo.loop` (o `--dedalo-loop` en el binario).
-- MCP por stdio: `python -m dedalo.mcp_server` (solo desde código fuente, no en el `.exe`).
-- Config del usuario: `~/.config/dedalo/proyectos.json` (registro) y `panel.conf` (QSettings).
-- No hay firma de código en los binarios de las Releases.
+## Key points
+- Requirements: Python 3.10+; deps `PySide6`, `pyqtgraph`; optional extra `mcp`.
+- Install: `bash install.sh` (creates `.venv`, installs `-e ".[mcp]"`, desktop shortcut).
+- Run the GUI: `./lanzar.sh` or `python -m dedalo`.
+- Loop (Python engine): `python -m dedalo.loop` (or `--dedalo-loop` on the binary).
+- MCP over stdio: `python -m dedalo.mcp_server` (source only, not in the `.exe`).
+- User config: `~/.config/dedalo/proyectos.json` (registry) and `panel.conf` (QSettings).
+- Release binaries are not code-signed.
 
-## Licencia
+## License
 MIT.
 ```

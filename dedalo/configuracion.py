@@ -1,7 +1,7 @@
-"""Configuración centralizada del panel de Dédalo.
+"""Centralized configuration for the Dédalo panel.
 
-Constantes compartidas por todos los módulos: rutas, valores por defecto,
-timeouts y tamaños. Editar aquí en lugar de repartidos por el código.
+Constants shared by all modules: paths, default values, timeouts and sizes.
+Edit here instead of scattered throughout the code.
 """
 
 import os
@@ -11,10 +11,10 @@ CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", APLICACION)
 REGISTRO = os.path.join(CONFIG_DIR, "proyectos.json")
 CATALOGO_MODELOS = os.path.join(CONFIG_DIR, "models_dev.json")
 
-# ----- Ventana -----
-# Tamaño inicial y mínimo: con menos de ANCHO_MIN x ALTO_MIN los paneles
-# quedan ilegibles; el layout se reajusta entre esos límites (los paneles
-# internos usan splitters/scroll y crecen con la ventana).
+# ----- Window -----
+# Initial and minimum size: below ANCHO_MIN x ALTO_MIN the panels become
+# illegible; the layout readjusts between those limits (the inner panels
+# use splitters/scroll and grow with the window).
 ANCHO = 1180
 ALTO = 780
 ANCHO_MIN = 960
@@ -23,13 +23,13 @@ TEMA_DEFECTO = "Zinc/Amber Oscuro"
 FUENTE_MONO = "JetBrains Mono"
 FUENTE_UI = "Outfit"
 
-# ----- Cabina (navegación y movimiento) -----
-# Sidebar vertical de navegación (ancho en px). Oscuro por defecto del tema.
+# ----- Cockpit (navigation and motion) -----
+# Vertical navigation sidebar (width in px). Dark by default in the theme.
 SIDEBAR_ANCHO = 220
-# Movimiento UI: píldora/lotes con animación sutil. False = estático (reduced motion).
+# UI motion: pill/batch with subtle animation. False = static (reduced motion).
 MOTION = True
 
-# ----- Seguridad térmica -----
+# ----- Thermal safety -----
 SEGURIDAD_DEFECTO = {
     "activo": True,
     "ver": False,
@@ -37,7 +37,7 @@ SEGURIDAD_DEFECTO = {
     "segundos": 5,
 }
 
-# ----- Valores por defecto del lanzamiento -----
+# ----- Launch default values -----
 LAUNCH_DEFECTO = {
     "hasta": "22:00",
     "iteraciones": 40,
@@ -50,11 +50,11 @@ LAUNCH_DEFECTO = {
     "voz": False,
 }
 
-# ----- Navigator (búsqueda de contexto antes de cada tarea) -----
+# ----- Navigator (context search before each task) -----
 NAVEGADOR_DEFECTO = False
 MODELO_NAVEGADOR_SUGERIDO = "opencode/big-pickle"
 
-# ----- Webhooks (notificaciones push) -----
+# ----- Webhooks (push notifications) -----
 WEBHOOK_DEFECTO = {
     "telegram_token": "",
     "telegram_chat_id": "",
@@ -71,18 +71,18 @@ WEBHOOK_DEFECTO = {
     },
 }
 
-# ----- Modelos -----
+# ----- Models -----
 MODELO_SUGERIDO = "opencode/big-pickle"
 
-# ----- Agentes CLI disponibles -----
-# AGENTES_CONOCIDOS son los CLIs que el dedalo sabe invocar. AGENTE_DEFECTO
-# "auto" = usar el primero instalado según AGENTES_PREFERIDOS.
+# ----- Available CLI agents -----
+# AGENTES_CONOCIDOS are the CLIs that dedalo knows how to invoke. AGENTE_DEFECTO
+# "auto" = use the first installed one according to AGENTES_PREFERIDOS.
 AGENTES_CONOCIDOS = ("opencode", "codex", "claude")
 AGENTES_PREFERIDOS = ("opencode", "codex", "claude")
 AGENTES_DISPONIBLES = AGENTES_CONOCIDOS + ("auto",)
 AGENTE_DEFECTO = "auto"
 
-# ----- Timeouts (segundos) -----
+# ----- Timeouts (seconds) -----
 TIMEOUT_INTERNET = 3
 TIMEOUT_OPENCODE = 20
 TIMEOUT_GIT = 20
@@ -90,7 +90,7 @@ TIMEOUT_SENSORES = 5
 TIMEOUT_CATALOGO = 15
 TIMEOUT_NAVEGADOR = 60
 
-# ----- Temporizadores (ms) -----
+# ----- Timers (ms) -----
 TIMER_TAIL_MS = 1000
 TIMER_TEMP_MS = 1000
 TIMER_NET_MS = 15000

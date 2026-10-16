@@ -1,7 +1,7 @@
-# 99_custom.py — Checks personalizados del usuario.
-# Port de 99_custom.sh para el orquestador portable (Windows sin bash).
-# Devuelve 0=OK, 1=FAIL. Aquí pones tus propias verificaciones:
-# lint, typecheck, seguridad, build, quality gates, etc.
+# 99_custom.py — User's custom checks.
+# Port of 99_custom.sh for the portable orchestrator (Windows without bash).
+# Returns 0=OK, 1=FAIL. Put your own verifications here:
+# lint, typecheck, security, build, quality gates, etc.
 import os
 import shutil
 import subprocess

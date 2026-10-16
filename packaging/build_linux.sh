@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# build_linux.sh — empaqueta Dédalo para Linux.
+# build_linux.sh — packages Dédalo for Linux.
 #
-# Salidas (en packaging/out/):
-#   dedalo-<v>-linux-x86_64.tar.gz   portátil (descomprimir y ejecutar)
-#   dedalo_<v>_amd64.deb             Debian/Ubuntu (+ derivadas)
-#   dedalo-<v>-x86_64.AppImage       cualquier distro (un fichero)
+# Outputs (in packaging/out/):
+#   dedalo-<v>-linux-x86_64.tar.gz   portable (unzip and run)
+#   dedalo_<v>_amd64.deb             Debian/Ubuntu (+ derivatives)
+#   dedalo-<v>-x86_64.AppImage       any distro (single file)
 #
-# Uso:
-#   bash packaging/build_linux.sh             # todo lo que se pueda aquí
-#   SOLO_BINARIO=1 bash packaging/build_linux.sh   # sólo el onedir + tar.gz
+# Usage:
+#   bash packaging/build_linux.sh             # everything possible here
+#   SOLO_BINARIO=1 bash packaging/build_linux.sh   # only the onedir + tar.gz
 #
-# Requiere: python con el proyecto y PyInstaller instalados, tar, y para el
-# .deb dpkg-deb (paquete dpkg-dev). El AppImage descarga appimagetool si no
-# está en PATH (se puede evitar con SIN_APPIMAGE=1).
+# Requires: python with the project and PyInstaller installed, tar, and for
+# the .deb dpkg-deb (dpkg-dev package). The AppImage downloads appimagetool
+# if it is not in PATH (can be skipped with SIN_APPIMAGE=1).
 set -euo pipefail
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$RAIZ"
 
-# Versión desde pyproject.toml (fuente única de verdad).
+# Version from pyproject.toml (single source of truth).
 VERSION="$("${PYTHON:-python3}" - <<'EOF'
 import tomllib
 from pathlib import Path
@@ -40,21 +40,21 @@ rm -rf "$OUT" build
 APP="$OUT/$NOMBRE"
 [ -x "$APP/$NOMBRE" ] || { echo "el binario no salió en $APP" >&2; exit 1; }
 
-# El umask de escritorio (0002) deja todo group-writable y eso se cuela en
-# los artefactos: dirs a 755 y ficheros sin bit de escritura, sin tocar los
-# ejecutables (find -type f ignora los symlinks de Qt; chmod -R les daría
-# error). Se aplica en cada etapa: los ficheros creados después (wrappers,
-# .desktop) también lo necesitan.
+# The desktop umask (0002) leaves everything group-writable and that leaks
+# into the artifacts: dirs at 755 and files without the write bit, without
+# touching the executables (find -type f ignores Qt's symlinks; chmod -R
+# would fail on them). Applied at every stage: files created later (wrappers,
+# .desktop) need it too.
 normalizar() {
     find "$1" -type d -exec chmod 755 {} +
     find "$1" -type f -exec chmod go-w {} +
 }
 normalizar "$APP"
 
-# ── 1) tar.gz portátil ──────────────────────────────────────────────────────
-# Estructura: dedalo-<v>-linux-x86_64/
-#               dedalo     ← lanzador (./dedalo)
-#               app/               ← onedir (exe + libs + datos)
+# ── 1) portable tar.gz ───────────────────────────────────────────────────────
+# Structure: dedalo-<v>-linux-x86_64/
+#               dedalo     ← launcher (./dedalo)
+#               app/               ← onedir (exe + libs + data)
 echo "==> tar.gz portátil"
 TAR="$OUT/$NOMBRE-$VERSION-linux-x86_64.tar.gz"
 DESP="$OUT/portable/$NOMBRE-$VERSION-linux-x86_64"
@@ -63,7 +63,7 @@ mkdir -p "$DESP"
 cp -a "$APP" "$DESP/app"
 cat > "$DESP/$NOMBRE" <<'EOF'
 #!/usr/bin/env bash
-# Lanzador del binario portátil: se auto-localiza y no instala nada.
+# Launcher for the portable binary: it self-locates and installs nothing.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 exec "$DIR/app/dedalo" "$@"
@@ -106,8 +106,8 @@ Terminal=false
 Categories=Development;Utility;
 Keywords=dedalo;ia;
 EOF
-    # Qt va dentro del onedir; el sistema sólo aporta GL/X y las herramientas
-    # que el framework invoca (bash y git) o el loop no arranca.
+    # Qt goes inside the onedir; the system only provides GL/X and the tools
+    # the framework invokes (bash and git), or the loop won't start.
     cat > "$STAGE/DEBIAN/control" <<EOF
 Package: $NOMBRE
 Version: $VERSION
@@ -128,7 +128,7 @@ else
     echo "==> sin dpkg-deb: .deb omitido (instala dpkg-dev)"
 fi
 
-# ── 3) AppImage ─────────────────────────────────────────────────────────────
+# ── 3) AppImage ────────────────────────────────────────────────────────────
 if [ "${SIN_APPIMAGE:-0}" = "1" ]; then
     echo "==> SIN_APPIMAGE=1: AppImage omitido"
     exit 0
@@ -156,9 +156,9 @@ echo "==> AppImage"
 rm -rf "$APPDIR"
 mkdir -p "$APPDIR"
 cp -a "$APP/." "$APPDIR/"
-# cp -a "$APP/." vuelca el onedir DENTRO de AppDir (exe + _internal en la
-# raíz), así que AppRun apunta al exe, no a una subcarpeta. El .desktop y el
-# icono van también en la raíz (requisito del formato AppImage).
+# `cp -a "$APP/."` dumps the onedir INSIDE AppDir (exe + _internal at the
+# root), so AppRun points to the exe, not to a subfolder. The .desktop and the
+# icon also go at the root (AppImage format requirement).
 ln -sf "$NOMBRE" "$APPDIR/AppRun"
 cp dedalo/icono.svg "$APPDIR/$NOMBRE.svg"
 cat > "$APPDIR/$NOMBRE.desktop" <<EOF

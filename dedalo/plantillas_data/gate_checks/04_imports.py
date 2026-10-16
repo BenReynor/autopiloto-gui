@@ -1,6 +1,6 @@
-# 04_imports.py — Verifica que el frontend/python importa sin errores.
-# Port de 04_imports.sh para el orquestador portable (Windows sin bash).
-# Sobreescribe con TEST_CMD o FRONTEND_DIR. Si no hay frontend, se omite.
+# 04_imports.py — Checks that the frontend/python imports without errors.
+# Port of 04_imports.sh for the portable orchestrator (Windows without bash).
+# Override with TEST_CMD or FRONTEND_DIR. If there is no frontend, it is skipped.
 import os
 import subprocess
 

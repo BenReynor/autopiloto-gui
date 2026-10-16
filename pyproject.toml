@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dedalo"
 version = "2.0.2"
-description = "Panel de control de Dédalo: GUI PySide6 para gestionar agentes IA sobre proyectos"
+description = "Dédalo control panel: a PySide6 GUI to manage AI agents across projects"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
@@ -14,9 +14,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# `mcp` (servidor MCP por stdio) es opcional para el usuario, pero va también
-# en `dev` para que la CI lo tenga y los tests de tests/test_mcp_server.py
-# corran (hacen importorskip, así que sin él solo se saltan).
+# `mcp` (stdio MCP server) is optional for the user, but it also goes into
+# `dev` so CI has it and the tests in tests/test_mcp_server.py run (they
+# do importorskip, so without it they just skip).
 dev = [
     "pytest>=8",
     "ruff",
@@ -33,11 +33,11 @@ include = ["dedalo*"]
 license-files = ["LICENSE"]
 
 [tool.setuptools.package-data]
-# Debe cubrir EXACTAMENTE lo que plantillas.py copia en runtime. Con
-# `pip install -e .` los tests pasan igual, pero con `pip install .` un fichero
-# ausente aquí provoca FileNotFoundError al agregar el primer proyecto.
-# OJO: los globs `*` NO hacen match con ficheros que empiezan por punto, así
-# que .gitignore necesita su propia entrada. Lo vigila
+# Must cover EXACTLY what plantillas.py copies at runtime. With
+# `pip install -e .` the tests still pass, but with `pip install .` a file
+# missing here causes FileNotFoundError when adding the first project.
+# NOTE: the `*` globs do NOT match files starting with a dot, so .gitignore
+# needs its own entry. Guarded by
 # tests/test_plantillas.py::test_package_data_cubre_lo_que_instala.
 dedalo = [
     "plantillas_data/*.sh",
@@ -57,8 +57,8 @@ exclude = ["dedalo/plantillas_data/**"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
 ignore = [
-    "E501",          # largas; el código usa ~88 pero el label es descriptivo
-    "B008",          # args mutables en selectores Qt (patrón de PySide)
+    "E501",          # long lines; the code uses ~88 but the label is descriptive
+    "B008",          # mutable args in Qt selectors (PySide pattern)
 ]
 
 [tool.pytest.ini_options]

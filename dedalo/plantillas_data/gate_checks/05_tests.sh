@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 05_tests.sh — Ejecuta la test suite (comando configurable).
-# Sobreescribe con TEST_CMD env. Ej:
+# 05_tests.sh — Runs the test suite (configurable command).
+# Override with the TEST_CMD env var. E.g.:
 #   cd <backend> && python -m pytest -q
 #   npm test
 #   cargo test
@@ -11,12 +11,12 @@ if [ -z "$TEST_CMD" ]; then
     exit 0
 fi
 
-# Mostrar la salida de tests (las últimas líneas) para diagnóstico
+# Show the test output (the last lines) for diagnostics
 SALIDA="$(eval "$TEST_CMD" 2>&1)"
 rc=$?
 echo "$SALIDA" | tail -10
 
-# pytest sin tests devuelve 5; no es un fallo, solo no hay suite
+# pytest with no tests returns 5; it is not a failure, there is just no suite
 if echo "$SALIDA" | grep -qiE "no tests ran" && [ "$rc" -eq 5 ]; then
     echo "[GATE] ⚠ test suite vacía (no hay tests), se asume OK"
     exit 0

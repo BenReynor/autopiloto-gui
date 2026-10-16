@@ -1,9 +1,9 @@
-"""Comprobación de conectividad a internet.
+"""Internet connectivity check.
 
-Los modelos IA de opencode requieren red; si se cae no tiene sentido lanzar
-tareas. La verificación real se hace en un hilo de fondo: la GUI siempre lee
-el estado cacheado (sin bloquear) y `verificar_async()` refresca en segundo
-plano.
+opencode's AI models require network; if it goes down there is no point in
+launching tasks. The real check runs in a background thread: the GUI always
+reads the cached state (without blocking) and `verificar_async()` refreshes in
+the background.
 """
 
 import socket
@@ -13,7 +13,7 @@ from . import configuracion as cfg
 
 HOSTS = ("1.1.1.1", "8.8.8.8")
 
-_estado = None          # True/False, último resultado conocido
+_estado = None          # True/False, last known result
 _verificando = False
 
 
@@ -38,17 +38,17 @@ def _verificar_en_hilo():
 
 
 def verificar_async():
-    """Re-verifica la conectividad en un hilo de fondo (no bloquea la UI)."""
+    """Re-checks connectivity in a background thread (does not block the UI)."""
     if _verificando:
         return
     threading.Thread(target=_verificar_en_hilo, daemon=True).start()
 
 
 def ultimo_estado():
-    """Último resultado conocido (None si aún no se ha verificado)."""
+    """Last known result (None if it has not been checked yet)."""
     return _estado
 
 
 def hay_internet():
-    """Comprobación bloqueante puntual (arranque del loop)."""
+    """One-off blocking check (loop startup)."""
     return _probar()

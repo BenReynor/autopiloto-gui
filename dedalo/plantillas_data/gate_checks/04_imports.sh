@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 04_imports.sh — Verifica que el frontend/python importa sin errores.
-# Sobreescribe con TEST_CMD o FRONTEND_DIR. Si no hay frontend, se omite.
+# 04_imports.sh — Checks that the frontend/python imports without errors.
+# Override with TEST_CMD or FRONTEND_DIR. If there is no frontend, it is skipped.
 set -uo pipefail
 
 if [ -z "$FRONTEND_DIR" ] || [ ! -d "$FRONTEND_DIR" ]; then

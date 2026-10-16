@@ -5,9 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  # Semanal (lunes 06:00 UTC): detecta que una actualización de dependencias o
-  # de las imágenes de los runners de Linux/macOS/Windows haya roto la suite,
-  # aunque nadie haga push. Un fallo aquí genera aviso en GitHub.
+  # Weekly (Monday 06:00 UTC): detects that a dependency update or a change
+  # in the Linux/macOS/Windows runner images broke the suite, even if nobody
+  # pushes. A failure here raises an alert on GitHub.
   schedule:
     - cron: "0 6 * * 1"
 
@@ -18,8 +18,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Los tests hacen commits/reverts git REALES: sin identidad global,
-      # `git commit` falla y los tests de revert/inicializar_git se rompen.
+      # The tests make REAL git commits/reverts: without a global identity,
+      # `git commit` fails and the revert/initialize_git tests break.
       - name: Identidad git
         run: |
           git config --global user.name "dedalo CI"
@@ -30,7 +30,7 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      # Qt en modo offscreen: sin pantalla, pero necesita estas libs nativas.
+      # Qt in offscreen mode: no screen, but it needs these native libs.
       - name: Dependencias del sistema (Qt headless)
         run: |
           sudo apt-get update
@@ -52,11 +52,11 @@ jobs:
           PYTHONFAULTHANDLER: 1
         run: python -m pytest tests/
 
-  # Las plantillas shell se copian a proyectos de otros usuarios, que pueden
-  # estar en macOS. Este job corre en BSD de verdad: lo que funciona aquí, sus
-  # binutils/date/sed/find son los de macOS, y el lint es deliberadamente
-  # ligero (sin importar el paquete). La suite completa en este SO la valida el
-  # job "test-macos".
+  # The shell templates are copied to other users' projects, which may
+  # be on macOS. This job runs on real BSD: what works here, their
+  # binutils/date/sed/find are macOS's, and the lint is deliberately
+  # light (without importing the package). The full suite on that OS is
+  # validated by the "test-macos" job.
   portabilidad:
     name: portabilidad (macOS)
     runs-on: macos-latest
@@ -69,7 +69,7 @@ jobs:
 
       - name: Sintaxis de las plantillas
         run: |
-          # git ls-files incluye las de gate_checks y los lanzadores de la raíz.
+          # git ls-files includes those in gate_checks and the root launchers.
           git ls-files '*.sh' | while read -r f; do
             echo "--- $f"
             bash -n "$f" || exit 1
@@ -80,29 +80,30 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest ruff
           python -m ruff check tests/test_portabilidad.py
-          # --noconftest: el conftest del repo importa PySide6, que aquí no
-          # interesa (este test no abre ninguna ventana). Así el runner de
-          # macOS no necesita Qt instalado.
+          # --noconftest: the repo's conftest imports PySide6, which is not
+          # needed here (this test does not open any window). That way the
+          # macOS runner does not need Qt installed.
           python -m pytest tests/test_portabilidad.py -q --noconftest
 
       - name: Sondeo de red con el ping de BSD
-        # `ping -W` son segundos en GNU y milisegundos en BSD: si el flag se
-        # colara mal, el runner de macOS se quedaría 2000 s colgado.
+        # `ping -W` is seconds on GNU and milliseconds on BSD: if the flag
+        # leaked in wrongly, the macOS runner would hang for 2000 s.
         run: |
           /usr/bin/time -p ping -c1 -W2000 8.8.8.8 || echo "sin red (esperado en CI)"
 
-  # macOS: la suite completa, no sólo el lint de portabilidad. El miedo de
-  # antes ("PySide6 no es fiable en ese runner") quedó obsoleto: la Release ya
-  # arranca la GUI offscreen en macos-latest (build_macos.sh). Qt offscreen no
-  # necesita deps extra en macOS y los .sh ya son portables a /bin/bash 3.2.
-  # Este runner es arm64, la misma arquitectura del .dmg que publicamos.
+  # macOS: the full suite, not just the portability lint. The old fear
+  # ("PySide6 is not reliable on that runner") became obsolete: the Release
+  # already boots the offscreen GUI on macos-latest (build_macos.sh). Qt
+  # offscreen needs no extra deps on macOS and the .sh files are already
+  # portable to /bin/bash 3.2.
+  # This runner is arm64, the same architecture as the .dmg we publish.
   test-macos:
     name: ruff + pytest (macOS)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      # Identidad git global (mismo motivo que en test/test-windows).
+      # Global git identity (same reason as in test/test-windows).
       - name: Identidad git
         run: |
           git config --global user.name "dedalo CI"
@@ -128,35 +129,35 @@ jobs:
           PYTHONFAULTHANDLER: 1
         run: python -m pytest tests/
 
-  # Windows: la GUI debe arrancar y la suite completa debe pasar con los
-  # tests POSIX saltados (test_portabilidad, señales, 0600...). El loop y el
-  # gate son ya motores Python nativos (test_lanzador arranca `python -m
-  # …loop` desde otro cwd, como la GUI); Git Bash se pone en el PATH para los
-  # tests que siguen usando el motor/plantillas bash (test_dedalo_senales,
+  # Windows: the GUI must start and the full suite must pass with the
+  # POSIX tests skipped (test_portabilidad, signals, 0600...). The loop and
+  # the gate are already native Python engines (test_lanzador starts `python -m
+  # …loop` from another cwd, just like the GUI); Git Bash is put on the PATH
+  # for the tests that still use the bash engine/templates (test_dedalo_senales,
   # test_e2e_con_trabajo, test_gate_backend...).
   test-windows:
     name: ruff + pytest (Windows)
     runs-on: windows-latest
     env:
-      # Windows escribe tempfiles en cp1252 por defecto y la suite usa
-      # emojis (✔ ✗ ≈): con la UTF-8 mode de Python todos los harness de
-      # ficheros dejan de reventar. Los agentes reales de Windows escriben en
-      # UTF-8, así que esto refleja el comportamiento de la app.
+      # Windows writes tempfiles in cp1252 by default and the suite uses
+      # emojis (✔ ✗ ≈): with Python's UTF-8 mode every file harness stops
+      # blowing up. Real Windows agents write in UTF-8, so this reflects
+      # the app's behavior.
       PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
 
-      # Los tests hacen commits git REALES (mismo motivo que en test-linux).
+      # The tests make REAL git commits (same reason as in test-linux).
       - name: Identidad git
         run: |
           git config --global user.name "dedalo CI"
           git config --global user.email "ci@dedalo.local"
 
-      # El PATH de los runners de GitHub resuelve `bash` al shim de WSL, que
-      # no es un bash POSIX (escupiría "Windows Subsystem for Linux has no
-      # installed distributions"). Los harnesses de git/gate/motor lanzan
-      # scripts con chmod 755 mediante `bash`, así que hay que poner el Git
-      # Bash real delante.
+      # GitHub runners' PATH resolves `bash` to the WSL shim, which is not a
+      # POSIX bash (it would spew "Windows Subsystem for Linux has no
+      # installed distributions"). The git/gate/engine harnesses launch
+      # chmod 755 scripts via `bash`, so the real Git Bash must be put
+      # in front.
       - name: Git Bash real en el PATH
         shell: pwsh
         run: |
@@ -185,21 +186,22 @@ jobs:
           PYTHONFAULTHANDLER: 1
         run: python -m pytest tests/
 
-  # El registro de proyectos guarda tokens de Telegram/WhatsApp/Discord en
-  # claro y los agentes reciben GITHUB_TOKEN: si algo se cuela en el repo,
-  # aquí se corta. Audita además los CVEs de las dependencias.
+  # The project registry stores Telegram/WhatsApp/Discord tokens in plain
+  # text and the agents receive GITHUB_TOKEN: if something leaks into the
+  # repo, it is cut off here. It also audits dependency CVEs.
   seguridad:
     name: secretos + dependencias
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # gitleaks revisa TODO el historial, no el diff
+          fetch-depth: 0  # gitleaks reviews the WHOLE history, not the diff
 
       - name: Secretos en el historial (gitleaks)
-        # En PRs de Dependabot el token es de solo lectura y gitleaks-action
-        # revienta con "Resource not accessible by integration". Esos PRs solo
-        # suben versiones, no añaden secretos; el push semanal a main sí audita.
+        # On Dependabot PRs the token is read-only and gitleaks-action
+        # blows up with "Resource not accessible by integration". Those PRs
+        # only bump versions, they don't add secrets; the weekly push to
+        # main does audit.
         if: github.actor != 'dependabot[bot]'
         uses: gitleaks/gitleaks-action@v2
         env:
@@ -212,11 +214,12 @@ jobs:
       - uses: astral-sh/setup-uv@v6
 
       - name: El lock está al día con pyproject.toml
-        # En PRs de Dependabot lo regenera el workflow "Dependabot lock"; aquí
-        # se saltaría por una carrera. El push a main y el cron sí lo verifican.
+        # On Dependabot PRs the "Dependabot lock" workflow regenerates it;
+        # here it would be skipped by a race. The push to main and the cron
+        # do verify it.
         if: github.actor != 'dependabot[bot]'
-        # Se regenera in situ (el comentario de cabecera incluye la orden
-        # exacta) y sólo se comprueba que git no vea diferencias.
+        # It is regenerated in place (the header comment includes the exact
+        # command) and only checked that git sees no differences.
         run: |
           uv pip compile --generate-hashes --extra dev --python-version 3.10 \
             -o requirements.lock pyproject.toml
@@ -230,8 +233,8 @@ jobs:
 
       - name: Auditoría de dependencias (pip-audit sobre el lock)
         run: |
-          # --strict: un CVE nuevo rompe el build en vez de imprimirse y
-          # olvidarse. Las excepciones justificadas se anotan con
-          # --ignore-vuln-id. --no-deps: el lock ya fija toda la cerradura.
+          # --strict: a new CVE breaks the build instead of being printed and
+          # forgotten. Justified exceptions are noted with
+          # --ignore-vuln-id. --no-deps: the lock already pins the whole set.
           pip install pip-audit
           pip-audit -r requirements.lock --no-deps --strict

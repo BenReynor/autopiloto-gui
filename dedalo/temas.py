@@ -1,39 +1,39 @@
-"""Sistema de diseño visual: colores semánticos, tipografía y componentes.
+"""Visual design system: semantic colors, typography and components.
 
-Basado en referencias de diseño desktop (Linear, Vercel, VS Code).
-Un solo acento, escala neutral coherente, foco visible, contraste WCAG AA.
+Based on desktop design references (Linear, Vercel, VS Code).
+A single accent, coherent neutral scale, visible focus, WCAG AA contrast.
 """
 
 import re
 
-# ─── FUENTES ───────────────────────────────────────────────────────
+# ─── FONTS ────────────────────────────────────────────────────────
 
-# Fuentes preferidas para apps desktop (evitar Inter, Roboto, Arial)
-# Si no están instaladas, Qt usa fallback del sistema
+# Preferred fonts for desktop apps (avoid Inter, Roboto, Arial)
+# If they are not installed, Qt falls back to the system font
 FONT_UI_FAMILIES = [
-    "JetBrains Mono",   # mono para código/logs
-    "Geist Mono",       # alternativa mono
-    "Fira Code",        # fallback mono con ligaduras
-    "Monospace",        # fallback genérico
+    "JetBrains Mono",   # mono for code/logs
+    "Geist Mono",       # alternative mono
+    "Fira Code",        # mono fallback with ligatures
+    "Monospace",        # generic fallback
 ]
 
 FONT_UI_PRIMARY = [
-    "Outfit",           # UI limpia, moderna
-    "DM Sans",          # neutral, versátil
-    "Plus Jakarta Sans",# pulida
-    "Source Sans 3",    # legible denso
-    "System",           # fallback nativo (Segoe UI / San Francisco / Ubuntu)
+    "Outfit",           # clean, modern UI
+    "DM Sans",          # neutral, versatile
+    "Plus Jakarta Sans",# polished
+    "Source Sans 3",    # legible when dense
+    "System",           # native fallback (Segoe UI / San Francisco / Ubuntu)
 ]
 
-FONT_MONO = "JetBrains Mono"  # preferida para monospace
+FONT_MONO = "JetBrains Mono"  # preferred monospace
 
-# Inicialización perezosa de fuentes (requiere QApplication creado)
+# Lazy font initialization (requires QApplication to be created)
 _FUENTES: dict[str, str | None] = {"mono": None, "ui": None}
 
 
 def _inicializar_fuentes():
-    """Registra fuentes instaladas en el sistema para uso en QSS.
-    Debe llamarse después de crear QApplication."""
+    """Registers the fonts installed on the system for use in QSS.
+    Must be called after creating QApplication."""
     global _FUENTES
     if _FUENTES["mono"] is not None:
         return
@@ -55,27 +55,27 @@ def _get_fuente_ui():
     return _FUENTES["ui"]
 
 
-# ─── ESCALA TIPOGRÁFICA (Major Third 1.25x) ────────────────────────
+# ─── TYPOGRAPHIC SCALE (Major Third 1.25x) ────────────────────────
 
-# Base 14px para desktop denso
+# 14px base for dense desktop
 TEXT_XS = "10px"      # captions, badges
-TEXT_SM = "11px"      # labels secundarios, sidebar
-TEXT_BASE = "13px"    # body, inputs, botones
+TEXT_SM = "11px"      # secondary labels, sidebar
+TEXT_BASE = "13px"    # body, inputs, buttons
 TEXT_MD = "16px"      # subheadings
 TEXT_LG = "20px"      # section headings
 TEXT_XL = "25px"      # page titles
 
 # Line heights
-LH_TIGHT = "1.2"      # botones, labels
-LH_NORMAL = "1.4"     # inputs, celdas tabla
-LH_RELAXED = "1.6"    # párrafos
+LH_TIGHT = "1.2"      # buttons, labels
+LH_NORMAL = "1.4"     # inputs, table cells
+LH_RELAXED = "1.6"    # paragraphs
 
 # Letter spacing
 LS_UPPER = "0.06em"   # labels uppercase
 LS_HEADING = "-0.01em"
 LS_BODY = "0"
 
-# ─── ESPACIADO (4px base) ────────────────────────────────────────
+# ─── SPACING (4px base) ────────────────────────────────────────
 
 SPACE_1 = "2px"
 SPACE_2 = "4px"
@@ -94,20 +94,20 @@ RADIUS_MD = "6px"
 RADIUS_LG = "8px"
 RADIUS_XL = "12px"
 
-# Sombras (direccional, no glow)
+# Shadows (directional, no glow)
 SHADOW_SM = "0 1px 2px rgba(0,0,0,0.05)"
 SHADOW_MD = "0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05)"
 SHADOW_LG = "0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.04)"
 SHADOW_XL = "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.05)"
 
-# Transiciones (sin bounce)
+# Transitions (no bounce)
 TRANSITION_FAST = "100ms ease"
 TRANSITION_NORMAL = "150ms ease"
 TRANSITION_SLOW = "200ms ease"
 
-# ─── COLORES SEMÁNTICOS ───────────────────────────────────────────
+# ─── SEMANTIC COLORS ───────────────────────────────────────────
 
-# Neutros: Slate (azul-frío, limpio, estilo Linear/Vercel)
+# Neutrals: Slate (cool blue, clean, Linear/Vercel style)
 NEUTRAL_SLATE = {
     50:  "#f8fafc",
     100: "#f1f5f9",
@@ -122,7 +122,7 @@ NEUTRAL_SLATE = {
     950: "#020617",
 }
 
-# Neutros: Zinc (frío neutro, estilo Vercel/Linear)
+# Neutrals: Zinc (cool neutral, Vercel/Linear style)
 NEUTRAL_ZINC = {
     50:  "#fafafa",
     100: "#f4f4f5",
@@ -137,7 +137,7 @@ NEUTRAL_ZINC = {
     950: "#09090b",
 }
 
-# Neutros: Gray (gris puro, clásico)
+# Neutrals: Gray (pure gray, classic)
 NEUTRAL_GRAY = {
     50:  "#f9fafb",
     100: "#f3f4f6",
@@ -152,7 +152,7 @@ NEUTRAL_GRAY = {
     950: "#030712",
 }
 
-# Neutros: Stone (cálido, estilo Notion/escritura)
+# Neutrals: Stone (warm, Notion/writing style)
 NEUTRAL_STONE = {
     50:  "#fafaf9",
     100: "#f5f5f4",
@@ -167,7 +167,7 @@ NEUTRAL_STONE = {
     950: "#0c0a09",
 }
 
-# Neutros por nombre para fácil acceso
+# Neutrals by name for easy access
 NEUTRALS = {
     "slate": NEUTRAL_SLATE,
     "zinc": NEUTRAL_ZINC,
@@ -175,45 +175,45 @@ NEUTRALS = {
     "stone": NEUTRAL_STONE,
 }
 
-# Acentos disponibles (sat < 75% para legibilidad)
+# Available accents (sat < 75% for readability)
 ACCENTS = {
-    "blue": {      # Electric Blue - técnico
+    "blue": {      # Electric Blue - technical
         50:  "#eff6ff", 100: "#dbeafe", 400: "#60a5fa",
         500: "#3b82f6", 600: "#2563eb", 700: "#1d4ed8", 900: "#1e3a8a",
     },
-    "teal": {      # Teal - datos, productividad
+    "teal": {      # Teal - data, productivity
         50:  "#f0fdfa", 100: "#ccfbf1", 400: "#2dd4bf",
         500: "#14b8a6", 600: "#0d9488", 700: "#0f766e", 900: "#134e4a",
     },
-    "emerald": {   # Emerald - éxito, limpio
+    "emerald": {   # Emerald - success, clean
         50:  "#ecfdf5", 100: "#d1fae5", 400: "#34d399",
         500: "#10b981", 600: "#059669", 700: "#047857", 900: "#065f46",
     },
-    "green": {     # Green - naturaleza
+    "green": {     # Green - nature
         50:  "#f0fdf4", 100: "#dcfce7", 400: "#4ade80",
         500: "#22c55e", 600: "#16a34a", 700: "#15803d", 900: "#14532d",
     },
-    "amber": {     # Amber - cálido, creativo
+    "amber": {     # Amber - warm, creative
         50:  "#fffbeb", 100: "#fef3c7", 400: "#fbbf24",
         500: "#f59e0b", 600: "#d97706", 700: "#b45309", 900: "#92400e",
     },
-    "orange": {    # Orange - energía
+    "orange": {    # Orange - energy
         50:  "#fff7ed", 100: "#ffedd5", 400: "#fb923c",
         500: "#f97316", 600: "#ea580c", 700: "#c2410c", 900: "#9a3412",
     },
-    "red": {       # Red - peligro, error
+    "red": {       # Red - danger, error
         50:  "#fef2f2", 100: "#fee2e2", 400: "#f87171",
         500: "#ef4444", 600: "#dc2626", 700: "#b91c1c", 900: "#991b1b",
     },
-    "rose": {      # Rose - moderno, marca
+    "rose": {      # Rose - modern, brand
         50:  "#fff1f2", 100: "#ffe4e6", 400: "#fb7185",
         500: "#f43f5e", 600: "#e11d48", 700: "#be123c", 900: "#9f1239",
     },
-    "violet": {    # Violet - premium (OK en data viz)
+    "violet": {    # Violet - premium (OK for data viz)
         50:  "#f5f3ff", 100: "#ede9fe", 400: "#a78bfa",
         500: "#8b5cf6", 600: "#7c3aed", 700: "#6d28d9", 900: "#5b21b6",
     },
-    "purple": {    # Purple - creativo
+    "purple": {    # Purple - creative
         50:  "#faf5ff", 100: "#f3e8ff", 400: "#c084fc",
         500: "#a855f7", 600: "#9333ea", 700: "#7e22ce", 900: "#6b21a8",
     },
@@ -221,47 +221,47 @@ ACCENTS = {
         50:  "#eef2ff", 100: "#e0e7ff", 400: "#818cf8",
         500: "#6366f1", 600: "#4f46e5", 700: "#4338ca", 900: "#312e81",
     },
-    "sky": {       # Sky - ligero, aéreo
+    "sky": {       # Sky - light, airy
         50:  "#f0f9ff", 100: "#e0f2fe", 400: "#38bdf8",
         500: "#0ea5e9", 600: "#0284c7", 700: "#0369a1", 900: "#075985",
     },
-    "cyan": {      # Cian - técnico
+    "cyan": {      # Cyan - technical
         50:  "#ecfeff", 100: "#cffafe", 400: "#22d3ee",
         500: "#06b6d4", 600: "#0891b2", 700: "#0e7490", 900: "#164e63",
     },
 }
 
-# Alias para compatibilidad
+# Aliases for compatibility
 NEUTRAL = NEUTRAL_SLATE
 ACCENT = ACCENTS["blue"]
 
-# Estado (semánticos, no solo color)
+# Status (semantic, not just color)
 STATUS_SUCCESS = "#16a34a"
 STATUS_WARNING = "#d97706"
 STATUS_ERROR = "#dc2626"
 STATUS_INFO = "#2563eb"
 
-# ─── COLORES COMPARTIDOS (cabina) ──────────────────────────────────
-# Tokens globales para paneles/plots (evita hex sueltos en los widgets).
-ACCENTO_CABINA = "#d97706"  # ámbar instrumentos
+# ─── SHARED COLORS (cockpit) ──────────────────────────────────────
+# Global tokens for panels/plots (avoids loose hex values in the widgets).
+ACCENTO_CABINA = "#d97706"  # instrument amber
 ACCENTO_CABINA_CLARO = "#f59e0b"
 DATOS_EXITO = "#22c55e"
 DATOS_ERROR = "#ef4444"
 DATOS_INFO = "#3b82f6"
 
-# ─── GENERADOR QSS ────────────────────────────────────────────────
+# ─── QSS GENERATOR ────────────────────────────────────────────────
 
 def _qss_variables(tema: str) -> dict:
-    """Devuelve diccionario de tokens para el tema."""
+    """Returns the token dictionary for the theme."""
 
-    # Temas especiales hardcoded
+    # Hardcoded special themes
     if tema == "Hacker":
         return _build_hacker_theme()
     if tema == "Cyberpunk":
         return _build_cyberpunk_theme()
 
-    # Parsear tema: "Neutral/Accent [Claro|Oscuro]"
-    # Ejemplos: "Slate/Blue Oscuro", "Zinc/Teal Claro", "Stone/Amber Oscuro"
+    # Parse theme: "Neutral/Accent [Light|Dark]"
+    # Examples: "Slate/Blue Oscuro", "Zinc/Teal Claro", "Stone/Amber Oscuro"
     parts = tema.split()
     if len(parts) >= 2:
         neutral_accent = parts[0].split("/")
@@ -272,7 +272,7 @@ def _qss_variables(tema: str) -> dict:
             if neutral_name in NEUTRALS and accent_name in ACCENTS:
                 return _build_theme(neutral_name, accent_name, is_dark)
 
-    # Fallback: temas legacy
+    # Fallback: legacy themes
     is_dark = tema in ("Oscuro", "Hacker")
     if tema == "Hacker":
         return _build_hacker_theme()
@@ -281,7 +281,7 @@ def _qss_variables(tema: str) -> dict:
 
 
 def _build_theme(neutral_name: str, accent_name: str, is_dark: bool) -> dict:
-    """Construye un tema a partir de neutral + acento + modo claro/oscuro."""
+    """Builds a theme from neutral + accent + light/dark mode."""
     neutral = NEUTRALS[neutral_name]
     accent = ACCENTS[accent_name]
 
@@ -344,7 +344,7 @@ def _build_theme(neutral_name: str, accent_name: str, is_dark: bool) -> dict:
             "btn_border_disabled": neutral[800],
         }
 
-    # Claro
+    # Light
     return {
         "bg_app":       neutral[50],
         "bg_panel":     "#ffffff",
@@ -405,13 +405,13 @@ def _build_theme(neutral_name: str, accent_name: str, is_dark: bool) -> dict:
 
 
 def _hex_to_rgb(hex_color: str) -> str:
-    """Convierte #RRGGBB a 'R, G, B' para rgba()."""
+    """Converts #RRGGBB to 'R, G, B' for rgba()."""
     h = hex_color.lstrip("#")
     return f"{int(h[0:2], 16)}, {int(h[2:4], 16)}, {int(h[4:6], 16)}"
 
 
 def _build_hacker_theme():
-    """Tema Hacker especial (verde terminal)."""
+    """Special Hacker theme (terminal green)."""
     return {
         "bg_app":       "#04080a", "bg_panel":     "#071009", "bg_elevated":  "#0a1a0e",
         "bg_sunken":    "#04180d", "bg_overlay":   "rgba(0,0,0,0.6)",
@@ -435,7 +435,7 @@ def _build_hacker_theme():
 
 
 def _build_cyberpunk_theme():
-    """Tema Cyberpunk (neón morado/fucsia sobre grafito)."""
+    """Cyberpunk theme (purple/fuchsia neon on graphite)."""
     return {
         "bg_app":       "#0b0612", "bg_panel":     "#150a24", "bg_elevated":  "#1f0f35",
         "bg_sunken":    "rgba(0,0,0,0.35)", "bg_overlay": "rgba(0,0,0,0.65)",
@@ -458,7 +458,7 @@ def _build_cyberpunk_theme():
     }
 
 
-# Plantilla QSS con placeholders para .format()
+# QSS template with placeholders for .format()
 _QSS_TEMPLATE = """
 /* ─── RESET BASE ─── */
 * {{
@@ -868,8 +868,8 @@ QLabel#pill_loop[running="true"] {{
 
 
 def _qss(c: dict) -> str:
-    """Genera QSS completo con tokens semánticos usando .format() para evitar problemas con llaves."""
-    # Resolver fuentes (inicializa si no lo está)
+    """Generates the full QSS with semantic tokens using .format() to avoid problems with braces."""
+    # Resolve fonts (initializes them if not done yet)
     fuente_mono = _get_fuente_mono()
     fuente_ui = _get_fuente_ui()
     return _QSS_TEMPLATE.format(
@@ -895,25 +895,25 @@ def _qss(c: dict) -> str:
     )
 
 
-# Temas disponibles - lista curada (visualmente muy distintos entre sí)
+# Available themes - curated list (visually very distinct from each other)
 NOMBRES = [
-    "Oscuro",                    # slate/blue oscuro (legacy)
-    "Claro",                     # slate/blue claro (legacy)
-    "Hacker",                    # verde terminal
-    "Cyberpunk",                 # neón morado/fucsia sobre grafito
-    "Zinc/Amber Oscuro",         # cabina ámbar (por defecto)
-    "Gray/Red Oscuro",           # rojo
-    "Stone/Emerald Claro",       # verde claro cálido
-    "Zinc/Sky Claro",            # azul claro
-    "Slate/Teal Oscuro",         # teal profundo
+    "Oscuro",                    # slate/blue dark (legacy)
+    "Claro",                     # slate/blue light (legacy)
+    "Hacker",                    # terminal green
+    "Cyberpunk",                 # purple/fuchsia neon on graphite
+    "Zinc/Amber Oscuro",         # amber cockpit (default)
+    "Gray/Red Oscuro",           # red
+    "Stone/Emerald Claro",       # warm light green
+    "Zinc/Sky Claro",            # light blue
+    "Slate/Teal Oscuro",         # deep teal
 ]
 _TEMAS_CACHE: dict[str, str] = {}
 
 
 def colores_tema(tema: str) -> dict:
-    """Colores del tema como QColor para pintado manual (p. ej. el stepper).
+    """Theme colors as QColor for manual painting (e.g. the stepper).
 
-    Reutiliza los mismos tokens que el QSS para que nada se desincronice.
+    Reuses the same tokens as the QSS so nothing goes out of sync.
     """
     from PySide6.QtGui import QColor
     c = _qss_variables(tema)
@@ -945,7 +945,7 @@ def colores_tema(tema: str) -> dict:
 
 
 def inicializar_temas():
-    """Genera los temas QSS. Debe llamarse después de crear QApplication."""
+    """Generates the QSS themes. Must be called after creating QApplication."""
     global _TEMAS_CACHE
     if not _TEMAS_CACHE:
         for nombre in NOMBRES:
@@ -953,7 +953,7 @@ def inicializar_temas():
 
 
 def obtener_temas():
-    """Devuelve el diccionario de temas, inicializando si es necesario."""
+    """Returns the theme dictionary, initializing it if necessary."""
     if not _TEMAS_CACHE:
         inicializar_temas()
     return _TEMAS_CACHE

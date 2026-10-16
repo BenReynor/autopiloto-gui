@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Preparación del lanzamiento del loop (compartida por la GUI y el MCP).
+"""Loop launch preparation (shared by the GUI and the MCP).
 
-Extrae de app.py la construcción del COMANDO y del ENTORNO del motor para que
-el panel Qt y el servidor MCP (`dedalo.mcp_server`) lancen el mismo
-proceso con la misma configuración. Sin dependencias de PySide: el servidor
-MCP importa este módulo sin arrastrar Qt.
+Extracts from app.py the building of the engine's COMMAND and ENVIRONMENT so
+that the Qt panel and the MCP server (`dedalo.mcp_server`) launch the same
+process with the same configuration. No PySide dependencies: the MCP
+server imports this module without dragging in Qt.
 
-El contrato de entorno es el de dedalo.sh / loop.Config: mismas variables
+The environment contract is that of dedalo.sh / loop.Config: same variables
 MAX_ITER, AGENTE_TAREA, AGENTES_PREFERIDOS, MODELO_*, NAVEGADOR, REVISION_DUAL,
-VOZ, MAX_COSTO, COSTO_POR_ITER, REVISION_MANUAL y CLI_<AGENTE>.
+VOZ, MAX_COSTO, COSTO_POR_ITER, REVISION_MANUAL and CLI_<AGENTE>.
 """
 
 import os
@@ -17,7 +17,7 @@ import sys
 from . import configuracion as cfg
 from . import modelos
 
-# Variable de entorno por cada CLI de agente (dedalo.sh las soporta).
+# Environment variable for each agent CLI (dedalo.sh supports them).
 MAPA_CLI = {
     "opencode": "CLI_OPENCODE",
     "codex": "CLI_CODEX",
@@ -26,16 +26,16 @@ MAPA_CLI = {
 
 
 def raiz_codigo():
-    """Raíz del repo de la GUI: `dedalo` es un subdirectorio suyo."""
+    """Repo root of the GUI: `dedalo` is a subdirectory of it."""
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def argv_motor(frozen, args):
-    """Comando (programa, argv) que lanza el motor del loop.
+    """Command (program, argv) that launches the loop engine.
 
-    En el código fuente: `python -m dedalo.loop [args]`. En el
-    binario de PyInstaller `-m` no resuelve el módulo (va empaquetado en el
-    exe): el entrypoint interpreta `--dedalo-loop` y llama a
+    In the source code: `python -m dedalo.loop [args]`. In the
+    PyInstaller binary `-m` does not resolve the module (it is packaged in the
+    exe): the entrypoint interprets `--dedalo-loop` and calls
     `loop.main(argv[1:])`.
     """
     if frozen:
@@ -44,7 +44,7 @@ def argv_motor(frozen, args):
 
 
 def args_cli(conf):
-    """Argumentos de línea de comandos del motor a partir de la config."""
+    """Engine command-line arguments from the config."""
     args = []
     if conf.get("hasta"):
         args += ["--hasta", conf["hasta"]]
@@ -58,11 +58,11 @@ def args_cli(conf):
 
 
 def resolver_agentes(conf, detectados):
-    """(agente_tarea, agente_revisor) resolviendo "auto" con lo detectado.
+    """(agente_tarea, agente_revisor) resolving "auto" with what was detected.
 
-    Un selector en "auto" no es el nombre del agente: se resuelve aquí con la
-    misma lista de preferencia que usa dedalo.sh, para que el log y el
-    motivo de lanzamiento coincidan con lo que de verdad se ejecuta.
+    A selector in "auto" is not the agent's name: it is resolved here with the
+    same preference list dedalo.sh uses, so that the log and the
+    launch reason match what actually runs.
     """
     auto = detectados[0] if detectados else ""
     tarea = auto if conf.get("agente_cli", cfg.AGENTE_DEFECTO) == "auto" \
@@ -73,19 +73,19 @@ def resolver_agentes(conf, detectados):
 
 
 def construir_entorno(conf, nav, detectados, environ, frozen=None):
-    """Entorno (dict) para el proceso del motor.
+    """Environment (dict) for the engine process.
 
-    `environ` es el entorno base (el del QProcess en la GUI, os.environ en el
-    MCP). `nav` = {"activo": bool, "modelo": str}. `detectados` es la lista de
-    agentes operativos (modelos.agentes_operativos()).
+    `environ` is the base environment (the QProcess one in the GUI, os.environ
+    in the MCP). `nav` = {"activo": bool, "modelo": str}. `detectados` is the list
+    of operational agents (modelos.agentes_operativos()).
     """
     if frozen is None:
         frozen = bool(getattr(sys, "frozen", False))
     env = dict(environ)
 
-    # El agente CLI se pasa explícito. Si no está en el PATH (p. ej. GUI
-    # abierta sin ~/.opencode/bin) se resuelve su ruta absoluta a CLI_<AGENTE>
-    # (que dedalo.sh ya soporta) y se añade su dir al PATH del subproceso.
+    # The CLI agent is passed explicitly. If it is not in the PATH (e.g. GUI
+    # opened without ~/.opencode/bin) its absolute path is resolved to CLI_<AGENTE>
+    # (which dedalo.sh already supports) and its dir is added to the subprocess PATH.
     dirs_extra = set()
     for clave, var in MAPA_CLI.items():
         binario = modelos.ruta_binario(clave)
@@ -93,8 +93,8 @@ def construir_entorno(conf, nav, detectados, environ, frozen=None):
             env[var] = binario
             dirs_extra.add(os.path.dirname(binario))
     if dirs_extra:
-        # os.pathsep: con ":" fijo el PATH del loop se corrompía en Windows
-        # (que separa con ";").
+        # os.pathsep: with a fixed ":" the loop's PATH got corrupted on Windows
+        # (which separates with ";").
         env["PATH"] = os.pathsep.join(sorted(dirs_extra)) + (
             os.pathsep + env["PATH"] if env.get("PATH") else "")
 
@@ -102,14 +102,14 @@ def construir_entorno(conf, nav, detectados, environ, frozen=None):
     env["MAX_ITER"] = str(conf.get("iteraciones", cfg.LAUNCH_DEFECTO["iteraciones"]))
     env["AGENTE_TAREA"] = agente_tarea
     env["AGENTE_REVISOR"] = agente_revisor
-    # AGENTES_PREFERIDOS sólo con agentes utilizables: si el revisor está en
-    # "auto", dedalo.sh busca otro en esta lista, y no debe caer en un CLI
-    # instalado pero sin sesión (abortaría el loop).
+    # AGENTES_PREFERIDOS only with usable agents: if the reviewer is in
+    # "auto", dedalo.sh looks for another one in this list, and it must not fall back
+    # on a CLI installed but without a session (it would abort the loop).
     env["AGENTES_PREFERIDOS"] = " ".join(detectados)
-    # El juez sigue al agente de la tarea salvo elección explícita.
+    # The judge follows the task agent unless explicitly chosen.
     env["AGENTE_JUEZ"] = agente_tarea
-    # Solo pasa MODELO_* si la selección es provider/model completo Y el agente
-    # es opencode (codex y claude no aceptan --model aquí).
+    # Only pass MODELO_* if the selection is a full provider/model AND the agent
+    # is opencode (codex and claude do not accept --model here).
     modelo_tarea = (conf.get("agente", "") if "/" in conf.get("agente", "")
                     and agente_tarea == "opencode" else "")
     modelo_revisor = (conf.get("revisor", "") if "/" in conf.get("revisor", "")
@@ -128,13 +128,13 @@ def construir_entorno(conf, nav, detectados, environ, frozen=None):
 
 
 def preparar(conf, nav=None, environ=None, frozen=None):
-    """Plan completo de lanzamiento del motor.
+    """Full engine launch plan.
 
-    Devuelve un dict con:
-      · detectados: agentes CLI utilizables (vacío ⇒ el llamante aborta)
+    Returns a dict with:
+      · detectados: usable CLI agents (empty ⇒ the caller aborts)
       · agente_tarea / agente_revisor / modelo_tarea / modelo_revisor
-      · env: entorno (dict) ya con PATH, CLI_* y PYTHONPATH (si no frozen)
-      · programa / argv: comando a ejecutar
+      · env: environment (dict) already with PATH, CLI_* and PYTHONPATH (if not frozen)
+      · programa / argv: command to run
     """
     if environ is None:
         environ = dict(os.environ)
@@ -168,11 +168,11 @@ def preparar(conf, nav=None, environ=None, frozen=None):
 
 
 def config_de_proyecto(nombre):
-    """Config de lanzamiento fusionada (defaults + lo guardado) de un proyecto.
+    """Merged launch config (defaults + what was saved) of a project.
 
-    El servidor MCP la usa para lanzar con los mismos ajustes que el usuario
-    dejó en la GUI (`proyectos[nombre]["config"]["lanzamiento"]`). Devuelve
-    `(conf, nav)`, donde nav replica `navegador_config()` de la GUI.
+    The MCP server uses it to launch with the same settings the user
+    left in the GUI (`proyectos[nombre]["config"]["lanzamiento"]`). Returns
+    `(conf, nav)`, where nav replicates the GUI's `navegador_config()`.
     """
     from . import proyectos as proy
 

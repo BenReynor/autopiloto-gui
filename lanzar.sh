@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Lanzador del panel de Dédalo.
+# Launcher for the Dédalo panel.
 #
-# Se auto-localiza: resuelve su propia ruta real (sigue symlinks) y no depende
-# de la ubicación del proyecto ni de un venv concreto. Sobrevive a mover o
-# renombrar la carpeta y al cambio de intérprete de Python.
+# It self-locates: resolves its own real path (following symlinks) and does
+# not depend on the project location or a specific venv. Survives moving or
+# renaming the folder and switching the Python interpreter.
 set -euo pipefail
 
-# Ubicación real de este script. `readlink -f` es GNU: en macOS (BSD) no
-# existe, así que resolvemos los symlinks a mano y terminamos con ruta absoluta.
+# Real location of this script. `readlink -f` is GNU: it does not exist on
+# macOS (BSD), so we resolve symlinks by hand and end up with an absolute path.
 ORIGEN="${BASH_SOURCE[0]:-$0}"
 while [ -L "$ORIGEN" ]; do
     _dest="$(readlink "$ORIGEN")"
@@ -19,7 +19,7 @@ done
 ORIGEN="$(cd "$(dirname "$ORIGEN")" && pwd)/$(basename "$ORIGEN")"
 PROYECTO="$(dirname "$ORIGEN")"
 
-# ── Busca un Python con PySide6 (el primero que sirva gana) ──────────────
+# ── Find a Python with PySide6 (the first working one wins) ─────────────
 PYTHON=""
 for p in \
     "$PROYECTO/.venv/bin/python" \

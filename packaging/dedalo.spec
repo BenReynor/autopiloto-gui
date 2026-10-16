@@ -1,20 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""Spec de PyInstaller para dedalo (onedir, multiplataforma).
+"""PyInstaller spec for dedalo (onedir, cross-platform).
 
-Se invoca desde la raíz del proyecto:
+Invoked from the project root:
 
     pyinstaller --clean --noconfirm packaging/dedalo.spec
 
-Genera dist/dedalo/ (onedir). Elegimos onedir y no onefile porque:
+Generates dist/dedalo/ (onedir). We chose onedir and not onefile because:
 
-  · El .deb y el AppImage esperan un directorio de aplicación.
-  · onefile extrae a /tmp en cada arranque (PySide6 pesa ~150 MB: se nota)
-    y los binarios extraídos rompen la limpieza por señales que ya
-    tiene dedalo.sh.
+  · The .deb and the AppImage expect an application directory.
+  · onefile extracts to /tmp on every start (PySide6 weighs ~150 MB: it shows)
+    and the extracted binaries break the signal-based cleanup that
+    dedalo.sh already has.
 
-Los datos se montan EXACTAMENTE en la ruta que el código espera en
-runtime: dedalo/plantillas_data/ y dedalo/icono.svg,
-resueltas vía os.path.dirname(__file__), que en un binario apunta a
+The data is mounted EXACTLY at the path the code expects at
+runtime: dedalo/plantillas_data/ and dedalo/icono.svg,
+resolved via os.path.dirname(__file__), which in a binary points to
 _MEIPASS/dedalo/.
 """
 
@@ -23,28 +23,28 @@ import re
 import sys
 from pathlib import Path
 
-SPEC_DIR = Path(SPECPATH).resolve()          # noqa: F821 (inyectado por PyInstaller)
-RAIZ = SPEC_DIR.parent                        # raíz del repo
+SPEC_DIR = Path(SPECPATH).resolve()          # noqa: F821 (injected by PyInstaller)
+RAIZ = SPEC_DIR.parent                        # repo root
 PAQUETE = RAIZ / "dedalo"
 
-# Versión desde pyproject.toml (misma fuente que build_*.sh).
+# Version from pyproject.toml (same source as build_*.sh).
 VERSION = re.search(
     r'^version\s*=\s*"([^"]+)"',
     (RAIZ / "pyproject.toml").read_text(encoding="utf-8"),
     re.M,
 ).group(1)
 
-# --- datos del paquete -----------------------------------------------------
-# rglob("*") sí incluye los .gitignore (los globs de package-data de
-# pyproject no, y los tests ya advierten de eso): el .gitignore de
-# plantillas_data es imprescindible para que el framework no se commitee
-# en los repos de los usuarios.
+# --- package data -----------------------------------------------------------
+# rglob("*") does include the .gitignore files (the package-data globs in
+# pyproject do not, and the tests already warn about that): the .gitignore of
+# plantillas_data is essential so the framework is not committed
+# into users' repos.
 datas = []
 for ruta in sorted(PAQUETE.rglob("*")):
-    # Los .py del paquete ya los recoge Analysis por importación; aquí sólo
-    # se necesitan los ficheros NO de código (plantillas, icono, acceso.sh).
-    # EXCEPCIÓN: los checks gate_checks/*.py son DATOS (gate.py los ejecuta con
-    # exec, no los importa), así que deben montarse junto a los .sh.
+    # The package's .py files are already collected by Analysis via import;
+    # here only the NON-code files are needed (templates, icon, acceso.sh).
+    # EXCEPTION: the gate_checks/*.py checks are DATA (gate.py runs them with
+    # exec, it does not import them), so they must be mounted next to the .sh.
     if not ruta.is_file():
         continue
     es_check_py = (ruta.suffix == ".py"
@@ -52,13 +52,13 @@ for ruta in sorted(PAQUETE.rglob("*")):
     if "__pycache__" in ruta.parts or (
             ruta.suffix in {".py", ".pyc", ".pyo"} and not es_check_py):
         continue
-    relativa = ruta.relative_to(PAQUETE)      # p. ej. plantillas_data/gate.sh
+    relativa = ruta.relative_to(PAQUETE)      # e.g. plantillas_data/gate.sh
     destino = Path("dedalo") / relativa.parent
     datas.append((str(ruta), str(destino)))
 
 hiddenimports = [
-    # pyqtgraph se importa con importorskip en la GUI: si PyInstaller no lo
-    # ve, la app funciona pero las métricas desaparecen en silencio.
+    # pyqtgraph is imported with importorskip in the GUI: if PyInstaller does
+    # not see it, the app works but the metrics silently disappear.
     "pyqtgraph",
     "numpy",
 ]
@@ -83,8 +83,8 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="dedalo",
-    console=False,          # app de escritorio; el log va a progreso.log
-    # Windows exige .ico (el .svg no sirve); se genera con make_iconos.py.
+    console=False,          # desktop app; the log goes to progreso.log
+    # Windows requires .ico (the .svg does not work); generated with make_iconos.py.
     icon=str(SPEC_DIR / "icono.ico") if os.name == "nt" else None,
     disable_windowed_traceback=False,
 )
@@ -94,13 +94,13 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     strip=False,
-    upx=False,              # UPX revienta firmas Qt y antivirus lo marcaban
+    upx=False,              # UPX broke Qt signatures and antivirus flagged it
     name="dedalo",
 )
 
-# En macOS el artefacto es un .app de verdad (icono icns, identificador y
-# versión para Finder, codesign y notarización). Sólo el onedir suelto no se
-# puede firmar. Se genera además el .dmg en build_macos.sh.
+# On macOS the artifact is a real .app (icns icon, identifier and
+# version for Finder, codesign and notarization). A loose onedir cannot be
+# signed. The .dmg is also generated in build_macos.sh.
 if sys.platform == "darwin":
     app = BUNDLE(
         coll,

@@ -1,4 +1,4 @@
-"""Panel de Métricas con pyqtgraph: 4 gráficas + tabla resumen."""
+"""Metrics panel with pyqtgraph: 4 charts + summary table."""
 
 import os
 
@@ -25,7 +25,7 @@ from .temas import ACCENTO_CABINA, DATOS_ERROR, DATOS_EXITO
 
 
 class PanelMetricas(QWidget):
-    """Dashboard de métricas en tiempo real (lee progreso.log cada 5s)."""
+    """Real-time metrics dashboard (reads progreso.log every 5s)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -53,7 +53,7 @@ class PanelMetricas(QWidget):
         h.addWidget(self.cmb_rango)
         v.addLayout(h)
 
-        # Resumen rápido (4 KPIs)
+        # Quick summary (4 KPIs)
         kpi = QHBoxLayout()
         kpi.setSpacing(12)
         self.kpi_total = self._crear_kpi("Total", "0")
@@ -66,28 +66,28 @@ class PanelMetricas(QWidget):
         kpi.addWidget(self.kpi_coste)
         v.addLayout(kpi)
 
-        # Splitter: Gráficas arriba, Tabla abajo
+        # Splitter: charts on top, table below
         splitter = QSplitter(Qt.Vertical)
         splitter.setHandleWidth(6)
         splitter.setChildrenCollapsible(False)
 
-        # ---- Área de gráficas (2x2 grid) ----
+        # ---- Charts area (2x2 grid) ----
         graficas_widget = QWidget()
         g = QGridLayout(graficas_widget)
         g.setSpacing(8)
         g.setContentsMargins(0, 0, 0, 0)
 
-        # 1. Tareas/hora (línea temporal)
+        # 1. Tasks/hour (timeline)
         self.plot_tareas = self._crear_plot("Tareas completadas / iteración")
         self.curve_tareas = self.plot_tareas.plot(pen=mkPen(DATOS_EXITO, width=2), symbol='o', symbolSize=6, symbolBrush=mkBrush(DATOS_EXITO))
         g.addWidget(self.plot_tareas, 0, 0)
 
-        # 2. Coste acumulado (ámbar, acento de cabina)
+        # 2. Accumulated cost (amber, cockpit accent)
         self.plot_coste = self._crear_plot("Coste acumulado (USD)")
         self.curve_coste = self.plot_coste.plot(pen=mkPen(ACCENTO_CABINA, width=2), symbol='o', symbolSize=6, symbolBrush=mkBrush(ACCENTO_CABINA))
         g.addWidget(self.plot_coste, 0, 1)
 
-        # 3. Gate: OK vs FAIL (barras apiladas)
+        # 3. Gate: OK vs FAIL (stacked bars)
         self.plot_gate = self._crear_plot("Gate: OK / FAIL")
         self.bar_gate_ok = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush(DATOS_EXITO))
         self.bar_gate_fail = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush(DATOS_ERROR))
@@ -95,7 +95,7 @@ class PanelMetricas(QWidget):
         self.plot_gate.addItem(self.bar_gate_fail)
         g.addWidget(self.plot_gate, 1, 0)
 
-        # 4. Revisor: PASS vs FAIL
+        # 4. Reviewer: PASS vs FAIL
         self.plot_rev = self._crear_plot("Revisor: PASS / FAIL")
         self.bar_rev_pass = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush(DATOS_EXITO))
         self.bar_rev_fail = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush(DATOS_ERROR))
@@ -105,7 +105,7 @@ class PanelMetricas(QWidget):
 
         splitter.addWidget(graficas_widget)
 
-        # ---- Tabla resumen ----
+        # ---- Summary table ----
         self.tabla = QTableWidget()
         self.tabla.setColumnCount(12)
         self.tabla.setHorizontalHeaderLabels(["Iter", "Tarea", "Duración", "Coste Est.", "Coste Real", "Tokens In", "Tokens Out", "Latencia", "Modelo", "Gate", "Revisor", "Estado"])
@@ -120,7 +120,7 @@ class PanelMetricas(QWidget):
         splitter.setSizes([500, 300])
         v.addWidget(splitter, 1)
 
-        # Botones
+        # Buttons
         h = QHBoxLayout()
         b_refresh = _BtnGhost("🔄 Actualizar ahora")
         b_refresh.clicked.connect(self._actualizar)
@@ -183,7 +183,7 @@ class PanelMetricas(QWidget):
         self.kpi_coste.lbl_valor.setText(f"${resumen['coste_total']:.2f}")
         self.lbl_estado.setText(f"Última actualización: {len(iters)} iteraciones")
 
-        # Rango
+        # Range
         rango_txt = self.cmb_rango.currentText()
         if "50" in rango_txt:
             n = 50
@@ -194,22 +194,22 @@ class PanelMetricas(QWidget):
         iters = iters[-n:]
         series = {k: v[-n:] for k, v in series.items()}
 
-        # 1. Tareas/hora
+        # 1. Tasks/hour
         x = list(range(1, len(series["tareas_hora"]) + 1))
         y = [v for _, v in series["tareas_hora"]]
         self.curve_tareas.setData(x, y)
 
-        # 2. Coste
+        # 2. Cost
         yc = [v for _, v in series["coste_acum"]]
         self.curve_coste.setData(x, yc)
 
-        # 3. Gate barras
+        # 3. Gate bars
         gate_ok = [1 if v == 1 else 0 for _, v in series["gate"]]
         gate_fail = [1 if v == 0 else 0 for _, v in series["gate"]]
         self.bar_gate_ok.setOpts(x=x, height=gate_ok)
         self.bar_gate_fail.setOpts(x=[xi + 0.3 for xi in x], height=gate_fail)
 
-        # 4. Revisor barras
+        # 4. Reviewer bars
         rev_pass = [1 if v == 1 else 0 for _, v in series["revisor"]]
         rev_fail = [1 if v == 0 else 0 for _, v in series["revisor"]]
         self.bar_rev_pass.setOpts(x=x, height=rev_pass)

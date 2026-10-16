@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Argumentos del loop nativo (port del parseo de dedalo.sh).
+"""Arguments of the native loop (port of dedalo.sh's parsing).
 
-Mismo contrato que el script: posición 1 = plan.md (por defecto), y las
-opciones --hasta/--push/--padre/--trabajo. Diferencia deliberada: el motor
-Python es estricto con las opciones que faltan de valor (exit 64 = EX_USAGE,
-igual que el fix reciente del script); el bash trataba un flag desconocido
-como plan posicional.
+Same contract as the script: position 1 = plan.md (by default), and the
+--hasta/--push/--padre/--trabajo options. Deliberate difference: the Python
+engine is strict about options missing a value (exit 64 = EX_USAGE, same as
+the script's recent fix); bash treated an unknown flag as a positional plan.
 """
 
 import argparse
@@ -14,8 +13,8 @@ import os
 
 class _Parser(argparse.ArgumentParser):
     def error(self, message):
-        # 64 = EX_USAGE: coherente con el fix de dedalo.sh para
-        # `--hasta`/`--padre`/`--trabajo` sin valor (antes colgaban).
+        # 64 = EX_USAGE: consistent with the dedalo.sh fix for
+        # `--hasta`/`--padre`/`--trabajo` with no value (they used to hang).
         self.exit(64, f"{self.prog}: error: {message}\n")
 
 
@@ -40,9 +39,9 @@ def parse_args(argv=None):
         "--trabajo", default="",
         help="rama de trabajo (vacío = la rama del run)")
     args = parser.parse_args(argv)
-    # El plan puede venir como ruta (absoluta) o como fichero dentro del
-    # directorio actual (que es el proyecto cuando lo lanza la GUI, igual que
-    # la resolución `[[ "$PLAN" != /* ]]` del script).
+    # The plan can come as a path (absolute) or as a file inside the
+    # current directory (which is the project when the GUI launches it, same
+    # as the script's `[[ "$PLAN" != /* ]]` resolution).
     if not os.path.isabs(args.plan):
         args.plan = os.path.normpath(os.path.join(os.getcwd(), args.plan))
     else:

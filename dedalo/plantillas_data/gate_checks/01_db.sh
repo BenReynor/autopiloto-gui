@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 01_db.sh — Verifica la base de datos (comando configurable)
-# Sobreescribe con DB_CHECK_CMD env. Ej: pg_isready -q, mysqladmin ping, ""
+# 01_db.sh — Checks the database (configurable command)
+# Override with the DB_CHECK_CMD env var. E.g.: pg_isready -q, mysqladmin ping, ""
 set -uo pipefail
 
 if [ -n "$DB_CHECK_CMD" ]; then

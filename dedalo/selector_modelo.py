@@ -1,13 +1,13 @@
-"""Selector de modelo IA en dos niveles: proveedor -> modelo.
+"""Two-level AI model selector: provider -> model.
 
-Al elegir un proveedor (opencode, google, openai, anthropic...) el combo de
-modelos se rellena con la lista real de modelos de esa empresa. Todo por
-selección, sin escribir: los catálogos vienen de `opencode models` (cuando el
-proveedor tiene credenciales) o de models.dev.
+When a provider is chosen (opencode, google, openai, anthropic...) the model
+combo is filled with that company's real model list. Everything by selection,
+no typing: the catalogs come from `opencode models` (when the provider has
+credentials) or from models.dev.
 
-Diseño: mantiene un catálogo local {proveedor: [modelos]}. Las consultas en
-vivo solo ocurren la primera vez que se pide un proveedor (y el resto del
-paquete las cachea por sesión), así el refresco de la GUI es ligero.
+Design: it keeps a local catalog {provider: [models]}. Live lookups only
+happen the first time a provider is requested (and the rest of the package
+caches them per session), so the GUI refresh stays lightweight.
 """
 
 from PySide6.QtCore import Signal
@@ -17,10 +17,10 @@ from . import modelos
 
 
 class SelectorModelo(QWidget):
-    """Combos encadenados proveedor/modelo, ambos de selección.
+    """Chained provider/model combos, both selection-only.
 
-    Expone API parecida a un QComboBox (addItems, currentText, setCurrentText,
-    clear, blockSignals) pero devolviendo siempre 'proveedor/modelo'.
+    Exposes a QComboBox-like API (addItems, currentText, setCurrentText,
+    clear, blockSignals) but always returning 'provider/model'.
     """
 
     currentTextChanged = Signal(str)
@@ -43,14 +43,14 @@ class SelectorModelo(QWidget):
         self._refrescar_proveedores()
 
     def activar_catalogo_global(self):
-        """Usa el catálogo global detectado en vez de la lista inicial."""
+        """Uses the globally detected catalog instead of the initial list."""
         self._proveedores_inicial = None
         self._refrescar_proveedores()
 
-    # ---------- API parecida a QComboBox ----------
+    # ---------- QComboBox-like API ----------
 
     def addItems(self, etiquetas=None):
-        """Incorpora una lista 'proveedor/modelo' al catálogo local."""
+        """Adds a 'provider/model' list to the local catalog."""
         for m in etiquetas or []:
             if "/" in m:
                 prov, modelo = m.split("/", 1)
@@ -93,17 +93,17 @@ class SelectorModelo(QWidget):
             else:
                 prov, idm = valor, ""
             self.cmb_proveedor.setCurrentText(prov)
-            # Siempre hay que repoblar: con las señales bloqueadas,
-            # cmb_proveedor no dispara _cargar_modelos(), y el combo de modelos
-            # se quedaba con los del proveedor anterior. Sin esto,
-            # setCurrentText("google") devolvía "google/gpt-4o-mini".
+            # We always have to repopulate: with signals blocked,
+            # cmb_proveedor doesn't fire _cargar_modelos(), and the model combo
+            # kept the previous provider's models. Without this,
+            # setCurrentText("google") returned "google/gpt-4o-mini".
             self._cargar_modelos(prov)
             if idm:
                 self.cmb_modelo.setCurrentText(idm)
         self.blockSignals(False)
         self._emitir()
 
-    # ---------- Internos ----------
+    # ---------- Internals ----------
 
     def _emitir(self, _=None):
         self.currentTextChanged.emit(self.currentText())

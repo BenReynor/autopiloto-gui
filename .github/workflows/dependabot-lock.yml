@@ -1,11 +1,11 @@
 name: Dependabot lock
 
-# Cuando Dependabot sube una versión en pyproject.toml, requirements.lock queda
-# desincronizado y el job "seguridad" del CI falla. Aquí se regenera el lock en
-# la propia rama del PR para que quede al día.
+# When Dependabot bumps a version in pyproject.toml, requirements.lock goes
+# out of sync and the CI "seguridad" job fails. Here the lock is regenerated
+# in the PR's own branch so it is up to date.
 #
-# pull_request_target (y no pull_request) porque necesita token con permiso de
-# escritura; se limita a PRs de Dependabot con el guard `github.actor`.
+# pull_request_target (not pull_request) because it needs a token with write
+# permission; limited to Dependabot PRs with the `github.actor` guard.
 on:
   pull_request_target:
     paths:

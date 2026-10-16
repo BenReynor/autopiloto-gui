@@ -1,43 +1,43 @@
-# Ficha técnica — Dédalo
+# Technical spec — Dédalo
 
-Documento para quien va a **usar o integrar** Dédalo y quiere los datos duros
-sin leer el código. Para uso paso a paso ver [README](../README.md); para deuda
-técnica viva, [BUGS_CONOCIDOS.md](BUGS_CONOCIDOS.md).
+For anyone who is going to **use or integrate** Dédalo and wants the hard data
+without reading the code. For step-by-step usage see the [README](../README.md); for live
+technical debt, [BUGS_CONOCIDOS.md](BUGS_CONOCIDOS.md).
 
-## Qué es
+## What it is
 
-Panel de control gráfico (PySide6) que orquesta agentes IA de línea de comandos
-(`opencode`, `codex`, `claude`) sobre un proyecto: iteran tareas de un `plan.md`,
-ejecutan el gate (`gate.sh`), piden revisión de código y commitean. El motor no
-depende de la GUI: se puede manejar por CLI o por MCP.
+A graphical control panel (PySide6) that orchestrates command-line AI agents
+(`opencode`, `codex`, `claude`) over a project: they iterate on tasks from a `plan.md`,
+run the gate (`gate.sh`), request code review and commit. The engine does not
+depend on the GUI: it can be driven from the CLI or over MCP.
 
-- **Paquete / CLI / binario**: `dedalo`
-- **Nombre visible**: Dédalo
-- **Repositorio**: <https://github.com/BenReynor/dedalo>
-- **Versión**: 2.0.2
-- **Licencia**: MIT (código propio)
+- **Package / CLI / binary**: `dedalo`
+- **Display name**: Dédalo
+- **Repository**: <https://github.com/BenReynor/dedalo>
+- **Version**: 2.0.2
+- **License**: MIT (first-party code)
 
-## Requisitos
+## Requirements
 
-| Requisito | Valor |
+| Requirement | Value |
 |-----------|-------|
 | Python | ≥ 3.10 |
-| Sistema operativo | Linux (referencia), macOS (arm64), Windows nativo (WSL2/Git Bash no necesario) |
-| Interfaz gráfica | Qt (X11/Wayland en Linux, nativo en macOS/Windows) |
-| Red | Solo saliente (API de modelos, `git` remoto, webhooks); no abre puertos |
+| Operating system | Linux (reference), macOS (arm64), native Windows (WSL2/Git Bash not needed) |
+| Graphical interface | Qt (X11/Wayland on Linux, native on macOS/Windows) |
+| Network | Outbound only (model API, remote `git`, webhooks); opens no ports |
 
-## Dependencias
+## Dependencies
 
-| Paquete | Versión | Papel | Licencia |
+| Package | Version | Role | License |
 |---------|---------|-------|----------|
-| PySide6 | ≥ 6.11.0 | GUI (Qt) | LGPL-3.0 (vía bindings dinámicos) |
-| pyqtgraph | ≥ 0.13.7 | Gráficas | MIT |
-| mcp | ≥ 2 (extra `[mcp]`) | Servidor MCP por stdio | MIT |
+| PySide6 | ≥ 6.11.0 | GUI (Qt) | LGPL-3.0 (via dynamic linking) |
+| pyqtgraph | ≥ 0.13.7 | Charts | MIT |
+| mcp | ≥ 2 (extra `[mcp]`) | MCP server over stdio | MIT |
 
-Dev (`.[dev]`): `pytest`, `ruff`. Cerradura completa con hashes en
-[`requirements.lock`](../requirements.lock) (generada con `uv pip compile`).
+Dev (`.[dev]`): `pytest`, `ruff`. Full lock with hashes in
+[`requirements.lock`](../requirements.lock) (generated with `uv pip compile`).
 
-## Instalación
+## Installation
 
 ```bash
 git clone https://github.com/BenReynor/dedalo.git
@@ -49,25 +49,25 @@ pip install -e ".[mcp]"     # + servidor MCP
 python -m dedalo            # arranca la GUI
 ```
 
-También hay `install.sh` (entorno + acceso directo en el escritorio).
+There is also `install.sh` (environment + desktop shortcut).
 
-## Componentes
+## Components
 
-| Módulo | Función |
+| Module | Function |
 |--------|---------|
-| `dedalo/app.py` | Ventana principal PySide6 (arranque `python -m dedalo`). |
-| `dedalo/loop.py` | Motor del loop: agente → gate → revisor → commit. |
-| `dedalo/gate.py` | Ejecuta los checks (`gate_checks/`) y decide verde/rojo. |
-| `dedalo/mcp_server.py` | Servidor MCP por stdio (integración con agentes/editores). |
-| `dedalo/plantillas_data/dedalo.sh` | Port bash del loop (deprecado por la GUI). |
-| `dedalo/plantillas_data/gate.sh`, `mapear.sh` | Gate y mapeo del proyecto del usuario. |
-| `dedalo/plantillas_data/` | Plantillas que se copian a cada proyecto: `plan.md`, `lecciones.md`, `CONTEXTO.md`, `gate_checks/`, icono. |
+| `dedalo/app.py` | Main PySide6 window (launched with `python -m dedalo`). |
+| `dedalo/loop.py` | Loop engine: agent → gate → reviewer → commit. |
+| `dedalo/gate.py` | Runs the checks (`gate_checks/`) and decides green/red. |
+| `dedalo/mcp_server.py` | MCP server over stdio (integration with agents/editors). |
+| `dedalo/plantillas_data/dedalo.sh` | Bash port of the loop (superseded by the GUI). |
+| `dedalo/plantillas_data/gate.sh`, `mapear.sh` | Gate and mapping for the user's project. |
+| `dedalo/plantillas_data/` | Templates copied into every project: `plan.md`, `lecciones.md`, `CONTEXTO.md`, `gate_checks/`, icon. |
 
-Instalar las plantillas en un proyecto crea `dedalo.sh`, `gate.sh`, `mapear.sh`,
-`gate_checks/`, `CONTEXTO.md` y ajusta el `.gitignore` para excluir el framework
-del repo del usuario.
+Installing the templates into a project creates `dedalo.sh`, `gate.sh`, `mapear.sh`,
+`gate_checks/`, `CONTEXTO.md` and tweaks the `.gitignore` to keep the framework
+out of the user's repo.
 
-## Uso por CLI
+## CLI usage
 
 ```bash
 python -m dedalo                      # GUI
@@ -75,31 +75,31 @@ python -m dedalo.gate --proyecto RUTA  # solo el gate (exit 0 verde / ≠0 rojo)
 python -m dedalo.mcp_server            # servidor MCP (stdio)
 ```
 
-`dedalo.sh` (port bash, deprecado) y el `entrypoint` empaquetado aceptan
-`--dedalo-loop`, `--dedalo-gate`, `--dedalo-mcp`. El motor se configura por
-variables de entorno (ver tabla en el [README](../README.md#-variables-del-loop-env)).
+`dedalo.sh` (bash port, deprecated) and the packaged `entrypoint` accept
+`--dedalo-loop`, `--dedalo-gate`, `--dedalo-mcp`. The engine is configured via
+environment variables (see the table in the [README](../README.md#-loop-environment-variables)).
 
-## Servidor MCP
+## MCP Server
 
-Servidor por **stdio** (JSON-RPC), pensado para que un cliente MCP (opencode,
-etc.) controle Dédalo sin GUI. Protocolo `2024-11-05`.
+A **stdio** server (JSON-RPC), designed so that an MCP client (opencode,
+etc.) can control Dédalo without the GUI. Protocol `2024-11-05`.
 
-- **Arranque**: `python -m dedalo.mcp_server`
-- **17 herramientas**: `listar_proyectos`, `estado_proyecto`, `leer_fichero`,
+- **Launch**: `python -m dedalo.mcp_server`
+- **17 tools**: `listar_proyectos`, `estado_proyecto`, `leer_fichero`,
   `leer_plan`, `leer_lecciones`, `leer_contexto`, `leer_incidencias`,
   `resumen_metricas`, `cola_log`, `estado_agentes`, `listar_modelos`,
   `instalar_proyecto`, `correr_gate`, `iniciar_loop`, `estado_loop`,
   `detener_loop`, `resolver_revision`.
-- **Instrucciones** (`instructions` del `initialize`): manual curado de Dédalo
-  (qué es, cómo funciona el loop, ficheros del proyecto y flujo de uso), que el
-  cliente entrega al modelo como contexto de arranque.
-- **Recursos**:
-  - `dedalo://{nombre}/{fichero}` — ficheros permitidos: `plan.md`,
+- **Instructions** (`instructions` of the `initialize`): a curated Dédalo manual
+  (what it is, how the loop works, project files and the usage flow) that the
+  client hands to the model as startup context.
+- **Resources**:
+  - `dedalo://{nombre}/{fichero}` — allowed files: `plan.md`,
     `lecciones.md`, `CONTEXTO.md`, `progreso.log`, `metrics.jsonl`,
     `incidencias.jsonl`, `mapeo.txt`.
-  - `dedalo://manual` — el manual completo bajo demanda.
+  - `dedalo://manual` — the full manual on demand.
 
-Ejemplo de configuración en un cliente MCP (opencode):
+Example configuration in an MCP client (opencode):
 
 ```json
 {
@@ -113,72 +113,72 @@ Ejemplo de configuración en un cliente MCP (opencode):
 }
 ```
 
-## Datos y estado
+## Data and state
 
-| Ruta | Contenido |
+| Path | Content |
 |------|-----------|
-| `~/.config/dedalo/proyectos.json` | Registro de proyectos (+ tokens de webhooks). |
-| `~/.config/dedalo/models_dev.json` | Catálogo de modelos. |
-| `<proyecto>/plan.md`, `lecciones.md`, `progreso.log` | Estado por proyecto. |
+| `~/.config/dedalo/proyectos.json` | Project registry (+ webhook tokens). |
+| `~/.config/dedalo/models_dev.json` | Model catalog. |
+| `<proyecto>/plan.md`, `lecciones.md`, `progreso.log` | Per-project state. |
 
-El directorio de config se crea con permisos `0700`.
+The config directory is created with `0700` permissions.
 
-## Plataformas y artefactos
+## Platforms and artifacts
 
-Los binarios se publican en [Releases](https://github.com/BenReynor/dedalo/releases)
-al etiquetar `v*`; cada Release incluye `SHA256SUMS*`.
+Binaries are published in [Releases](https://github.com/BenReynor/dedalo/releases)
+when `v*` is tagged; every Release includes `SHA256SUMS*`.
 
-| SO | Artefactos | Estado |
+| OS | Artifacts | Status |
 |----|------------|--------|
-| Linux | `dedalo-<v>-linux-x86_64.tar.gz`, `dedalo_<v>_amd64.deb`, `dedalo-<v>-x86_64.AppImage` | Referencia |
-| macOS | `dedalo-<v>-macos-arm64.dmg` | Publicado (sin firmar) |
-| Windows | `dedalo-<v>-win64.zip` (`dedalo.exe`, onedir) | Nativo (sin Git Bash) |
+| Linux | `dedalo-<v>-linux-x86_64.tar.gz`, `dedalo_<v>_amd64.deb`, `dedalo-<v>-x86_64.AppImage` | Reference |
+| macOS | `dedalo-<v>-macos-arm64.dmg` | Published (unsigned) |
+| Windows | `dedalo-<v>-win64.zip` (`dedalo.exe`, onedir) | Native (no Git Bash) |
 
-Los builds **no van firmados**: macOS pide `control + clic → Abrir`; Windows,
-SmartScreen (*Más información → Ejecutar de todas formas*). Checksums en la
-propia Release (`shasum -a 256 -c SHA256SUMS*`).
+Builds are **not signed**: macOS requires `control + clic → Abrir`; Windows,
+SmartScreen (*More info → Run anyway*). Checksums live in the
+Release itself (`shasum -a 256 -c SHA256SUMS*`).
 
-### Decisiones de distribución (cerradas)
+### Distribution decisions (closed)
 
-- **Sin firma de código** ni notarización: los secretos de firma son opcionales
-  en CI; sin ellos el `.dmg`/`.exe` salen sin firmar y el SO avisa.
-- **Sin `.rpm`/Snap/Flatpak**: se cubre «cualquier distro» con AppImage +
-  `.deb` + tar.gz portátil.
-- **Windows nativo**: no se empaqueta WSL2; el motor bash se sustituye por
-  Python en el bundle (`dedalo.exe`), sin exigir Git Bash.
-- **macOS Intel**: pendiente (hoy solo arm64).
-- Verificación de integridad vía `SHA256SUMS` en cada Release (sin firma GPG).
+- **No code signing** or notarization: the signing secrets are optional
+  in CI; without them the `.dmg`/`.exe` ship unsigned and the OS warns.
+- **No `.rpm`/Snap/Flatpak**: "any distro" is covered by AppImage +
+  `.deb` + portable tar.gz.
+- **Native Windows**: WSL2 is not packaged; the bash engine is replaced by
+  Python in the bundle (`dedalo.exe`), without requiring Git Bash.
+- **macOS Intel**: pending (arm64 only for now).
+- Integrity verification via `SHA256SUMS` on every Release (no GPG signature).
 
-## Seguridad (postura actual)
+## Security (current posture)
 
-Implementado:
+Implemented:
 
-- Sin servidor HTTP propio ni `eval`/`exec`/`os.system`/`pickle.load`.
-- Escritura atómica del registro (temporal + `os.replace`).
-- **CI `seguridad`**: `gitleaks` sobre el historial completo + `pip-audit
-  --strict` sobre `requirements.lock` + comprobación de que el lock está al día.
-- Cerradura de dependencias con hashes (`requirements.lock`).
-- `_sanitizar()` enmascara tokens (telegram/whatsapp/discord) en errores.
-- El gate restaura `gate.sh`/`gate_checks/` si el agente los modifica.
+- No HTTP server of its own and no `eval`/`exec`/`os.system`/`pickle.load`.
+- Atomic registry writes (temp file + `os.replace`).
+- **CI `seguridad`**: `gitleaks` over the full history + `pip-audit
+  --strict` on `requirements.lock` + a check that the lock is up to date.
+- Dependency lock with hashes (`requirements.lock`).
+- `_sanitizar()` masks tokens (telegram/whatsapp/discord) in errors.
+- The gate restores `gate.sh`/`gate_checks/` if the agent modifies them.
 
-Riesgos conocidos (aceptados, ver [BUGS_CONOCIDOS.md](BUGS_CONOCIDOS.md)):
+Known risks (accepted, see [BUGS_CONOCIDOS.md](BUGS_CONOCIDOS.md)):
 
-- Los tokens de webhooks se guardan **en claro** en
-  `~/.config/dedalo/proyectos.json` (carpeta `0700`; fichero sin cifrar).
-- El agente IA corre con el usuario completo, **sin sandbox** (modelo de la
-  herramienta, documentado como riesgo).
+- Webhook tokens are stored **in plaintext** in
+  `~/.config/dedalo/proyectos.json` (`0700` folder; unencrypted file).
+- The AI agent runs as the full user, **with no sandbox** (the tool's
+  model, documented as a risk).
 
-## Calidad y CI
+## Quality and CI
 
-| Aspecto | Estado |
+| Aspect | Status |
 |---------|--------|
 | Tests | 414 passed, 4 skipped (`pytest`) |
-| Lint | `ruff` (reglas E, F, W, I, UP, B) — limpio |
-| Portabilidad | `test_portabilidad.py` como guardarraíl (bash BSD/GNU) |
-| CI | 5 jobs: Linux, Windows, macOS, portabilidad macOS, seguridad |
+| Lint | `ruff` (rules E, F, W, I, UP, B) — clean |
+| Portability | `test_portabilidad.py` as a guardrail (bash BSD/GNU) |
+| CI | 5 jobs: Linux, Windows, macOS, macOS portability, security |
 
-## Enlaces
+## Links
 
-- [README](../README.md) — uso y referencia de variables.
-- [docs/BUGS_CONOCIDOS.md](BUGS_CONOCIDOS.md) — deuda técnica viva.
-- [packaging/PRUEBA-MANUAL.md](../packaging/PRUEBA-MANUAL.md) — validación manual por SO.
+- [README](../README.md) — usage and variable reference.
+- [docs/BUGS_CONOCIDOS.md](BUGS_CONOCIDOS.md) — live technical debt.
+- [packaging/PRUEBA-MANUAL.md](../packaging/PRUEBA-MANUAL.md) — per-OS manual validation.

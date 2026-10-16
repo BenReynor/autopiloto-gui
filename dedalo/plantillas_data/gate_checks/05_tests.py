@@ -1,6 +1,6 @@
-# 05_tests.py — Ejecuta la test suite (comando configurable).
-# Port de 05_tests.sh para el orquestador portable (Windows sin bash).
-# Sobreescribe con TEST_CMD. Ej:
+# 05_tests.py — Runs the test suite (configurable command).
+# Port of 05_tests.sh for the portable orchestrator (Windows without bash).
+# Override with TEST_CMD. E.g.:
 #   cd <backend> && python -m pytest -q
 #   npm test
 #   cargo test
@@ -16,7 +16,7 @@ def run(env):
     for linea in salida.splitlines()[-10:]:
         print(linea)
 
-    # pytest sin tests devuelve 5; no es un fallo, solo no hay suite
+    # pytest with no tests returns 5; it is not a failure, there is just no suite
     if rc == 5 and re.search(r"no tests ran", salida, re.IGNORECASE):
         env.aviso("test suite vacía (no hay tests), se asume OK")
         return 0

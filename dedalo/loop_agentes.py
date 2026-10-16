@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Agentes del loop nativo (port de dedalo.sh): ejecutar al agente de
-tarea, navegador y revisor; detección de auth/tokens; métricas a
-metrics.jsonl; elección de revisor. Sin dependencias de PySide.
+"""Agents of the native loop (port of dedalo.sh): run the task,
+navigator and reviewer agents; auth/token detection; metrics to
+metrics.jsonl; reviewer selection. No PySide dependencies.
 
-El objeto `cfg` es la Configuración definida en loop.py (lee el entorno como
-el script). Aquí sólo se leen atributos, sin importar loop.py (sin ciclos).
+The `cfg` object is the Configuración defined in loop.py (reads the
+environment like the script). Here only attributes are read, without importing
+loop.py (no cycles).
 """
 
 import datetime
@@ -18,8 +19,8 @@ from .loop_util import ahora_ms, logx
 
 UTC = datetime.timezone.utc
 
-# Patrón DE ALTA CONFIANZA de falta de auth (sin "401" suelto ni
-# "unauthorized" en narrativa). Igual que sin_autenticacion().
+# HIGH-CONFIDENCE pattern of missing auth (no bare "401" nor
+# "unauthorized" in narrative). Same as sin_autenticacion().
 _PATRON_AUTH = re.compile(
     r"(Please run .*/login|Please run .* login|run .* auth login|"
     r"Authentication Error|authentication_error|invalid[ _.-]?api[ _.-]?key|"
@@ -38,7 +39,7 @@ _USAGE = re.compile(
 
 
 def cli_agente(agente, cfg):
-    """Binario del agente según CLI_* (igual que cli_agente())."""
+    """Agent binary according to CLI_* (same as cli_agente())."""
     if agente == "opencode":
         return cfg.environ.get("CLI_OPENCODE") or "opencode"
     if agente == "codex":
@@ -49,7 +50,7 @@ def cli_agente(agente, cfg):
 
 
 def agente_ok(agente, cfg):
-    """¿El binario del agente existe y es ejecutable? (command -v)."""
+    """Does the agent binary exist and is it executable? (command -v)."""
     binario = cli_agente(agente, cfg)
     if not binario:
         return False
@@ -58,8 +59,8 @@ def agente_ok(agente, cfg):
 
 
 def detectar_agente(cfg):
-    """Primer agente disponible según AGENTES_PREFERIDOS (opencode→codex→
-    claude), igual que el script."""
+    """First available agent according to AGENTES_PREFERIDOS (opencode→codex→
+    claude), same as the script."""
     for a in (cfg.agentes_preferidos or "opencode codex claude").split():
         if a == "auto":
             continue
@@ -69,8 +70,8 @@ def detectar_agente(cfg):
 
 
 def elegir_revisor(cfg):
-    """Revisor: preferido si es uno concreto; si es "auto"/vacío, otro agente
-    distinto al de tarea; en último caso el mismo."""
+    """Reviewer: preferred if it is a concrete one; if it is "auto"/empty,
+    another agent different from the task one; as a last resort, the same one."""
     tarea = cfg.agente_tarea or ""
     preferido = cfg.agente_revisor or ""
     if preferido and preferido != "auto":
@@ -87,8 +88,8 @@ def elegir_revisor(cfg):
 
 
 def sin_autenticacion(stderr_file, stdout_file, corroborar):
-    """Sospecha de auth REAL: patrón en stderr completo o en las últimas 40
-    líneas de stdout, corroborado con iteración sin trabajo."""
+    """REAL auth suspicion: pattern in full stderr or in the last 40
+    lines of stdout, corroborated with a no-work iteration."""
 
     def _detecta(ruta, slceroh=False, cola=40):
         try:
@@ -101,14 +102,14 @@ def sin_autenticacion(stderr_file, stdout_file, corroborar):
             return False
         return bool(_PATRON_AUTH.search(texto))
 
-    detectado = (_detecta(stderr_file, cola=None)  # stderr completo
+    detectado = (_detecta(stderr_file, cola=None)  # full stderr
                  or (stdout_file and os.path.exists(stdout_file)
                      and _detecta(stdout_file, cola=40)))
     return detectado and bool(corroborar)
 
 
 def tokens_agotados(archivo):
-    """¿La salida del agente indica cuota/tokens agotados? (grep -qiE)."""
+    """Does the agent output indicate exhausted quota/tokens? (grep -qiE)."""
     try:
         with open(archivo, encoding="utf-8", errors="replace") as f:
             texto = f.read()
@@ -118,8 +119,8 @@ def tokens_agotados(archivo):
 
 
 def costo_por_modelo(modelo, tokens_in, tokens_out):
-    """Mismo caso (modelo → tarifa) que _registrar_metrica del script
-    (USD, sin escalar; el %.6f lo hace quien escribe la métrica)."""
+    """Same case (model → rate) as the script's _registrar_metrica
+    (USD, unscaled; the %.6f is done by whoever writes the metric)."""
     if any(m in (modelo or "") for m in ("opus", "sonnet", "haiku")):
         return (tokens_in * 15 + tokens_out * 75) / 1_000_000
     if "gpt-4" in (modelo or "") or "gpt-4o" in (modelo or ""):
@@ -138,7 +139,7 @@ def _leer_fichero(ruta):
 
 
 def extraer_tokens(texto, agente):
-    """(tokens_in, tokens_out) desde la salida, como hace el grep del script."""
+    """(tokens_in, tokens_out) from the output, like the script's grep does."""
     tin = tout = 0
     if agente == "codex":
         m = list(re.finditer(r"tokens_used:\s*(\d+)", texto))
@@ -153,8 +154,8 @@ def extraer_tokens(texto, agente):
 
 
 def registrar_metrica(cfg, agente, modelo, dur_ms, rc, salida, tarea, iteracion):
-    """Append de una línea al metrics.jsonl (6 decimales y ts UTC, como el
-    printf del script; sin depender del locale)."""
+    """Append of a line to metrics.jsonl (6 decimals and UTC ts, like the
+    script's printf; without depending on the locale)."""
     texto = _leer_fichero(salida)
     tin, tout = extraer_tokens(texto, agente)
     costo = costo_por_modelo(modelo, tin, tout)
@@ -173,11 +174,11 @@ def registrar_metrica(cfg, agente, modelo, dur_ms, rc, salida, tarea, iteracion)
 
 
 def run_agente(cfg, agente, salida, modelo, prompt, tarea, iteracion):
-    """Ejecuta una tarea con un agente y devuelve su exit code (run_agente).
+    """Runs a task with an agent and returns its exit code (run_agente).
 
-    Abre los archivos de salida (stdout/salida, stderr/salida.err) como el
-    redirect `> "$salida" 2> "$salida_err"` del script, registra la métrica y
-    pasa el proc por `vivo` para que las señales lo maten. Devuelve
+    Opens the output files (stdout/salida, stderr/salida.err) like the
+    `> "$salida" 2> "$salida_err"` redirect of the script, records the metric
+    and passes the proc to `vivo` so the signals kill it. Returns
     (rc, agente_pid_dict).
     """
     agente = (agente or cfg.agente_tarea or "").strip()
@@ -222,8 +223,8 @@ def run_agente(cfg, agente, salida, modelo, prompt, tarea, iteracion):
 
 
 def run_navegador(cfg, salida, modelo, tarea, agente):
-    """Navegador de contexto previo a la tarea; rc del agente (run_navegador).
-    Un fallo aquí solo significa menos contexto: no aborta el loop."""
+    """Context navigator prior to the task; agent rc (run_navegador).
+    A failure here only means less context: it does not abort the loop."""
     binario = cli_agente(agente, cfg)
     if not binario or not agente_ok(agente, cfg):
         return 1, {}
@@ -258,12 +259,12 @@ def run_navegador(cfg, salida, modelo, tarea, agente):
 
 
 def revisar_diff(cfg, rev, tarea, vdiff):
-    """Revisor dual del diff (revisar_diff + cola del script).
+    """Dual reviewer of the diff (revisar_diff + script tail).
 
-    Devuelve (resultado, feedback):
-      resultado: "pass" | "fail" | "sin_auth" | "sin_tokens"
-      feedback:  razones previas al VERDICT (para inyectar en el próximo
-                 intento) cuando fail.
+    Returns (result, feedback):
+      result: "pass" | "fail" | "sin_auth" | "sin_tokens"
+      feedback:  reasons prior to the VERDICT (to inject into the next
+                 attempt) when fail.
     """
     rev_out = cfg.tmp("rev_out")
     ruta_ctx = getattr(cfg, "contexto", "")

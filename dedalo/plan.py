@@ -1,8 +1,8 @@
-"""Modelo de datos de plan.md: lectura, conteo y guardado de tareas.
+"""Data model for plan.md: reading, counting and saving tasks.
 
-Separa el formato del plan de la UI para que el conteo y el guardado sean
-consistentes y testables (mismo criterio que usa el script dedalo.sh:
-task `- [ ]`, hechas `- [x]`, bloqueadas `- [B]`).
+Separates the plan format from the UI so that counting and saving are
+consistent and testable (same criterion used by the dedalo.sh script:
+task `- [ ]`, done `- [x]`, blocked `- [B]`).
 """
 
 import os
@@ -36,7 +36,7 @@ class Plan:
 
     @property
     def tareas(self):
-        """Lista de dicts {linea, estado, texto}, en orden del archivo."""
+        """List of dicts {linea, estado, texto}, in file order."""
         out = []
         for i, linea in enumerate(self.texto.splitlines(), start=1):
             m = _LINEA_TAREA.match(linea)
@@ -51,7 +51,7 @@ class Plan:
         return out
 
     def conteo(self):
-        """Devuelve (pendientes, hechas, bloqueadas)."""
+        """Returns (pending, done, blocked)."""
         pend = hecho = bloq = 0
         for t in self.tareas:
             if t["estado"] == "pendiente":
@@ -63,13 +63,13 @@ class Plan:
         return pend, hecho, bloq
 
     def marcar_primera(self, estado):
-        """Marca la PRIMERA tarea pendiente con `estado` (`x`/`B`).
+        """Marks the FIRST pending task with `estado` (`x`/`B`).
 
-        Misma semántica que `marcar_plan` de dedalo.sh: sólo la primera
-        línea que empieza (columna 0) por `- [ ]`. Escritura atómica (fichero
-        temporal en el mismo directorio + os.replace) para no dejar el plan a
-        medias si el proceso muere a mitad de escritura. Devuelve True si
-        tocó alguna tarea.
+        Same semantics as `marcar_plan` in dedalo.sh: only the first
+        line that starts (column 0) with `- [ ]`. Atomic write (temporary
+        file in the same directory + os.replace) so the plan is not left
+        half-written if the process dies mid-write. Returns True if it
+        touched some task.
         """
         marca = "B" if str(estado).upper() == "B" else "x"
         hecha = False

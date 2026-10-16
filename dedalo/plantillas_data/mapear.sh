@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# mapear.sh — Genera mapeo.txt: mapa del proyecto (módulos -> tests).
-# Lo usa dedalo.sh para que el agente sepa qué tests existen y dónde tocar.
+# mapear.sh — Generates mapeo.txt: project map (modules -> tests).
+# Used by dedalo.sh so the agent knows which tests exist and where to touch.
 #
-# Autodetecta el stack (Python/Django, Node, Rust) y deja que el agente
-# localice módulos y tests. Sobreescribible con BACKEND_DIR, FRONTEND_DIR,
-# PY_BACKEND (ver _env.sh).
+# Auto-detects the stack (Python/Django, Node, Rust) and lets the agent
+# locate modules and tests. Overridable with BACKEND_DIR, FRONTEND_DIR,
+# PY_BACKEND (see _env.sh).
 #
-# Uso:  bash mapear.sh > mapeo.txt
+# Usage:  bash mapear.sh > mapeo.txt
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# _env.sh comparte la detección con gate.sh (puede estar en la raíz o en gate_checks/)
+# _env.sh shares the detection with gate.sh (it may live at the root or in gate_checks/)
 if [ -f "$SCRIPT_DIR/gate_checks/_env.sh" ]; then
     source "$SCRIPT_DIR/gate_checks/_env.sh"
 elif [ -f "$SCRIPT_DIR/_env.sh" ]; then
@@ -28,9 +28,9 @@ else
 fi
 echo ""
 
-# ---- Backend: detecta stack y lista módulos + tests ----
+# ---- Backend: detect stack and list modules + tests ----
 if [ -n "${BACKEND_DIR:-}" ] && [ -d "$BACKEND_DIR" ]; then
-    # Python/Django: aplicaciones con models.py
+    # Python/Django: apps with models.py
     if [ -n "${PY_BACKEND:-}" ] && [ -f "$BACKEND_DIR/manage.py" ]; then
         echo "## Backend — aplicaciones y sus tests"
         for dir in "$BACKEND_DIR"/*/; do
@@ -39,7 +39,7 @@ if [ -n "${BACKEND_DIR:-}" ] && [ -d "$BACKEND_DIR" ]; then
             [[ "$app" == "venv" || "$app" == "__pycache__" ]] && continue
             tests=""
             if [ -d "$dir/tests" ]; then
-                # `find -printf` es sólo GNU; glob + basename funciona en BSD.
+                # `find -printf` is GNU-only; glob + basename works on BSD.
                 for tf in "$dir"/tests/test_*.py; do
                     [ -f "$tf" ] && tests="$tests$(basename "$tf") "
                 done
@@ -52,7 +52,7 @@ if [ -n "${BACKEND_DIR:-}" ] && [ -d "$BACKEND_DIR" ]; then
             fi
         done
     elif [ -f "$BACKEND_DIR/package.json" ]; then
-        # Node: módulos en src/lib con sus .test.
+        # Node: modules in src/lib with their .test files.
         echo "## Backend (Node) — módulos y tests"
         ( cd "$BACKEND_DIR" && find src lib -type f \( -name '*.ts' -o -name '*.js' \) 2>/dev/null \
             | grep -vE '\.(test|spec)\.' | sort ) || true
@@ -79,7 +79,7 @@ else
     echo "## Backend — (sin BACKEND_DIR detectado)"
 fi
 
-# ---- Frontend: archivos de código ----
+# ---- Frontend: source files ----
 echo ""
 echo "## Frontend — archivos de código"
 if [ -n "${FRONTEND_DIR:-}" ] && [ -d "$FRONTEND_DIR" ]; then
@@ -92,7 +92,7 @@ else
     echo "  (sin directorio frontend)"
 fi
 
-# ---- URLs/rutas del stack ----
+# ---- URLs/routes of the stack ----
 echo ""
 echo "## Rutas definidas"
 if [ -n "${BACKEND_DIR:-}" ] && [ -d "$BACKEND_DIR" ]; then

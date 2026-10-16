@@ -5,40 +5,40 @@
 [![Latest release](https://img.shields.io/github/v/release/BenReynor/dedalo?sort=semver&color=blue)](https://github.com/BenReynor/dedalo/releases)
 [![License: MIT](https://img.shields.io/github/license/BenReynor/dedalo?color=green)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
-[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)](#-compatibilidad)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)](#-compatibility)
 
-Panel de control gráfico (PySide6) para el sistema **Dédalo**: gestiona agentes IA (opencode, codex, claude) que iteran sobre tareas de un `plan.md`, ejecutan tests (`gate.sh`), piden revisión de código y commitean automáticamente.
+Graphical control panel (PySide6) for the **Dédalo** system: manages AI agents (opencode, codex, claude) that iterate over tasks from a `plan.md`, run tests (`gate.sh`), request code review, and commit automatically.
 
-> **¿Usas una IA para trabajar con este proyecto?** Pásale
-> [`docs/FICHA_TECNICA.md`](docs/FICHA_TECNICA.md) —requisitos, dependencias,
-> plataformas, superficie MCP y seguridad en un único fichero pensado para que
-> un modelo (y una persona técnica) entienda de un vistazo qué es y qué tiene
-> Dédalo— o el índice [`llms.txt`](llms.txt), pensado para que un LLM sepa qué
-> hay aquí sin recorrer el repositorio entero.
-
----
-
-## 📑 Índice
-
-- [Instalación rápida](#-instalación-rápida)
-- [Qué hace](#-qué-hace)
-- [Tips de uso](#-tips-de-uso)
-- [Atajos](#-atajos)
-- [Temas (9 curados)](#-temas-9-curados)
-- [Configuración persistente](#-configuración-persistente)
-- [Agregar un proyecto que ya tiene contenido](#-agregar-un-proyecto-que-ya-tiene-contenido)
-- [Catálogo de modelos (models.dev)](#-catálogo-de-modelos-modelsdev)
-- [Requisitos del proyecto gestionado](#-requisitos-del-proyecto-gestionado)
-- [Compatibilidad y descargas](#-compatibilidad)
-- [Variables del loop (env)](#-variables-del-loop-env)
-- [Servidor MCP (agente piloto)](#-servidor-mcp-agente-piloto)
-- [Desarrollo](#-desarrollo)
-- [Estructura clave](#-estructura-clave)
-- [Bugs conocidos pendientes](#-bugs-conocidos-pendientes)
+> **Using an AI to work on this project?** Point it at
+> [`docs/FICHA_TECNICA.md`](docs/FICHA_TECNICA.md) —requirements, dependencies,
+> platforms, MCP surface, and security in a single file designed so that a model
+> (and a technical person) can grasp at a glance what Dédalo is and what it
+> includes— or the [`llms.txt`](llms.txt) index, designed so an LLM knows
+> what's here without walking the entire repository.
 
 ---
 
-## 🚀 Instalación rápida
+## 📑 Table of Contents
+
+- [Quick Start](#-quick-start)
+- [What It Does](#-what-it-does)
+- [Usage Tips](#-usage-tips)
+- [Keyboard Shortcuts](#-keyboard-shortcuts)
+- [Themes (9 curated)](#-themes-9-curated)
+- [Persistent Settings](#-persistent-settings)
+- [Adding a Project That Already Has Content](#-adding-a-project-that-already-has-content)
+- [Model Catalog (models.dev)](#-model-catalog-modelsdev)
+- [Managed Project Requirements](#-managed-project-requirements)
+- [Compatibility and Downloads](#-compatibility)
+- [Loop Environment Variables](#-loop-environment-variables)
+- [MCP Server (Pilot Agent)](#-mcp-server-pilot-agent)
+- [Development](#-development)
+- [Key Structure](#-key-structure)
+- [Known Open Bugs](#-known-open-bugs)
+
+---
+
+## 🚀 Quick Start
 
 ```bash
 # Clonar
@@ -54,10 +54,10 @@ bash install.sh
 ./lanzar.sh
 ```
 
-> En Debian/Ubuntu, si falta el módulo venv: `sudo apt install python3-venv`.
+> On Debian/Ubuntu, if the venv module is missing: `sudo apt install python3-venv`.
 
 <details>
-<summary>Instalación manual (paso a paso)</summary>
+<summary>Manual installation (step by step)</summary>
 
 ```bash
 # Entorno virtual (recomendado; evita el error PEP 668 de las distros)
@@ -76,143 +76,146 @@ python -m dedalo
 ```
 </details>
 
-> **Python**: Requiere 3.10+.
+> **Python**: Requires 3.10+.
 
 ---
 
-## 🎯 Qué hace
+## 🎯 What It Does
 
-| Función | Descripción |
+| Function | Description |
 |---------|-------------|
-| **Plan** | Editor Kanban + Markdown de `plan.md` (tareas `- [ ]`, hechas `- [x]`, bloqueadas `- [B]`). |
-| **Lecciones** | Editor de `lecciones.md` (memoria del proyecto): se inyecta al agente antes de cada tarea y se añade una entrada al bloquear. |
-| **Incidencias** | Tabla de `incidencias.jsonl` (hora, iteración, tarea, tipo, motivo): fallos, abortos y bloqueos con su motivo real. |
-| **Ejecución** | Lanza el loop: agente → gate → revisor → commit. Parámetros: hora límite, iteraciones, rama base, coste máx, revisión dual/manual. |
-| **Logs** | Salida en vivo de `progreso.log` (loop) y `gate.sh`. Colapsable (⛶) con header siempre visible. Auto-scroll. |
-| **Mapa** | Visor de `mapeo.txt` (módulos → tests). Botón **Regenerar** ejecuta `bash mapear.sh`. |
-| **Métricas** | Dashboard en tiempo real: tareas/hora, coste acumulado (ámbar), gate OK/FAIL, revisor PASS/FAIL. Exporta CSV. |
-| **Git** | Historial de commits del proyecto, revert rápido. |
-| **Seguridad** | Límite temperatura CPU (apagado seguro), webhooks (Telegram, Discord, WhatsApp). |
+| **Plan** | Kanban + Markdown editor for `plan.md` (tasks `- [ ]`, done `- [x]`, blocked `- [B]`). |
+| **Lessons** | Editor for `lecciones.md` (project memory): injected into the agent before each task, and an entry is added when a task gets blocked. |
+| **Incidents** | Table for `incidencias.jsonl` (time, iteration, task, type, reason): failures, aborts, and blocks with their actual cause. |
+| **Run** | Launches the loop: agent → gate → reviewer → commit. Parameters: deadline, iterations, base branch, max cost, dual/manual review. |
+| **Logs** | Live output of `progreso.log` (loop) and `gate.sh`. Collapsible (⛶) with a permanently visible header. Auto-scroll. |
+| **Map** | Viewer for `mapeo.txt` (modules → tests). The **Regenerate** button runs `bash mapear.sh`. |
+| **Metrics** | Real-time dashboard: tasks/hour, cumulative cost (amber), gate OK/FAIL, reviewer PASS/FAIL. Exports CSV. |
+| **Git** | Project commit history, quick revert. |
+| **Security** | CPU temperature limit (safe shutdown), webhooks (Telegram, Discord, WhatsApp). |
 
-> **Contexto del proyecto (`CONTEXTO.md`)**: fichero permanente que describe *de
-> qué va* el proyecto (de qué trata, requisitos, filosofía, estructura). El loop
-> lo **inyecta en el prompt del agente y del revisor** en cada iteración, para
-> que trabajen con el marco del proyecto y no a ciegas. A diferencia de
-> `lecciones.md` (errores aprendidos, crece solo) y `plan.md` (tareas), el
-> contexto es estable y lo escribes tú. Se instala con un esqueleto en cada
-> proyecto y **nunca se sobreescribe**. No tiene panel en la GUI: se edita con
-> tu editor.
-
----
-
-## 💡 Tips de uso
-
-- **Empieza por el contexto.** Un `CONTEXTO.md` claro y un `plan.md` con tareas
-  pequeñas y verificables dan mejores resultados que prompts largos: el loop
-  inyecta `CONTEXTO.md` al agente y al revisor en *cada* iteración.
-- **`auto` ya elige bien.** Toma el primer CLI instalado *y con sesión*; si un
-  agente aparece como `claude (sin login)`, loguéalo o elige otro.
-- **Primer contacto con un repo ajeno: activa revisión manual.** Con
-  `REVISION_MANUAL=1` el loop pausa antes de cada commit y espera tu `APPROVE`.
-- **Pon un tope de gasto.** `MAX_COSTO` es un límite duro en USD; fíjalo antes
-  de dejar el loop desatendido.
-- **No edites a mano los 3 scripts del framework** (`dedalo.sh`, `gate.sh`,
-  `mapear.sh`): se renuevan solos al abrir el proyecto. Si los tocas, haz commit
-  antes.
-- **Mantén el gate rápido.** Corre en cada iteración; un gate lento frena todo
-  el ciclo.
-- **Tu configuración vive en `~/.config/dedalo/`.** Cópiala antes de
-  experimentar; si quieres empezar de cero, bórrala.
-- **El binario empaquetado no trae el MCP por stdio** (se compila sin consola):
-  para el "agente piloto" MCP usa el código fuente.
-- **Verifica las descargas.** Comprueba los `SHA256SUMS*` de cada Release antes
-  de ejecutar un binario.
+> **Project context (`CONTEXTO.md`)**: a permanent file that describes *what
+> the project is about* (what it does, requirements, philosophy, structure). The
+> loop **injects it into the agent and reviewer prompts** on every iteration, so
+> they work with the project's framing rather than blindly. Unlike
+> `lecciones.md` (lessons learned, grows on its own) and `plan.md` (tasks), the
+> context is stable and you write it. It's installed as a skeleton in every
+> project and is **never overwritten**. It has no GUI panel: edit it with your
+> own editor.
 
 ---
 
-## ⌨️ Atajos
+## 💡 Usage Tips
 
-| Tecla | Acción |
+- **Start with the context.** A clear `CONTEXTO.md` and a `plan.md` with small,
+  verifiable tasks give better results than long prompts: the loop injects
+  `CONTEXTO.md` into the agent and reviewer on *every* iteration.
+- **`auto` already picks well.** It takes the first CLI that is installed *and
+  has a session*; if an agent shows up as `claude (sin login)`, log in or pick
+  another.
+- **First contact with someone else's repo: enable manual review.** With
+  `REVISION_MANUAL=1` the loop pauses before every commit and waits for your
+  `APPROVE`.
+- **Set a spending cap.** `MAX_COSTO` is a hard limit in USD; set it before
+  leaving the loop unattended.
+- **Don't hand-edit the 3 framework scripts** (`dedalo.sh`, `gate.sh`,
+  `mapear.sh`): they renew themselves when you open the project. If you touch
+  them, commit first.
+- **Keep the gate fast.** It runs on every iteration; a slow gate slows the
+  whole cycle.
+- **Your configuration lives in `~/.config/dedalo/`.** Copy it before
+  experimenting; if you want to start from scratch, delete it.
+- **The packaged binary does not ship the stdio MCP** (it's built without a
+  console): for the MCP "pilot agent", use the source code.
+- **Verify downloads.** Check each Release's `SHA256SUMS*` before running a
+  binary.
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Key | Action |
 |-------|--------|
-| `Ctrl+1` … `Ctrl+9` | Cambiar pestaña (Plan, Lecciones, Incidencias, Ejecución, Logs, Mapa, Git, Métricas, Seguridad) |
-| `Ctrl+Q` | Salir |
+| `Ctrl+1` … `Ctrl+9` | Switch tab (Plan, Lessons, Incidents, Run, Logs, Map, Git, Metrics, Security) |
+| `Ctrl+Q` | Quit |
 
 ---
 
-## 🎨 Temas (9 curados)
+## 🎨 Themes (9 curated)
 
-| Tema | Estilo |
+| Theme | Style |
 |------|--------|
-| **Oscuro / Claro** | Slate/Blue clásicos |
-| **Hacker** | Verde terminal |
-| **Cyberpunk** | Neón fucsia/morado sobre grafito |
-| **Zinc/Amber Oscuro** | Cabina ámbar (defecto) |
-| **Gray/Red Oscuro** | Rojo |
-| **Stone/Emerald Claro** | Verde cálido |
-| **Zinc/Sky Claro** | Azul |
-| **Slate/Teal Oscuro** | Teal profundo |
+| **Dark / Light** | Classic Slate/Blue |
+| **Hacker** | Terminal green |
+| **Cyberpunk** | Fuchsia/purple neon on graphite |
+| **Zinc/Amber Dark** | Amber cockpit (default) |
+| **Gray/Red Dark** | Red |
+| **Stone/Emerald Light** | Warm green |
+| **Zinc/Sky Light** | Blue |
+| **Slate/Teal Dark** | Deep teal |
 
-Cambio en vivo desde el selector "Tema" en la barra superior.
+Live switching from the "Theme" selector in the top bar.
 
 ---
 
-## ⚙️ Configuración persistente
+## ⚙️ Persistent Settings
 
-Guarda en `~/.config/dedalo/proyectos.json`:
+Stored in `~/.config/dedalo/proyectos.json`:
 
-- Proyectos registrados (ruta + config por proyecto)
-- Tema activo
-- Seguridad térmica
+- Registered projects (path + per-project config)
+- Active theme
+- Thermal safety
 - Webhooks
-- Modelos seleccionados
-- **Ancho del sidebar** (`sidebar_ancho`)
+- Selected models
+- **Sidebar width** (`sidebar_ancho`)
 
-Dos datos de la ventana no van aquí, sino en el `QSettings` de Qt
-(`~/.config/dedalo/panel.conf`): la geometría de la ventana y el
-proyecto que estaba activo.
+Two pieces of window state don't live here, but in Qt's `QSettings`
+(`~/.config/dedalo/panel.conf`): the window geometry and the project that was
+active.
 
-El registro se escribe de forma atómica (temporal + `os.replace()`), así que
-un corte de luz a mitad de escritura no lo deja a medias. Aun así, si el
-JSON llegara a estar corrupto, la app **no arranca**: te dice dónde está el
-problema, deja una copia `proyectos.json.corrupto` (nunca pisa una anterior) y
-ofrece dos salidas:
+The registry is written atomically (temp file + `os.replace()`), so a power
+cut mid-write won't leave it half-done. Even so, if the JSON ever ends up
+corrupt, the app **won't start**: it tells you where the problem is, leaves a
+`proyectos.json.corrupto` copy (never overwriting a previous one), and offers
+two ways out:
 
-- **Salir y repararlo a mano** (por defecto): el original queda intacto y, si
-  reabres, vuelve a avisarte en vez de perder el registro en silencio.
-- **Empezar de cero**: sólo entonces se descarta el original, y la copia se
-  conserva por si hay que recuperar algo a mano.
+- **Exit and fix it by hand** (default): the original is left untouched and, if
+  you reopen, it warns you again instead of silently losing the registry.
+- **Start from scratch**: only then is the original discarded, and the copy is
+  kept in case something needs recovering by hand.
 
 ---
 
-## 📂 Agregar un proyecto que ya tiene contenido
+## 📂 Adding a Project That Already Has Content
 
-El selector de carpeta admite cualquier directorio existente, no sólo uno
-vacío. Conviene saber qué toca la app en cada caso:
+The folder picker accepts any existing directory, not just an empty one.
+It's worth knowing what the app touches in each case:
 
-| | Qué hace |
+| | What it does |
 |---|---|
-| Ficheros que faltan (`plan.md`, `lecciones.md`, `CONTEXTO.md`, `.gitignore`, scripts) | Los copia de la plantilla. **Nunca pisa un fichero que ya exista.** |
-| `plan.md`, `lecciones.md`, `CONTEXTO.md`, `gate_checks/*.sh` | Son contenido tuyo. No se comparan ni se sobrescriben nunca. |
-| `dedalo.sh`, `gate.sh`, `mapear.sh` | **Sí se sobrescriben** al abrir el proyecto si difieren de la plantilla. Si los editaste a mano, haz commit antes. |
-| Directorio sin repo git | Hace `git init -b master` y un commit inicial con lo que haya (`git add -A`). |
+| Missing files (`plan.md`, `lecciones.md`, `CONTEXTO.md`, `.gitignore`, scripts) | Copies them from the template. **Never overwrites an existing file.** |
+| `plan.md`, `lecciones.md`, `CONTEXTO.md`, `gate_checks/*.sh` | Your own content. Never compared, never overwritten. |
+| `dedalo.sh`, `gate.sh`, `mapear.sh` | **They are overwritten** when you open the project if they differ from the template. If you hand-edited them, commit first. |
+| Directory without a git repo | Runs `git init -b master` and makes an initial commit with whatever is there (`git add -A`). |
 
-O sea: tu código y tus documentos están a salvo; los tres scripts del
-framework se consideran código de soporte y se renuevan solos.
-
----
-
-## 🌐 Catálogo de modelos (models.dev)
-
-Los modelos salen de `https://models.dev/api.json`, y el catálogo se cachea
-**7 días** (`modelos.CATALOGO_HORAS`). Cambiar de proveedor relanza la
-consulta; el resto de la sesión va sobre la caché, así que refrescar la GUI no
-toca la red. Si no hay red, se sirve lo cacheado y se avisa en el log.
+In other words: your code and documents are safe; the three framework
+scripts are treated as support code and renew themselves.
 
 ---
 
-## 🔧 Requisitos del proyecto gestionado
+## 🌐 Model Catalog (models.dev)
 
-Cada proyecto debe tener en su raíz:
+Models come from `https://models.dev/api.json`, and the catalog is cached for
+**7 days** (`modelos.CATALOGO_HORAS`). Switching provider triggers a new
+lookup; the rest of the session runs off the cache, so refreshing the GUI
+doesn't touch the network. If there's no network, the cached data is served
+and the log says so.
+
+---
+
+## 🔧 Managed Project Requirements
+
+Every project must have the following at its root:
 
 ```
 proyecto/
@@ -226,134 +229,133 @@ proyecto/
 └── progreso.log     # lo escribe el motor (lo parsea la GUI)
 ```
 
-El motor del loop es `dedalo/loop.py` (port del script, nacido en `W2`,
-mismo log/observabilidad). La GUI lo lanza con su propio intérprete
-(`python -m dedalo.loop`, o `--dedalo-loop` dentro del binario
-empaquetado) y ya no requiere bash para arrancar. Los ficheros `dedalo.sh`,
-`gate.sh`, `mapear.sh` se copian automáticamente al crear/abrir el proyecto
-desde la plantilla del repo (`dedalo/plantillas_data/`); `dedalo.sh`
-se conserva como referencia y para ejecución manual en terminal POSIX.
+The loop engine is `dedalo/loop.py` (a port of the script, born in `W2`,
+same log/observability). The GUI launches it with its own interpreter
+(`python -m dedalo.loop`, or `--dedalo-loop` inside the packaged binary)
+and no longer needs bash to start. The `dedalo.sh`, `gate.sh`, and `mapear.sh`
+files are copied automatically when a project is created/opened from the
+repo template (`dedalo/plantillas_data/`); `dedalo.sh`
+is kept as a reference and for manual runs in a POSIX terminal.
 
 ---
 
-## 🖥️ Compatibilidad
+## 🖥️ Compatibility
 
-| SO | Estado |
+| OS | Status |
 |----|--------|
-| **Linux** | ✅ Funciona. Es el entorno de referencia y donde corre CI. |
-| **macOS** | ⚠️ Parcial. Ya no exige GNU coreutils: `timeout` → `_timeout` (GNU/gtimeout/respaldo bash que devuelve 124) y `sed -i "0,/…/"` → `marcar_plan` (awk+cat, conserva permisos), con tests que impiden regresiones. Queda el sensor térmico (`/sys/class/thermal`, sólo Linux; degrada a "sin dato") y la verificación en un Mac real + el `.dmg`. |
-| **Windows** | ✅ GUI + loop + gate nativos. Tanto el loop (`dedalo/loop.py`) como el gate (`dedalo/gate.py`) son motores Python que la GUI lanza con su propio intérprete: **ya no hace falta Git Bash** (PATH con `os.pathsep`, CLIs con sufijo `.exe`/`.cmd`, suite en CI en `windows-latest`). El gate corre los checks `*.py` de `gate_checks/` y, si hay bash, prefiere los `*.sh` equivalentes. Queda bash solo para el mapa del proyecto (`mapear.sh`) y el motor bash opcional (`dedalo.sh`). |
+| **Linux** | ✅ Works. It's the reference environment and where CI runs. |
+| **macOS** | ⚠️ Partial. No longer requires GNU coreutils: `timeout` → `_timeout` (GNU/gtimeout/bash fallback returning 124) and `sed -i "0,/…/"` → `marcar_plan` (awk+cat, preserves permissions), with tests that prevent regressions. Remaining: the thermal sensor (`/sys/class/thermal`, Linux-only; degrades to "no data") and validation on a real Mac plus the `.dmg`. |
+| **Windows** | ✅ Native GUI + loop + gate. Both the loop (`dedalo/loop.py`) and the gate (`dedalo/gate.py`) are Python engines that the GUI launches with its own interpreter: **Git Bash is no longer required** (PATH via `os.pathsep`, CLIs with `.exe`/`.cmd` suffix, suite in CI on `windows-latest`). The gate runs the `*.py` checks in `gate_checks/` and, if bash is available, prefers the equivalent `*.sh`. Bash remains only for the project map (`mapear.sh`) and the optional bash engine (`dedalo.sh`). |
 
-Lo que sí es independiente del SO desde ya: los finales de línea de los `.sh`
-(`.gitattributes` fuerza `eol=lf`, un `clone` en Windows con `autocrlf` ya no
-rompe el shebang) y el formato numérico (`LC_ALL=C`: con un locale español,
-`awk`/`printf` escribían `0,500000` y `metrics.jsonl` quedaba como JSON
-inválido).
+What's already OS-independent: the line endings of `.sh` files
+(`.gitattributes` forces `eol=lf`, so a `clone` on Windows with `autocrlf`
+no longer breaks the shebang) and the numeric format (`LC_ALL=C`: with a
+Spanish locale, `awk`/`printf` wrote `0,500000` and `metrics.jsonl` ended up
+as invalid JSON).
 
-`tests/test_portabilidad.py` es el guardarraíl: falla si alguien reintroduce una
-construcción no portable, y un job de CI en `macos-latest` ejecuta ese lint
-contra los binutils de BSD de verdad. La allowlist de bloqueos pendientes
-(sólo Windows; la de macOS quedó vacía al portar `timeout` y el marcado del
-plan) está al final de ese fichero, con el motivo de cada uno.
+`tests/test_portabilidad.py` is the guardrail: it fails if someone
+reintroduces a non-portable construct, and a CI job on `macos-latest` runs that
+lint against real BSD binutils. The allowlist of pending blocks
+(Windows only; macOS's became empty after porting `timeout` and the plan
+marking) is at the end of that file, with the reason for each.
 
-### 📦 Descargas (Release)
+### 📦 Downloads (Release)
 
-Los binarios por plataforma se publican en [Releases](https://github.com/BenReynor/dedalo/releases)
-al etiquetar un `v*` (Linux: `.tar.gz`/`.deb`/`.AppImage`; Windows: `.zip`
-con `dedalo.exe`; macOS: `.dmg`). Los builds **no llevan firma de
-código**: al instalarlos el sistema pedirá confirmación explícita:
+Per-platform binaries are published to [Releases](https://github.com/BenReynor/dedalo/releases)
+when a `v*` tag is pushed (Linux: `.tar.gz`/`.deb`/`.AppImage`; Windows: `.zip`
+with `dedalo.exe`; macOS: `.dmg`). The builds are **not code-signed**:
+when installing them, the OS will ask for explicit confirmation:
 
-| SO | Primer arranque |
+| OS | First launch |
 |----|-----------------|
-| **macOS** | `control + clic` en la app → *Abrir* (o `xattr -dr com.apple.quarantine /Applications/Dedalo.app`). |
-| **Windows** | SmartScreen advertirá con *Más información → Ejecutar de todas formas*. |
-| **Linux** | Sin firma ni sandbox; procedencia = este repositorio (los checksums están en la propia Release). |
+| **macOS** | `control + clic` on the app → *Open* (or `xattr -dr com.apple.quarantine /Applications/Dedalo.app`). |
+| **Windows** | SmartScreen will warn you: *More info → Run anyway*. |
+| **Linux** | No signature or sandbox; provenance = this repository (checksums are in the Release itself). |
 
-Cada Release lleva sus `SHA256SUMS*`; se verifican con
+Each Release ships its `SHA256SUMS*`; verify them with
 `shasum -a 256 -c SHA256SUMS[-windows|-macos]`.
 
-La validación de puntas (GUI + un run real del loop con un agente como
-opencode) está documentada, paso a paso y por SO, en
+End-to-end validation (GUI plus a real loop run with an agent like
+opencode) is documented step by step, per OS, in
 [packaging/PRUEBA-MANUAL.md](packaging/PRUEBA-MANUAL.md).
 
-#### 🏷️ Etiquetas (tags) y estado de las Releases
+#### 🏷️ Tags and Release Status
 
-Los tags actuales son `v2.0.0`, `v2.0.1` (pre-renombrado) y `v2.0.2` (ya como
-Dédalo). Cada tag `v*` dispara `.github/workflows/release.yml`, que construye y
-publica una Release con los binarios de los tres SO. Conviene saber que:
+The current tags are `v2.0.0`, `v2.0.1` (pre-rename) and `v2.0.2` (already as
+Dédalo). Every `v*` tag triggers `.github/workflows/release.yml`, which builds
+and publishes a Release with the binaries for all three OSes. Worth knowing:
 
-- Las Releases **v2.0.0 / v2.0.1 son anteriores al renombrado**: su título es
-  *"Autopiloto v2.0.x"* y sus assets se llaman `autopiloto-gui-*`. **Siguen
-  descargándose** (son código funcional de la era pre-Dédalo), pero **no
-  reflejan el código actual** del repo.
-- A partir de **v2.0.2** los assets se generan como `dedalo-<versión>-…` y el
-  título de la Release es *"Dédalo"*.
-- Los enlaces *Full Changelog* de las Releases antiguas apuntan al nombre viejo
-  `autopiloto-gui`; GitHub **redirige** los repos renombrados, así que no dan
-  404.
-- **Topics del repositorio**: se gestionan con
-  `gh repo edit --add-topic <tema>` (independientes de los tags git).
+- Releases **v2.0.0 / v2.0.1 predate the rename**: their title is
+  *"Autopiloto v2.0.x"* and their assets are named `autopiloto-gui-*`. **They
+  still download** (they're working code from the pre-Dédalo era), but they
+  **do not reflect the repo's current code**.
+- From **v2.0.2** on, assets are generated as `dedalo-<version>-…` and the
+  Release title is *"Dédalo"*.
+- The *Full Changelog* links of the old Releases point to the old name
+  `autopiloto-gui`; GitHub **redirects** renamed repos, so they don't 404.
+- **Repository topics**: managed with
+  `gh repo edit --add-topic <tema>` (independent of git tags).
 
 ---
 
-## 🔧 Variables del loop (env)
+## 🔧 Loop Environment Variables
 
-El motor del loop (`dedalo/loop.py`; `dedalo.sh` es su port bash,
-deprecado por la GUI) se configura por variables de entorno (la GUI las rellena
-desde el formulario de Ejecución). Las más útiles:
+The loop engine (`dedalo/loop.py`; `dedalo.sh` is its bash port,
+deprecated by the GUI) is configured through environment variables (the GUI
+fills them in from the Run form). The most useful ones:
 
-| Variable | Descripción |
+| Variable | Description |
 |----------|-------------|
-| `AGENTE_TAREA` | Agente que implementa: `opencode`\|`codex`\|`claude`\|`auto` (def). |
-| `AGENTES_PREFERIDOS` | Orden de preferencia para `auto` y el revisor. |
-| `MODELO_TAREA` | Modelo `provider/model` de la tarea (solo opencode). |
-| `AGENTE_REVISOR` / `MODELO_REVISOR` | Agente y modelo del gate dual (revisor del diff). |
-| `AGENTE_JUEZ` | Agente del juez de `criterio:` (def: el de la tarea). |
-| `REVISION_DUAL` | `1` activa el revisor (def), `0` lo apaga. |
-| `REVISION_MANUAL` | `1` pausa antes de commit y espera tu aprobación en la GUI. |
-| `TIMEOUT_REVISION_MANUAL` | Segundos máximos de espera de aprobación manual; al expirar marca la tarea `[B]` y sigue (`0` = infinito). def: `1800`. |
-| `MAX_COSTO` | Presupuesto en USD (`0` = sin límite). |
-| `COSTO_POR_ITER` | Coste estimado USD por tarea+revisión (def `0.50`). |
-| `VOZ` | `1` activa alertas con `notify-send`/`spd-say`. |
-| `NAVEGADOR` / `MODELO_NAVEGADOR` | Navegador automático de contexto antes de cada tarea. |
-| `CRITERIO` | Se extrae de la línea `criterio:` bajo la tarea en `plan.md`. |
+| `AGENTE_TAREA` | Agent that implements: `opencode`\|`codex`\|`claude`\|`auto` (default). |
+| `AGENTES_PREFERIDOS` | Preference order for `auto` and the reviewer. |
+| `MODELO_TAREA` | Task model `provider/model` (opencode only). |
+| `AGENTE_REVISOR` / `MODELO_REVISOR` | Agent and model for the dual gate (diff reviewer). |
+| `AGENTE_JUEZ` | Judge agent for `criterio:` (default: the task's agent). |
+| `REVISION_DUAL` | `1` enables the reviewer (default), `0` disables it. |
+| `REVISION_MANUAL` | `1` pauses before each commit and waits for your approval in the GUI. |
+| `TIMEOUT_REVISION_MANUAL` | Max seconds to wait for manual approval; on expiry the task is marked `[B]` and the loop continues (`0` = infinite). Default: `1800`. |
+| `MAX_COSTO` | Budget in USD (`0` = no limit). |
+| `COSTO_POR_ITER` | Estimated USD cost per task+review (default `0.50`). |
+| `VOZ` | `1` enables alerts via `notify-send`/`spd-say`. |
+| `NAVEGADOR` / `MODELO_NAVEGADOR` | Automatic context browser before each task. |
+| `CRITERIO` | Extracted from the `criterio:` line under the task in `plan.md`. |
 
-> Durante la espera de `REVISION_MANUAL`, si se cae la red el loop aborta (no se
-> queda colgado); y si expira `TIMEOUT_REVISION_MANUAL` marca la tarea `[B]`.
+> While waiting on `REVISION_MANUAL`, if the network goes down the loop aborts
+> (rather than hanging); and if `TIMEOUT_REVISION_MANUAL` expires, the task is
+> marked `[B]`.
 
-### Agentes CLI
+### CLI Agents
 
-`auto` (por defecto) elige el primer CLI instalado según `AGENTES_PREFERIDOS`
-(`opencode codex claude`). La GUI muestra sólo los agentes que encuentra en la
-máquina y etiqueta el detectado en la opción `auto`, así que nunca ofrece uno
-que no exista.
+`auto` (default) picks the first installed CLI according to `AGENTES_PREFERIDOS`
+(`opencode codex claude`). The GUI only shows the agents it finds on the machine
+and labels the detected one in the `auto` option, so it never offers one that
+doesn't exist.
 
-- `codex` se invoca con `codex exec --skip-git-repo-check`.
-- `claude` se invoca con `claude -p --output-format text`.
-- Sólo `opencode` acepta `MODELO_*` (`provider/model`); la GUI deshabilita el
-  selector para los otros dos, que toman su modelo de su propia cuenta.
-- Si el CLI está instalado pero sin sesión (`Not logged in`, 401, API key
-  inválida), el loop se detiene con un aviso claro en lugar de marcar tareas
-  como fallidas por un error de autenticación.
-- Al arrancar, la GUI sondea en segundo plano si cada CLI tiene sesión: los que
-  no la tienen aparecen como `claude (sin login)` y no se pueden seleccionar.
-  El sondeo se cachea y no bloquea la interfaz; el botón de refrescar modelos
-  vuelve a lanzarlo.
-- Para `opencode` la sesión no se puede determinar sin ambigüedad (responde
-  siempre 0 y sus modelos de catálogo no necesitan credenciales), así que se
-  considera utilizable y se marca como "sesión no verificada".
+- `codex` is invoked with `codex exec --skip-git-repo-check`.
+- `claude` is invoked with `claude -p --output-format text`.
+- Only `opencode` accepts `MODELO_*` (`provider/model`); the GUI disables the
+  selector for the other two, which take their model from their own account.
+- If a CLI is installed but has no session (`Not logged in`, 401, invalid API
+  key), the loop stops with a clear warning instead of marking tasks as failed
+  over an authentication error.
+- On startup, the GUI probes in the background whether each CLI has a session:
+  those that don't show up as `claude (sin login)` and can't be selected.
+  The probe is cached and doesn't block the UI; the refresh-models button
+  triggers it again.
+- For `opencode`, the session can't be determined unambiguously (it always
+  responds 0 and its catalog models don't need credentials), so it's
+  considered usable and labeled "session not verified".
 
 ---
 
-## 🤖 Servidor MCP (agente piloto)
+## 🤖 MCP Server (Pilot Agent)
 
-`dedalo.mcp_server` expone el estado de los proyectos y las acciones
-del loop por **MCP sobre stdio**, para que un agente "piloto" (p. ej. opencode
-o Claude Desktop) pueda leer el plan, las incidencias y las métricas, correr el
-gate, iniciar/parar el loop y **resolver la revisión manual** que de otro modo
-esperaría a una persona.
+`dedalo.mcp_server` exposes project state and loop actions over **MCP on
+stdio**, so a "pilot" agent (e.g. opencode or Claude Desktop) can read the
+plan, incidents, and metrics, run the gate, start/stop the loop, and **resolve
+the manual review** that would otherwise wait on a human.
 
-Requiere el extra opcional `mcp` (no se instala por defecto):
+Requires the optional `mcp` extra (not installed by default):
 
 ```bash
 pip install -e ".[mcp]"
@@ -362,7 +364,7 @@ pip install -e ".[mcp]"
 python -m dedalo.mcp_server
 ```
 
-Configuración de un cliente MCP (ejemplo `opencode`/Claude Desktop):
+MCP client configuration (example for `opencode`/Claude Desktop):
 
 ```json
 {
@@ -375,34 +377,35 @@ Configuración de un cliente MCP (ejemplo `opencode`/Claude Desktop):
 }
 ```
 
-**Herramientas de lectura:** `listar_proyectos`, `estado_proyecto`,
+**Read tools:** `listar_proyectos`, `estado_proyecto`,
 `leer_fichero`, `leer_incidencias`, `resumen_metricas`, `cola_log`,
 `estado_agentes`, `listar_modelos`.
 
-**Herramientas de acción:** `instalar_proyecto`, `correr_gate`, `iniciar_loop`
-(segundo plano), `estado_loop`, `detener_loop`, `resolver_revision`.
+**Action tools:** `instalar_proyecto`, `correr_gate`, `iniciar_loop`
+(background), `estado_loop`, `detener_loop`, `resolver_revision`.
 
-**Contexto del programa:** el servidor manda un manual curado en el campo
-`instructions` del `initialize` (qué es Dédalo, cómo funciona el loop, los
-ficheros y el flujo de uso), que el cliente muestra al modelo como contexto sin
-tener que leer el código. El manual completo también está en el recurso
-`dedalo://manual` para leerlo bajo demanda.
+**Program context:** the server sends a curated manual in the
+`instructions` field of `initialize` (what Dédalo is, how the loop works, the
+files, and the usage flow), which the client shows the model as context without
+having to read the code. The full manual is also available as the
+`dedalo://manual` resource for on-demand reading.
 
-**Recursos:** `dedalo://{proyecto}/{fichero}` con lista blanca (`plan.md`,
+**Resources:** `dedalo://{proyecto}/{fichero}` with an allowlist (`plan.md`,
 `lecciones.md`, `CONTEXTO.md`, `progreso.log`, `metrics.jsonl`,
-`incidencias.jsonl`, `mapeo.txt`) y `dedalo://manual` (manual completo).
+`incidencias.jsonl`, `mapeo.txt`) and `dedalo://manual` (full manual).
 
-La revisión manual del loop se resuelve escribiendo en
+The loop's manual review is resolved by writing to
 `<proyecto>/.dedalo_review/decision`: `resolver_revision(nombre, "APPROVE")`
-o `REJECT <motivo>`. El piloto puede aprobar lo trivial y escalar lo dudoso.
+or `REJECT <motivo>`. The pilot can approve the trivial and escalate the
+questionable.
 
-> Nota: el binario de PyInstaller se empaqueta `--windowed` (sin consola), así
-> que el transporte stdio no está disponible en el `.exe`; usa el código fuente
-> para el servidor MCP.
+> Note: the PyInstaller binary is packaged `--windowed` (no console), so the
+> stdio transport isn't available in the `.exe`; use the source code
+> for the MCP server.
 
 ---
 
-## 🐛 Desarrollo
+## 🐛 Development
 
 ```bash
 # Instalar deps de desarrollo
@@ -422,13 +425,13 @@ python -m pip wheel --no-deps -w /tmp/wheel . && python -m zipfile -l /tmp/wheel
 QT_QPA_PLATFORM=offscreen python -c "from dedalo.app import main; main()" &
 ```
 
-`[project.optional-dependencies] dev` trae `pytest` y `ruff`, nada más: no
-hay type checker en el proyecto, así que no configures mypy esperando que
-haga nada.
+`[project.optional-dependencies] dev` ships `pytest` and `ruff`, nothing else:
+there's no type checker in the project, so don't configure mypy expecting it to
+do anything.
 
 ---
 
-## 📂 Estructura clave
+## 📂 Key Structure
 
 ```
 dedalo/
@@ -466,13 +469,13 @@ dedalo/
 
 ---
 
-## 🐛 Bugs conocidos pendientes
+## 🐛 Known Open Bugs
 
-Defectos detectados y decididos no arreglar ahora, con su motivo y referencia al
-código: [`docs/BUGS_CONOCIDOS.md`](docs/BUGS_CONOCIDOS.md).
+Defects that were found and deliberately decided not to fix now, with the
+reason and a code reference: [`docs/BUGS_CONOCIDOS.md`](docs/BUGS_CONOCIDOS.md).
 
 ---
 
-## 📝 Licencia
+## 📝 License
 
-MIT — texto completo en [LICENSE](LICENSE).
+MIT — full text in [LICENSE](LICENSE).

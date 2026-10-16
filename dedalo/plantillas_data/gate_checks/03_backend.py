@@ -1,13 +1,13 @@
-# 03_backend.py — Levanta el backend y prueba que responde y sirve endpoints.
-# Port de 03_backend.sh para el orquestador portable (Windows sin bash).
+# 03_backend.py — Starts the backend and checks that it responds and serves endpoints.
+# Port of 03_backend.sh for the portable orchestrator (Windows without bash).
 #
-#   SERVE_CMD    comando para arrancar el backend ("" = se omite el check)
-#   SERVE_URL    URL base a la que llamar (ej: http://localhost:8000)
-#   TOKEN_URL    endpoint de login para obtener token ("" = sin auth)
-#   USUARIO/CLAVE credenciales de login
-#   ENDPOINTS    lista "ep1 ep2 ..." (se unen como $SERVE_URL/api/$ep)
+#   SERVE_CMD    command to start the backend ("" = check is skipped)
+#   SERVE_URL    base URL to call (e.g.: http://localhost:8000)
+#   TOKEN_URL    login endpoint to obtain a token ("" = no auth)
+#   USUARIO/CLAVE login credentials
+#   ENDPOINTS    list "ep1 ep2 ..." (joined as $SERVE_URL/api/$ep)
 #
-# Si existe endpoints.txt en la raíz, tiene prioridad (lo resuelve gate_env).
+# If endpoints.txt exists at the root, it takes priority (gate_env resolves it).
 import json
 import re
 import shutil
@@ -18,7 +18,7 @@ import urllib.request
 
 
 def _http(url, headers=None, body=None):
-    """Devuelve (codigo, cuerpo). codigo 0 = sin respuesta HTTP (000)."""
+    """Returns (code, body). code 0 = no HTTP response (000)."""
     datos = body.encode("utf-8") if isinstance(body, str) else body
     req = urllib.request.Request(url, data=datos, headers=headers or {})
     try:

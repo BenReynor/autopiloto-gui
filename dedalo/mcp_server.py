@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
-"""Servidor MCP (Model Context Protocol) de Dédalo.
+"""Dédalo MCP (Model Context Protocol) server.
 
-Expone el estado de los proyectos y las acciones del loop (instalar, gate,
-iniciar/parar, resolver la revisión manual) a un cliente MCP —p. ej. un agente
-"piloto"— por stdio (JSON-RPC). Es un proceso sin Qt: sólo importa módulos sin
-PySide, así que puede arrancarse headless.
+Exposes project state and loop actions (install, gate, start/stop, resolve manual
+review) to an MCP client —e.g. a "pilot" agent— over stdio (JSON-RPC). It is a
+non-Qt process: it only imports modules without PySide, so it can run headless.
 
-Transporte: stdio (no abre puertos). Arranque:
+Transport: stdio (no ports opened). Start:
 
     python -m dedalo.mcp_server
 
-La revisión manual del loop se resuelve escribiendo en
-`<proyecto>/.dedalo_review/decision` (APPROVE / "REJECT <motivo>"), que es
-justo lo que hace `resolver_revision`: el agente piloto ocupa el asiento del
-humano cuando el loop pausa.
+The loop's manual review is resolved by writing to
+`<proyecto>/.dedalo_review/decision` (APPROVE / "REJECT <motivo>"), which is
+exactly what `resolver_revision` does: the pilot agent takes the human's seat
+when the loop pauses.
 
-Nota de seguridad: `iniciar_loop` lanza el motor en segundo plano con
-`start_new_session=True` y sus stdout/stderr van a /dev/null —NUNCA a la
-stdio del servidor, o corromperían el canal JSON-RPC.
+Security note: `iniciar_loop` launches the engine in the background with
+`start_new_session=True` and its stdout/stderr go to /dev/null —NEVER to the
+server's stdio, as that would corrupt the JSON-RPC channel.
 """
 
 import json
@@ -38,48 +37,48 @@ except ImportError as exc:  # pragma: no cover
         "Instálala con: pip install 'dedalo[mcp]'"
     ) from exc
 
-# Manual curado del programa: se entrega como `instructions` en el initialize
-# (contexto que los clientes MCP muestran al modelo) y como recurso
-# `dedalo://manual`. Va embebido en el código para estar disponible también en
-# la app empaquetada/frozen, donde docs/ no se distribuye.
+# Curated program manual: delivered as `instructions` in initialize
+# (context shown to MCP clients by the model) and as resource
+# `dedalo://manual`. Embedded in the code so it's available in the
+# packaged/frozen app where docs/ are not distributed.
 MANUAL = """\
-Dédalo es un panel de escritorio (PySide6) y un servidor MCP para orquestar
-agentes de IA CLI (opencode, codex, claude) que trabajan de forma autónoma
-sobre un proyecto, iterando tarea a tarea sobre `plan.md`.
+Dédalo is a desktop panel (PySide6) and an MCP server for orchestrating CLI
+AI agents (opencode, codex, claude) that work autonomously on a project,
+iterating task by task on `plan.md`.
 
-CÓMO FUNCIONA EL LOOP
-- Toma la primera tarea pendiente de `plan.md`, se la pasa a un agente y,
-  tras ejecutarla, corre el "gate" (tests + lint) del proyecto.
-- Sólo commitea si el gate pasa; si falla, la iteración no commitea.
-- Con `revision_manual` activo, el loop PAUSA antes de commitear y espera una
-  decisión (APPROVE / REJECT) del humano o de un agente piloto.
-- Si no hay internet, el loop se detiene.
+HOW THE LOOP WORKS
+- Takes the first pending task from `plan.md`, passes it to an agent and,
+  after executing it, runs the project's "gate" (tests + lint).
+- Only commits if the gate passes; if it fails, the iteration does not commit.
+- With `revision_manual` active, the loop PAUSES before committing and waits for
+  a decision (APPROVE / REJECT) from a human or a pilot agent.
+- If there is no internet, the loop stops.
 
-FICHEROS DEL PROYECTO (los mismos que expone dedalo://{nombre}/{fichero})
-- plan.md ......... tareas: `- [ ]` pendiente, `- [x]` hecha, `- [B]` bloqueada.
-- lecciones.md .... aprendizajes acumulados entre iteraciones.
-- CONTEXTO.md ..... estado resumido / notas de continuidad.
-- progreso.log .... traza de las iteraciones (texto).
-- metrics.jsonl ... métricas por iteración (una línea JSON cada una).
-- incidencias.jsonl incidencias estructuradas (una línea JSON cada una).
-- mapeo.txt ....... mapa/índice del proyecto.
+PROJECT FILES (same as exposed at dedalo://{nombre}/{fichero})
+- plan.md ......... tasks: `- [ ]` pending, `- [x]` done, `- [B]` blocked.
+- lecciones.md .... lessons accumulated across iterations.
+- CONTEXTO.md ..... summary state / continuity notes.
+- progreso.log .... iteration trace (text).
+- metrics.jsonl ... metrics per iteration (one JSON line each).
+- incidencias.jsonl structured incidents (one JSON line each).
+- mapeo.txt ....... project map/index.
 
-CONCEPTOS
-- "proyecto": directorio registrado en Dédalo (nombre -> ruta).
-- "gate": comando de verificación del proyecto (tests + lint).
-- "revisión manual": pausa del loop esperando aprobación del diff.
-- "agente tarea" / "agente revisor": CLIs asignados a ejecutar y a revisar.
+CONCEPTS
+- "project": directory registered in Dédalo (name -> path).
+- "gate": project verification command (tests + lint).
+- "manual review": loop pause awaiting diff approval.
+- "task agent" / "reviewer agent": CLIs assigned to execute and to review.
 
-FLUJO TÍPICO CON ESTAS HERRAMIENTAS
-1. listar_proyectos / estado_proyecto: qué hay y en qué estado.
-2. leer_plan / leer_contexto / leer_lecciones / cola_log: contexto.
-3. instalar_proyecto: crear y registrar un proyecto nuevo (opcional).
-4. iniciar_loop: arrancar el loop en segundo plano (devuelve el pid).
-5. estado_loop / cola_log: seguir el avance.
-6. resolver_revision(APPROVE|REJECT): resolver una revisión pendiente.
-7. correr_gate: validar a mano; detener_loop: parar el loop.
+TYPICAL FLOW WITH THESE TOOLS
+1. listar_proyectos / estado_proyecto: what's there and in what state.
+2. leer_plan / leer_contexto / leer_lecciones / cola_log: context.
+3. instalar_proyecto: create and register a new project (optional).
+4. iniciar_loop: start the loop in background (returns pid).
+5. estado_loop / cola_log: follow progress.
+6. resolver_revision(APPROVE|REJECT): resolve a pending review.
+7. correr_gate: validate manually; detener_loop: stop the loop.
 
-El texto completo de este manual está en el recurso `dedalo://manual`.
+The full text of this manual is in the resource `dedalo://manual`.
 """
 
 mcp = MCPServer("dedalo", instructions=MANUAL)
@@ -95,8 +94,8 @@ FICHEROS_RECURSO = (
     "mapeo.txt",
 )
 
-# Loop en marcha por proyecto: nombre → subprocess.Popen. El pid se persiste
-# además en CONFIG_DIR para que un servidor MCP reiniciado aún pueda pararlo.
+# Loops running per project: name → subprocess.Popen. The pid is also persisted
+# in CONFIG_DIR so that a restarted MCP server can still stop it.
 _LOOPS: dict[str, subprocess.Popen] = {}
 _PIDS_RUTA = os.path.join(cfg.CONFIG_DIR, "mcp_loops.json")
 RC_TIMEOUT_LOOP = loop_proceso.RC_TIMEOUT
@@ -107,7 +106,7 @@ def _json(obj):
 
 
 def _ruta_de(nombre):
-    """Ruta del proyecto en el registro (raises ValueError si no existe)."""
+    """Project path in the registry (raises ValueError if it does not exist)."""
     proy = proyectos.cargar().get(nombre)
     if not proy or not proy.get("ruta"):
         raise ValueError(f"proyecto desconocido: {nombre!r}")

@@ -1,6 +1,6 @@
-# 02_migrations.py — Migraciones al día (comando configurable).
-# Port de 02_migrations.sh para el orquestador portable (Windows sin bash).
-# Sobreescribe con MIGRATE_CHECK. Ej (Django):
+# 02_migrations.py — Migrations up to date (configurable command).
+# Port of 02_migrations.sh for the portable orchestrator (Windows without bash).
+# Override with MIGRATE_CHECK. E.g. (Django):
 #   "cd <backend> && python manage.py migrate --check"
 
 

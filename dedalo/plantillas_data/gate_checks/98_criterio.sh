@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# 98_criterio.sh — JUEZ de criterio en lenguaje natural (patrón goal-worker).
+# 98_criterio.sh — Natural-language criteria JUDGE (goal-worker pattern).
 #
-# Dédalo extrae la línea "criterio: ..." de la primera tarea pendiente del
-# plan.md y la exporta como CRITERIO. Este check NO necesita scripts por
-# proyecto: escribes la condición en lenguaje natural y un juez (modelo barato)
-# evalúa contra el estado real del repo si se cumple.
+# Dédalo extracts the "criterio: ..." line from the first pending task in
+# plan.md and exports it as CRITERIO. This check does NOT need per-project
+# scripts: you write the condition in natural language and a judge (cheap
+# model) evaluates it against the real state of the repo.
 #
-#   · CRITERIO vacío → se omite (gate determinista normal).
-#   · El juez usa opencode con MODELO_JUEZ (def: modelo barato) y devuelve
-#     {"met": true|false, "reason": "..."} o VERDICT: PASS/FAIL.
-#   · Máx 2 llamadas: si el juez no puede responder (cuota/timeout), falla
-#     SUAVE (⚠) para no bloquear el loop por culpa del proveedor.
+#   · Empty CRITERIO → skipped (normal deterministic gate).
+#   · The judge uses opencode with MODELO_JUEZ (def: cheap model) and returns
+#     {"met": true|false, "reason": "..."} or VERDICT: PASS/FAIL.
+#   · Max 2 calls: if the judge cannot respond (quota/timeout), it fails
+#     SOFT (⚠) so as not to block the loop because of the provider.
 #
-# Configurable vía entorno: CRITERIO, AGENTE_JUEZ (opencode|codex|claude|auto),
-# MODELO_JUEZ (sólo opencode), OPENCODE_AGENT_JUEZ, CLI_OPENCODE/CLI_CODEX/
+# Configurable via environment: CRITERIO, AGENTE_JUEZ (opencode|codex|claude|auto),
+# MODELO_JUEZ (opencode only), OPENCODE_AGENT_JUEZ, CLI_OPENCODE/CLI_CODEX/
 # CLI_CLAUDE, AGENTE_TAREA, AGENTES_PREFERIDOS, TIMEOUT_JUEZ (def 120 s).
 set -uo pipefail
 
@@ -26,9 +26,9 @@ TIMEOUT_JUEZ="${TIMEOUT_JUEZ:-120}"
 MODELO_JUEZ="${MODELO_JUEZ:-opencode/nemotron-3.5-lightning-free}"
 OPENCODE_AGENT="${OPENCODE_AGENT_JUEZ:-build}"
 
-# Agente del juez: AGENTE_JUEZ (opencode|codex|claude|auto). "auto" y vacío
-# siguen al agente de tarea si su CLI está disponible, y si no, al primero
-# disponible. MODELO_JUEZ sólo aplica a opencode.
+# Judge agent: AGENTE_JUEZ (opencode|codex|claude|auto). "auto" and empty
+# follow the task agent if its CLI is available, and otherwise the first
+# available one. MODELO_JUEZ only applies to opencode.
 AGENTE="${AGENTE_JUEZ:-auto}"
 case "$AGENTE" in
     auto|"")
@@ -48,7 +48,7 @@ case "$AGENTE" in
             esac
             command -v "$_b" >/dev/null 2>&1 && { _pick="$_a"; break; }
         done
-        # _cand primero SÓLO si su CLI existe; si no, cae a la lista.
+        # _cand first ONLY if its CLI exists; otherwise fall back to the list.
         if [ -z "$_pick" ] && [ -n "$_cand" ]; then
             case "$_cand" in
                 opencode) command -v "${CLI_OPENCODE:-opencode}" >/dev/null 2>&1 && _pick="$_cand" ;;
@@ -78,8 +78,8 @@ GATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROYECTO_J="$GATE_DIR"
 [ "$(basename "$PROYECTO_J")" = "gate_checks" ] && PROYECTO_J="$(dirname "$PROYECTO_J")"
 
-# Estado actual del repo: diff pendiente + tests localizados, para que el juez
-# evalúe contra hechos y no contra suposiciones.
+# Current state of the repo: pending diff + located tests, so the judge
+# evaluates against facts and not assumptions.
 ESTADO=""
 if git -C "$PROYECTO_J" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     ESTADO="$(git -C "$PROYECTO_J" status --porcelain | head -30)"
@@ -102,10 +102,10 @@ Respondes ÚNICAMENTE con JSON en la última línea, sin markdown:
 {\"met\": true, \"reason\": \"<por qué se cumple, máx 120 caracteres>\"}   o
 {\"met\": false, \"reason\": \"<qué falta, máx 120 caracteres>\"}"
 
-# Límite de tiempo portátil, mismo criterio que _timeout() en dedalo.sh:
-# GNU timeout > gtimeout (Homebrew) > respaldo en bash puro (macOS base no
-# trae ninguno y un `timeout` directo saldría con rc=127: el juez se omitiría
-# siempre). El respaldo devuelve 124 (como GNU) cuando se agota el tope.
+# Portable time limit, same criterion as _timeout() in dedalo.sh:
+# GNU timeout > gtimeout (Homebrew) > pure bash fallback (base macOS ships
+# none of them and a direct `timeout` would exit with rc=127: the judge would
+# always be skipped). The fallback returns 124 (like GNU) when the cap is hit.
 _juez_timeout() {
     local segs="$1" pid i=0
     shift
@@ -131,9 +131,9 @@ _juez_timeout() {
     fi
 }
 
-# Invocación según el agente del juez. El modelo (--model) sólo existe en
-# opencode; codex y claude se configuran por su cuenta y no aceptan la flag,
-# así que se les ignora MODELO_JUEZ.
+# Invocation according to the judge's agent. The --model flag only exists in
+# opencode; codex and claude are configured on their own and do not accept the
+# flag, so MODELO_JUEZ is ignored for them.
 run_juez() {
     case "$AGENTE" in
         opencode)
@@ -144,8 +144,8 @@ run_juez() {
             fi
             ;;
         codex)
-            # Los flags van en un array: entrecomillar "${CODEX_FLAGS:-}"
-            # pasaría un argumento vacío que el CLI tomaría como el prompt.
+            # The flags go in an array: quoting "${CODEX_FLAGS:-}" would pass
+            # an empty argument that the CLI would take as the prompt.
             local -a flags=()
             [ -n "${CODEX_FLAGS:-}" ] && read -r -a flags <<< "$CODEX_FLAGS"
             _juez_timeout "$TIMEOUT_JUEZ" "$CLI" exec --skip-git-repo-check \
@@ -175,7 +175,7 @@ if [ "$RC" -ne 0 ]; then
     exit 0
 fi
 
-# Parsear veredicto: {"met": true|false} o VERDICT: PASS|FAIL
+# Parse verdict: {"met": true|false} o VERDICT: PASS|FAIL
 VEREDICTO="$(printf '%s\n' "$SALIDA" | grep -oE '"met"[[:space:]]*:[[:space:]]*(true|false)' | tail -1)"
 if [ -z "$VEREDICTO" ]; then
     VEREDICTO="$(printf '%s\n' "$SALIDA" | grep -oE 'VERDICT[[:space:]]*:[[:space:]]*(PASS|FAIL)' | tail -1)"

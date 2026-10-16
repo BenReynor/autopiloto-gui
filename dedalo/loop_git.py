@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Operaciones git del loop nativo (port de las secciones git de
-dedalo.sh: snapshot, iteracion_sin_trabajo, commit/merge, revertir,
-diff_para_revisor, registrar_leccion y preparar_ramas).
+"""Git operations of the native loop (port of the git sections of
+dedalo.sh: snapshot, iteracion_sin_trabajo, commit/merge, revert,
+diff_para_revisor, registrar_leccion and preparar_ramas).
 
-Sin dependencias de PySide. Los comandos git se ejecutan con run_con_timeout
-(tope defensivo; el árbol local no debería colgarse). Todas las rutas se
-pasAN como argumentos separados (nunca glosadas), igual que el fix del bash
-para diff con espacios.
+No PySide dependencies. Git commands are run with run_con_timeout
+(defensive cap; the local tree should not hang). All paths
+are passed as separate arguments (never quoted), same as the bash fix
+for diffs with spaces.
 """
 
 import os
@@ -18,15 +18,15 @@ from collections import Counter
 
 from .loop_proceso import run_con_timeout
 
-# Patrón de caches/derivados que NUNCA entran en el diff ni en los commits
-# (misma lista que el grep -vE de snapshot() en el script).
+# Pattern of caches/derived files that NEVER enter the diff nor the commits
+# (same list as the grep -vE of snapshot() in the script).
 _CACHES = re.compile(
     r"(^|/)(__pycache__|\.pytest_cache|\.mypy_cache|node_modules|\.venv|venv)/"
     r"|\.pyc$|\.pyo$")
 
-# Archivos de control del propio framework: trazabilidad del loop, no del
-# agente. Viene de la variable CONTROL del script. Al usarse anclado
-# `^(?P<control>...)$` para que "plan.md" no se coma "docs/plan.md".
+# Control files of the framework itself: loop traceability, not the
+# agent's. Comes from the script's CONTROL variable. When used it is anchored
+# `^(?P<control>...)$` so that "plan.md" does not swallow "docs/plan.md".
 CONTROL = (
     r"plan\.md|lecciones\.md|progreso\.log|gate\.sh|dedalo\.sh|mapear\.sh"
     r"|mapeo\.txt|endpoints\.txt|metrics\.jsonl|incidencias\.jsonl|gate_checks(/.*)?"
@@ -34,7 +34,7 @@ CONTROL = (
 
 
 def run_git(proyecto, *args, timeout=60):
-    """`git -C <proyecto> <args>`; devuelve (rc, stdout, stderr)."""
+    """`git -C <proyecto> <args>`; returns (rc, stdout, stderr)."""
     rc, salida, _t = run_con_timeout(
         ["git", "-C", str(proyecto)] + list(args), timeout,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -48,13 +48,13 @@ def _ok(proyecto, *args):
 
 
 def snapshot(proyecto, destino):
-    """Escribe en `destino` la lista ordenada de archivos con cambios, género
+    """Writes to `destino` the sorted list of changed files, like
     `git status --porcelain`.
 
-    Port de snapshot(): quita el prefijo de estado de 3 caracteres, mantiene
-    las rutas entrecomilladas que git ponga (espacios), y filtra caches. El
-    recorte de archivos CONTROL se hace DESPUÉS (cambios_entre), igual que el
-    script separa snapshot() de iteracion_sin_trabajo().
+    Port of snapshot(): strips the 3-character status prefix, keeps the
+    quoted paths git puts (spaces), and filters caches. The CONTROL
+    file stripping is done LATER (cambios_entre), just as the
+    script separates snapshot() from iteracion_sin_trabajo().
     """
     _, out, _ = run_git(proyecto, "-c", "core.quotepath=false",
                         "status", "--porcelain")
@@ -78,12 +78,12 @@ def _leer(fichero):
 
 
 def cambios_entre(before_path, after_path, control=CONTROL):
-    """Compara dos snapshots excluyendo CONTROL, de forma simétrica.
+    """Compares two snapshots excluding CONTROL, symmetrically.
 
-    Port de iteracion_sin_trabajo(): devuelve (nuevos, borrados). Un archivo
-    que desaparece del status del agente también es trabajo (lo borró). El
-    resultado es una multiset (comm -13 / -23), como hace sort+comm del
-    script. Si ambos están vacíos no hubo trabajo.
+    Port of iteracion_sin_trabajo(): returns (nuevos, borrados). A file
+    that disappears from the agent's status is also work (it deleted it). The
+    result is a multiset (comm -13 / -23), like the script's sort+comm. If both
+    are empty there was no work.
     """
     rx = re.compile(r"^(?:" + control + r")$")
     antes = Counter(linea for linea in _leer(before_path) if not rx.match(linea))
@@ -96,9 +96,9 @@ def cambios_entre(before_path, after_path, control=CONTROL):
 def commit_tarea(proyecto, archivos, subject, cuerpo):
     """`git add -- <archivos> && git commit -q -m <subject> -m <cuerpo>`.
 
-    Devuelve 0 si el commit se creó; las rutas con espacios se pasan como
-    elementos separados. Sin archivos no hace nada (igual que el `[ -n ]`
-    guard del bash).
+    Returns 0 if the commit was created; paths with spaces are passed as
+    separate elements. With no files it does nothing (same as the bash `[ -n ]`
+    guard).
     """
     if not archivos:
         return 0
@@ -109,7 +109,7 @@ def commit_tarea(proyecto, archivos, subject, cuerpo):
 
 
 def merge_ff(proyecto, rama):
-    """`git merge -q --ff-only <rama>`; rc 0 si el fast-forward fue bien."""
+    """`git merge -q --ff-only <rama>`; rc 0 if the fast-forward went well."""
     return run_git(proyecto, "merge", "-q", "--ff-only", rama)[0]
 
 
@@ -125,17 +125,17 @@ def checkout(proyecto, rama, crear=False, desde=None):
 
 
 def rama_existe(proyecto, rama):
-    """rev-parse --verify con -q: True si la ref existe (local u origin)."""
+    """rev-parse --verify with -q: True if the ref exists (local or origin)."""
     return _ok(proyecto, "rev-parse", "--verify", "-q", rama)
 
 
 def preparar_ramas(proyecto, rama_base, rama_run, rama_trabajo):
-    """Port de las líneas 964-1017 de dedalo.sh: crea/reusa RAMA_RUN
-    desde RAMA_BASE y resuelve RAMA_TRABAJO (principal / existente /
-    seguimiento de origin / nueva desde RAMA_RUN).
+    """Port of lines 964-1017 of dedalo.sh: creates/reuses RAMA_RUN
+    from RAMA_BASE and resolves RAMA_TRABAJO (main / existing /
+    tracking origin / new from RAMA_RUN).
 
-    Devuelve (rama_trabajo_efectiva, mensajes) para loguear. Si no se pudo
-    crear la rama base devuelve (None, mensajes) y el caller aborta.
+    Returns (effective_rama_trabajo, messages) to log. If the base
+    branch could not be created it returns (None, messages) and the caller aborts.
     """
     mensajes = []
     if rama_existe(proyecto, rama_run):
@@ -174,11 +174,11 @@ def preparar_ramas(proyecto, rama_base, rama_run, rama_trabajo):
 
 
 def revertir(proyecto, control=CONTROL):
-    """Revierte el working tree al estado de HEAD (rama de tarea sin avanzar).
+    """Reverts the working tree to the HEAD state (task branch without advancing).
 
-    Port de revertir(): quita los archivos nuevos (untracked), restaura los
-    borrados y los modificados desde HEAD. Los archivos CONTROL del framework
-    no se tocan. Rutas entrecomilladas por git (espacios) se normalizan.
+    Port of revertir(): removes new (untracked) files, restores the
+    deleted and modified ones from HEAD. The framework CONTROL files
+    are not touched. Paths quoted by git (spaces) are normalized.
     """
     rx = re.compile(r"^(?:" + control + r")$")
     _, out, _ = run_git(proyecto, "status", "--porcelain")
@@ -203,12 +203,12 @@ def revertir(proyecto, control=CONTROL):
 
 
 def diff_para_revisor(proyecto, control=CONTROL):
-    """Diff de la iteración para el revisor, excluyendo archivos CONTROL.
+    """Diff of the iteration for the reviewer, excluding CONTROL files.
 
-    Port de diff_revision(): marca intent-to-add (git add -N) para que los
-    archivos nuevos entren en el diff, y pasa las rutas como pathspecs
-    separados (nunca una lista multilínea en un único argumento). Devuelve
-    (stat, diff). Sin cambios devuelve el texto "(sin cambios fuera de
+    Port of diff_revision(): marks intent-to-add (git add -N) so new
+    files enter the diff, and passes the paths as separate pathspecs
+    (never a multiline list in a single argument). Returns
+    (stat, diff). With no changes it returns the text "(sin cambios fuera de
     archivos CONTROL)".
     """
     rx = re.compile(r"^(?:" + control + r")$")
@@ -225,7 +225,7 @@ def diff_para_revisor(proyecto, control=CONTROL):
 
 
 def registrar_leccion(lecciones, titulo, sintoma, causa, prevencion):
-    """Añade una lección a lecciones.md (memoria del proyecto)."""
+    """Adds a lesson to lecciones.md (project memory)."""
     fecha = time.strftime("%Y-%m-%d %H:%M")
     with open(lecciones, "a", encoding="utf-8") as f:
         f.write(f"\n## {fecha} — {titulo}\n"

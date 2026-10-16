@@ -1,6 +1,6 @@
-"""Panel de configuración de Webhooks (Telegram, Discord, WhatsApp).
+"""Webhooks configuration panel (Telegram, Discord, WhatsApp).
 
-Se integra en la pestaña Seguridad o Ejecución.
+It is integrated into the Security or Execution tab.
 """
 
 from PySide6.QtCore import Signal
@@ -59,7 +59,7 @@ class _LabelMuted(QLabel):
 
 
 class PanelWebhooks(QWidget):
-    """Configuración global de notificaciones push."""
+    """Global push notification settings."""
 
     guardado = Signal(dict)
 
@@ -153,7 +153,7 @@ class PanelWebhooks(QWidget):
 
         v.addWidget(g_wa)
 
-        # --- Eventos a notificar ---
+        # --- Events to notify ---
         g_evt = QGroupBox("Eventos a notificar (por plataforma activada)")
         gev = QGridLayout(g_evt)
         gev.setSpacing(6)
@@ -178,7 +178,7 @@ class PanelWebhooks(QWidget):
 
         v.addWidget(g_evt)
 
-        # --- Guardar ---
+        # --- Save ---
         h = QHBoxLayout()
         h.setSpacing(8)
         b_guardar = _BtnPrimary("💾 Guardar configuración")
@@ -187,7 +187,7 @@ class PanelWebhooks(QWidget):
         h.addWidget(b_guardar)
         v.addLayout(h)
 
-        # --- Estado de los envíos de prueba ---
+        # --- Test send status ---
         self.lbl_estado = _LabelMuted("Sin pruebas todavía")
         self.lbl_estado.setWordWrap(True)
         v.addWidget(self.lbl_estado)
@@ -199,7 +199,7 @@ class PanelWebhooks(QWidget):
         le.setPlaceholderText(placeholder)
         _fuente_ui(le)
         _fuente_monospace(le)
-        le.setEchoMode(QLineEdit.Password)  # Tokens sensibles
+        le.setEchoMode(QLineEdit.Password)  # Sensitive tokens
         return le
 
     def _webhook_ok(self, plataforma, mensaje):
@@ -233,7 +233,7 @@ class PanelWebhooks(QWidget):
         QMessageBox.information(self, "Webhooks", "Configuración guardada ✓")
 
     def aplicar_config(self, config):
-        """Rellena los campos con la configuración del proyecto activo."""
+        """Fills the fields with the active project's configuration."""
         self.config = dict(config or {})
         self.webhook.configurar(self.config)
         self.tg_token.setText(self.config.get("telegram_token", ""))

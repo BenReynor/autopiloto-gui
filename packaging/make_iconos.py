@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Genera packaging/icono.icns (macOS) y packaging/icono.ico (Windows)
-a partir de dedalo/icono.svg.
+"""Generates packaging/icono.icns (macOS) and packaging/icono.ico (Windows)
+from dedalo/icono.svg.
 
-Uso:
+Usage:
     python3 packaging/make_iconos.py
 
-Se ejecuta al final del build (build_linux.sh/build_macos.sh) y hay un test
-que comprueba que los ficheros generados siguen siendo válidos; si cambias el
-SVG, vuelve a lanzarlo y commitea los dos ficheros.
+Run at the end of the build (build_linux.sh/build_macos.sh) and there is a
+test that checks the generated files are still valid; if you change the
+SVG, run it again and commit both files.
 
-No necesita pantalla ni QApplication: pinta el SVG en un QImage offscreen.
+No screen or QApplication needed: it paints the SVG onto an offscreen QImage.
 """
 from __future__ import annotations
 
@@ -51,11 +51,11 @@ def generar() -> None:
         raise RuntimeError(f"SVG inválido: {SVG}")
     iconos = {tam: _png(svg, tam) for tam in TAMANOS}
 
-    # .icns: Pillow escribe ic07..ic14 (PNG embebidos); pasa los tamaños
-    # exactos para que no tenga que reescalar.
+    # .icns: Pillow writes ic07..ic14 (embedded PNGs); pass the exact sizes
+    # so it does not have to rescale.
     iconos[1024].save(ICNS, append_images=[iconos[t] for t in TAMANOS])
 
-    # .ico: igual, con los tamaños que Windows espera (hasta 256).
+    # .ico: same, with the sizes Windows expects (up to 256).
     chicos = [t for t in TAMANOS if t <= 256]
     iconos[256].save(ICO, sizes=[(t, t) for t in chicos],
                      append_images=[iconos[t] for t in chicos])
@@ -63,7 +63,7 @@ def generar() -> None:
     for ruta in (ICNS, ICO):
         try:
             nombre = ruta.relative_to(RAIZ)
-        except ValueError:          # destino temporal (tests)
+        except ValueError:          # temporary destination (tests)
             nombre = ruta
         print(f"{nombre}  {ruta.stat().st_size} bytes")
 

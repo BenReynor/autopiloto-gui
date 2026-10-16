@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Orquestador portable del gate (port de gate.sh).
+"""Portable gate orchestrator (port of gate.sh).
 
-Ejecuta los checks de `gate_checks/` en orden numérico por prefijo y devuelve
-0=OK, 1=FAIL, con el MISMO contrato de salida que gate.sh (`[GATE] ✓/✗`, y
-`[GATE] ✅ TODO OK` final).
+Runs the checks in `gate_checks/` in numeric order by prefix and returns
+0=OK, 1=FAIL, with the SAME output contract as gate.sh (`[GATE] ✓/✗`, and
+the final `[GATE] ✅ TODO OK`).
 
-Regla de selección por prefijo:
-  · Si existe `NN_*.sh` y hay bash -> se ejecuta con bash (comportamiento del
-    gate de siempre; así un check .sh personalizado sigue ganando).
-  · Si no hay bash (Windows sin Git Bash) -> se ejecuta `NN_*.py`, el port.
+Prefix selection rule:
+  · If `NN_*.sh` exists and bash is available -> it is run with bash (the usual
+    gate behavior; so a custom .sh check still wins).
+  · If there is no bash (Windows without Git Bash) -> `NN_*.py`, the port, runs.
 
-El bucle (loop.py) invoca esto con el mismo directorio de proyecto que antes:
+The loop (loop.py) invokes this with the same project directory as before:
 
-    python -m dedalo.gate      # instalado / editable
-    <exe> --dedalo-gate            # binario congelado (PyInstaller)
+    python -m dedalo.gate      # installed / editable
+    <exe> --dedalo-gate            # frozen binary (PyInstaller)
 """
 
 import os
@@ -26,7 +26,7 @@ from . import gate_env
 
 
 def _proteger_salidas():
-    """Protege stdout/stderr ante codificaciones que no admiten emojis."""
+    """Protects stdout/stderr against encodings that do not support emojis."""
     for nombre in ("stdout", "stderr"):
         try:
             st = getattr(sys, nombre, None)
@@ -45,11 +45,11 @@ _PREFIJO = re.compile(r"^(\d+)_")
 
 
 def argv_gate(frozen=None):
-    """Comando (lista argv) para ejecutar el gate como subproceso.
+    """Command (argv list) to run the gate as a subprocess.
 
-    En el código fuente: `python -m dedalo.gate`. En el binario de
-    PyInstaller `-m` no resuelve el módulo (va empaquetado en el exe), así que
-    el entrypoint interpreta `--dedalo-gate`.
+    In the source code: `python -m dedalo.gate`. In the PyInstaller
+    binary `-m` does not resolve the module (it is packaged in the exe), so
+    the entrypoint interprets `--dedalo-gate`.
     """
     if frozen is None:
         frozen = bool(getattr(sys, "frozen", False))
@@ -59,7 +59,7 @@ def argv_gate(frozen=None):
 
 
 def _grupos(proyecto):
-    """Agrupa gate_checks por prefijo. None si no existe el directorio."""
+    """Groups gate_checks by prefix. None if the directory does not exist."""
     dir_checks = os.path.join(proyecto, "gate_checks")
     if not os.path.isdir(dir_checks):
         return None
@@ -76,7 +76,7 @@ def _grupos(proyecto):
 
 
 def _cargar_py(ruta):
-    """Carga un check .py sin escribir __pycache__ en el proyecto."""
+    """Loads a .py check without writing __pycache__ into the project."""
     try:
         with open(ruta, encoding="utf-8") as f:
             codigo = f.read()
@@ -107,7 +107,7 @@ def _correr_py(check, entorno):
 
 
 def _correr_sh(proyecto, check, bash):
-    """Corre un check .sh con bash, sourceando _env.sh primero (como gate.sh)."""
+    """Runs a .sh check with bash, sourcing _env.sh first (like gate.sh)."""
     env_sh = os.path.join(proyecto, "gate_checks", "_env.sh")
     partes = []
     if os.path.isfile(env_sh):
@@ -123,9 +123,9 @@ def _correr_sh(proyecto, check, bash):
             [bash, "-c", guion], cwd=proyecto, capture_output=True, text=True)
     except OSError:
         return 127
-    # Reemitimos por stdout/stderr de Python para conservar el ORDEN del log:
-    # si el subproceso escribiera directo al fd, su salida podría adelantarse
-    # al buffer de Python (y al "[GATE] ✅ TODO OK" final).
+    # Re-emit through Python's stdout/stderr to preserve the log ORDER:
+    # if the subprocess wrote directly to the fd, its output could jump ahead
+    # of the Python buffer (and of the final "[GATE] ✅ TODO OK").
     sys.stdout.write(p.stdout or "")
     if p.stderr:
         sys.stderr.write(p.stderr)
@@ -134,7 +134,7 @@ def _correr_sh(proyecto, check, bash):
 
 
 def correr(proyecto, bash=None):
-    """Ejecuta el gate del proyecto. Devuelve 0=OK, 1=FAIL."""
+    """Runs the project gate. Returns 0=OK, 1=FAIL."""
     _proteger_salidas()
     if bash is None:
         bash = shutil.which("bash")

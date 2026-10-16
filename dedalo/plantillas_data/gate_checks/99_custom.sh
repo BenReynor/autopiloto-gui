@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 99_custom.sh — Checks personalizados del usuario.
-# Devuelve 0=OK, 1=FAIL. Aquí pones tus propias verificaciones:
-# lint, typecheck, seguridad, build, quality gates, etc.
+# 99_custom.sh — User's custom checks.
+# Returns 0=OK, 1=FAIL. Put your own verifications here:
+# lint, typecheck, security, build, quality gates, etc.
 #
-# Algunos ejemplos listos para descomentar/adaptar:
+# Some ready-to-uncomment/adapt examples:
 set -uo pipefail
 
 # ── Lint: ruff (Python) ──
@@ -38,7 +38,7 @@ fi
 #     fi
 # fi
 
-# ── Seguridad: bandit (Python) ──
+# ── Security: bandit (Python) ──
 # if command -v bandit >/dev/null 2>&1; then
 #     if ( cd "$BACKEND_DIR" && bandit -r . -q >/dev/null 2>&1 ); then
 #         ok "bandit OK"
@@ -48,8 +48,8 @@ fi
 #     fi
 # fi
 
-# ── Cualquier comando propio ──
-# Si necesitas algo específico, ponlo aquí. Ejemplo:
+# ── Any custom command ──
+# If you need something specific, put it here. Example:
 # if ! [ -f "$PROYECTO/.env.ok" ]; then
 #     echo "[GATE] ✗ falta .env.ok"
 #     exit 1

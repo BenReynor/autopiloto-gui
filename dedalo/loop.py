@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Motor del bucle de dedalo en Python (port de dedalo.sh, W2 F3).
+"""Dedalo loop engine in Python (port of dedalo.sh, W2 F3).
 
-Sustituye al script bash manteniendo el MISMO contrato de log (lo parsea la
-GUI con las regex de metricas.py) y el mismo comportamiento observable. El
-gate se ejecuta como subproceso Python portable (dedalo.gate): corre
-los checks .py y delega en bash los .sh si existe (así en Unix se conserva el
-comportamiento de siempre y en Windows funciona sin Git Bash). gate.sh y
-gate_checks/ siguen siendo código del framework.
+Replaces the bash script while keeping the SAME log contract (the GUI parses
+it with metricas.py regexes) and the same observable behavior. The gate runs as
+a portable Python subprocess (dedalo.gate): it runs .py checks and delegates
+.sh checks to bash if available (so on Unix the usual behavior is preserved and
+on Windows it works without Git Bash). gate.sh and gate_checks/ remain framework
+code.
 
-Uso (directo y desde la GUI; directorio actual = proyecto):
+Usage (direct and from the GUI; current directory = project):
     python -m dedalo.loop [plan.md] [--hasta HH:MM] [--push]
                                   [--padre rama] [--trabajo rama]
 
-Sin dependencias de PySide (ningún loop_* importa Qt): el motor corre también
-en Windows con el mismo python que empaqueta la GUI, sin Git Bash.
+No PySide dependencies (no loop_* imports Qt): the engine runs even on Windows
+with the same Python that packages the GUI, without Git Bash.
 """
 
 import filecmp
@@ -67,8 +67,8 @@ _RECHAZO_MOTIVO = {"txt": ""}  # variable global estilo ${RECHAZO_MOTIVO} del sc
 
 
 class Config:
-    """Configuración del run leída del entorno (mismos defaults que el
-    script). Se instancia en main() y se pasa a todas las funciones."""
+    """Configuration of the run read from the environment (same defaults as the
+    script). Instantiated in main() and passed to all functions."""
 
     def __init__(self, args, environ=None, proyecto=None):
         env = environ if environ is not None else os.environ
@@ -116,7 +116,7 @@ class Config:
         self.inicio_ms = ahora_ms()
 
     def tmp(self, sufijo=""):
-        """Ruta temporal nueva (equivalente a mktemp; única por llamada)."""
+        """New temporary path (equivalent to mktemp; unique per call)."""
         fd, ruta = tempfile.mkstemp(suffix=("-" + sufijo if sufijo else ""))
         os.close(fd)
         return ruta
@@ -131,7 +131,7 @@ def _leer(ruta):
 
 
 def _append_log(cfg, texto):
-    """Equivalente a `cat << EOF >> "$LOG"` (sin timestamp, raw)."""
+    """Equivalent to `cat << EOF >> "$LOG"` (without timestamp, raw)."""
     try:
         with open(cfg.log, "a", encoding="utf-8") as f:
             f.write(texto if texto.endswith("\n") else texto + "\n")
@@ -140,32 +140,32 @@ def _append_log(cfg, texto):
 
 
 def _incidencia(cfg, tipo, motivo, tarea="", iteracion=0, rama=""):
-    """Registra una incidencia estructurada y recuerda el último motivo.
+    """Records a structured incident and remembers the last reason.
 
-    `incidencias.jsonl` es independiente de `progreso.log` (prosa): una línea
-    JSON por fallo/aborto, para el panel de incidencias de la GUI y el resumen
-    final. `cfg.ultimo_motivo` permite que una tarea bloqueada herede el porqué
-    real de su último fallo (gate/revisor), en vez de un texto genérico."""
+    `incidencias.jsonl` is independent of `progreso.log` (prose): one
+    JSON line per failure/abort, for the GUI's incidents panel and final
+    summary. `cfg.ultimo_motivo` allows a blocked task to inherit the real
+    reason for its last failure (gate/reviewer), instead of a generic text."""
     incidencia(cfg.incidencias, tipo, motivo, tarea, iteracion, rama)
     cfg.ultimo_motivo = {"tipo": tipo, "motivo": motivo or "",
                          "iteracion": iteracion, "tarea": tarea or ""}
 
 
 def mensaje(cfg, s):
-    """Equivalente a `echo "<s>" | tee -a "$LOG"` del script: consola + log."""
+    """Equivalent to `echo "<s>" | tee -a "$LOG"` of the script: console + log."""
     print(s)
     _append_log(cfg, s)
 
 
 def _proteger_salidas():
-    """En un binario --windowed (Windows) sys.stdout/stderr son None y el
-    primer print() reventaría. Se redirigen a devnull; lo que importa (el
-    log con timestamp) ya va a progreso.log. No-op cuando hay consola.
+    """In a --windowed binary (Windows), sys.stdout/stderr can be None and the
+    first print() would crash. They are redirected to devnull; what matters (the
+    log with timestamp) already goes to progreso.log. No-op when a console exists.
 
-    Con consola heredada (Git Bash/cmd/PowerShell en Windows) los streams
-    NO son None pero su encoding es la locale (cp1252) y el primer ✗ del
-    motor moría con UnicodeEncodeError: se pasan a utf-8 con
-    errors="replace" para que ningún print mate al proceso."""
+    With an inherited console (Git Bash/cmd/PowerShell on Windows) the streams
+    are not None but their encoding is the locale (cp1252) and the first ✗ of
+    the engine died with UnicodeEncodeError: they are switched to utf-8 with
+    errors="replace" so no print kills the process."""
     for nombre in ("stdout", "stderr"):
         s = getattr(sys, nombre, None)
         if s is None:
@@ -179,12 +179,12 @@ def _proteger_salidas():
 
 
 def rama_run_nombre():
-    """`dedalo/$(date +%Y-%m-%d_%H-%M-%S)` del script."""
+    """`dedalo/$(date +%Y-%m-%d_%H-%M-%S)` from the script."""
     return "dedalo/" + time.strftime("%Y-%m-%d_%H-%M-%S")
 
 
 def _mapear(cfg):
-    """`bash "$MAPEAR" > "$MAPA" 2>/dev/null` (mapeo.txt, silencioso)."""
+    """`bash "$MAPEAR" > "$MAPA" 2>/dev/null` (mapeo.txt, silent)."""
     if not os.path.exists(cfg.mapear):
         return
     try:
@@ -197,7 +197,7 @@ def _mapear(cfg):
 
 
 def backup_gate(cfg):
-    """Copia gate.sh y gate_checks/ a un dir temporal (backup_gate())."""
+    """Copies gate.sh and gate_checks/ to a temporary directory (backup_gate())."""
     dir_backup = tempfile.mkdtemp(prefix="dedalo-gate-")
     if os.path.exists(cfg.gate):
         shutil.copyfile(cfg.gate, os.path.join(dir_backup, "gate.sh"))
@@ -208,7 +208,7 @@ def backup_gate(cfg):
 
 
 def gate_intacto(dir_backup, cfg):
-    """¿El agente alteró gate.sh o gate_checks/*.{sh,py}? (gate_intacto())."""
+    """Did the agent modify gate.sh or gate_checks/*.{sh,py}? (gate_intacto())."""
     backup_gate_sh = os.path.join(dir_backup, "gate.sh")
     if os.path.exists(cfg.gate) != os.path.exists(backup_gate_sh):
         return False
@@ -827,7 +827,7 @@ def run(cfg):
             except OSError:
                 pass
 
-    # --- Integrar el trabajo en la rama destino (--trabajo distinta del run) ---
+    # --- Integrate work into the destination branch (--trabajo different from run) ---
     if cfg.rama_trabajo and cfg.rama_trabajo != rama_run:
         print(f"[dedalo] Integrando {rama_run} -> {cfg.rama_trabajo}")
         if (checkout(cfg.proyecto, cfg.rama_trabajo) == 0 and

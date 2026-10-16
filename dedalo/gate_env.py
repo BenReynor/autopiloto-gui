@@ -1,14 +1,14 @@
-"""Detección de entorno para el gate portátil (equivalente a _env.sh).
+"""Environment detection for the portable gate (equivalent to _env.sh).
 
-Este módulo lo usa `gate.py` (el orquestador portable) para preparar las
-variables y utilidades que comparten los checks `.py`, sobre todo en Windows,
-donde no hay bash para los `gate_checks/*.sh`.
+This module is used by `gate.py` (the portable orchestrator) to prepare the
+variables and utilities shared by the `.py` checks, especially on Windows,
+where there is no bash for the `gate_checks/*.sh`.
 
-Es un port fiel de `plantillas_data/gate_checks/_env.sh`: mismas variables,
-misma detección (Backend/, frontend/, venv, Django, comandos de DB/migraciones/
-tests/backend) y mismas prioridades. La diferencia está en cómo se ejecutan
-los comandos: los defaults van como listas (argv, sin shell) y sólo lo que
-sobreescribe el usuario por entorno se ejecuta con shell.
+It is a faithful port of `plantillas_data/gate_checks/_env.sh`: same variables,
+same detection (Backend/, frontend/, venv, Django, DB/migration/test/backend
+commands) and same priorities. The difference is in how the commands are run:
+the defaults go as lists (argv, no shell) and only what the user overrides via
+the environment is run with a shell.
 """
 
 import os
@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 @dataclass
 class Comando:
-    """Un comando a ejecutar: argv (lista) o shell (cadena), y su cwd."""
+    """A command to run: argv (list) or shell (string), and its cwd."""
 
     argv: list | None = None
     shell: "str | None" = None
@@ -28,7 +28,7 @@ class Comando:
 
 @dataclass
 class Entorno:
-    """Variables y utilidades compartidas por los checks `.py`."""
+    """Variables and utilities shared by the `.py` checks."""
 
     proyecto: str
     backend_dir: str
@@ -55,11 +55,11 @@ class Entorno:
         print(f"[GATE] \u26a0 {mensaje}")
 
     def ejecutar(self, cmd, timeout=None):
-        """Corre el comando y devuelve el código de retorno (0 si es None)."""
+        """Runs the command and returns the return code (0 if it is None)."""
         return self.ejecutar_salida(cmd, timeout=timeout)[0]
 
     def ejecutar_salida(self, cmd, timeout=None):
-        """Corre el comando y devuelve (rc, salida combinada stdout+stderr)."""
+        """Runs the command and returns (rc, combined stdout+stderr output)."""
         if cmd is None:
             return 0, ""
         if cmd.shell is not None:
@@ -77,7 +77,7 @@ class Entorno:
         return p.returncode, (p.stdout or "") + (p.stderr or "")
 
     def lanzar(self, cmd):
-        """Arranca el comando en segundo plano. Devuelve el Popen o None."""
+        """Starts the command in the background. Returns the Popen or None."""
         if cmd is None:
             return None
         if cmd.shell is not None:
@@ -90,7 +90,7 @@ class Entorno:
 
 
 def _comando(valor, cwd):
-    """Comando del usuario (str -> shell) o por defecto (lista -> argv)."""
+    """User command (str -> shell) or default (list -> argv)."""
     if not valor:
         return None
     if isinstance(valor, str):
@@ -99,15 +99,15 @@ def _comando(valor, cwd):
 
 
 def _db_por_defecto():
-    """DB_CHECK por defecto para Django (port del default de _env.sh).
+    """Default DB_CHECK for Django (port of the _env.sh default).
 
-    Mismo one-liner que el script: sólo comprueba pg_isready, y se ejecuta con
-    shell (igual que el resto de defaults que sobreescribe el usuario)."""
+    Same one-liner as the script: it only checks pg_isready, and it is run with
+    a shell (like the rest of the defaults the user overrides)."""
     return "command -v pg_isready >/dev/null 2>&1 && pg_isready -q"
 
 
 def detectar(proyecto, environ=None):
-    """Port de _env.sh: devuelve un Entorno con la detección resuelta."""
+    """Port of _env.sh: returns an Entorno with the detection resolved."""
     env = environ if environ is not None else os.environ
     proyecto = os.path.abspath(proyecto)
 
@@ -177,7 +177,7 @@ def _python3():
 
 
 def _python_de(base):
-    """Intérprete Python de un venv dentro de `base` (o "")."""
+    """Python interpreter of a venv inside `base` (or "")."""
     if not base:
         return ""
     for nombre in ("venv", ".venv"):
@@ -189,7 +189,7 @@ def _python_de(base):
 
 
 def _endpoints(proyecto, endpoints):
-    """endpoints.txt de la raíz manda; si no, la lista ENDPOINTS."""
+    """endpoints.txt in the root wins; otherwise, the ENDPOINTS list."""
     ruta = os.path.join(proyecto, "endpoints.txt")
     if os.path.isfile(ruta):
         with open(ruta, encoding="utf-8", errors="replace") as f:

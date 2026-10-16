@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Utilidades del loop nativo (port de la sección de utilidades de
-dedalo.sh). El bucle vive hoy en plantillas_data/dedalo.sh; estos
-helpers son la base del motor Python (dedalo.loop) que lo sustituirá.
-Mismo contrato de formato del log para que la GUI lo consuma igual.
+"""Utilities of the native loop (port of dedalo.sh's utilities section).
+The loop lives today in plantillas_data/dedalo.sh; these helpers are the
+base of the Python engine (dedalo.loop) that will replace it. Same log
+format contract so the GUI consumes it the same way.
 
-Sin dependencias de PySide: el motor corre como subproceso de la GUI (y
-también a mano con `python -m dedalo.loop`).
+No PySide dependencies: the engine runs as a subprocess of the GUI (and
+also by hand with `python -m dedalo.loop`).
 """
 
 import json
@@ -15,18 +15,18 @@ from decimal import ROUND_HALF_UP, Decimal
 
 
 def hora_texto():
-    """Hora local como "HH:MM" (`date +%H:%M`)."""
+    """Local time as "HH:MM" (`date +%H:%M`)."""
     return time.strftime("%H:%M")
 
 
 def hora_limite(hasta):
-    """True si ya pasó la hora límite (semántica string del script bash).
+    """True if the deadline has already passed (bash script string semantics).
 
-    dedalo.sh hace `[[ "$(date +%H:%M)" > "$HASTA" ]]`, que es una
-    comparación LEXICOGRÁFICA: funciona como reloj porque "HH:MM" va
-    acolchado a dos dígitos. Mantenemos la misma comparación para que el
-    motor Python y el bash se comporten idéntico (hasta un valor raro como
-    "9:00" se compara igual en ambos).
+    dedalo.sh does `[[ "$(date +%H:%M)" > "$HASTA" ]]`, which is a
+    LEXICOGRAPHIC comparison: it works as a clock because "HH:MM" is
+    padded to two digits. We keep the same comparison so the Python
+    engine and bash behave identically (even an odd value like "9:00" is
+    compared the same in both).
     """
     if not hasta:
         return False
@@ -34,20 +34,20 @@ def hora_limite(hasta):
 
 
 def ahora_ms():
-    """Epoch en milisegundos (versión portable de `date +%s%3N`)."""
+    """Epoch in milliseconds (portable version of `date +%s%3N`)."""
     return int(time.time() * 1000)
 
 
 def logx(log, mensaje):
-    """Append a `log` con timestamp local, formato del script:
+    """Append to `log` with a local timestamp, script format:
     `[YYYY-MM-DD HH:MM:SS] <mensaje>`."""
     with open(log, "a", encoding="utf-8") as f:
         f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {mensaje}\n")
 
 
 def alerta(voz, mensaje):
-    """Aviso de escritorio si VOZ=1 (notify-send + spd-say), sin romper nada
-    si faltan (igual que alerta() del script)."""
+    """Desktop notice if VOZ=1 (notify-send + spd-say), without breaking
+    anything if they are missing (same as the script's alerta())."""
     if str(voz) != "1":
         return
     for cmd in (("notify-send", "Dédalo", mensaje),
@@ -59,7 +59,7 @@ def alerta(voz, mensaje):
 
 
 def _dec(valor):
-    """Decimal desde str/float/int con exactitud decimal (para costes)."""
+    """Decimal from str/float/int with decimal exactness (for costs)."""
     if isinstance(valor, Decimal):
         return valor
     if valor in (None, ""):
@@ -68,26 +68,26 @@ def _dec(valor):
 
 
 def d2(valor):
-    """Formatea un valor como moneda `%.2f` (redondeo mitad-arriba).
+    """Formats a value as `%.2f` currency (half-up rounding).
 
-    Equivale al contrato de `num awk 'printf "%.2f"'` del script (awk
-    redondea 12.345 -> 12.35, 0.005 -> 0.01)."""
+    Equivalent to the `num awk 'printf "%.2f"'` contract of the script (awk
+    rounds 12.345 -> 12.35, 0.005 -> 0.01)."""
     return format(_dec(valor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
                   ".2f")
 
 
 def suma_coste(actual, por_iter):
-    """`actual + por_iter` con dos decimales; equivale a la línea
-    `COSTO_TOTAL=num ... printf "%.2f"` de dedalo.sh."""
+    """`actual + por_iter` with two decimals; equivalent to the
+    `COSTO_TOTAL=num ... printf "%.2f"` line of dedalo.sh."""
     return d2(_dec(actual) + _dec(por_iter))
 
 
 def incidencia(ruta, tipo, motivo, tarea="", iteracion=0, rama=""):
-    """Append de una incidencia (JSONL) al registro estructurado del proyecto.
+    """Append of an incident (JSONL) to the project's structured record.
 
-    Una línea por fallo/aborto, independiente de `progreso.log` (que es prosa
-    cronológica): `{ts, iteracion, tarea, tipo, motivo, rama}`. Nunca revienta
-    el loop por un fallo de escritura."""
+    One line per failure/abort, independent of `progreso.log` (which is
+    chronological prose): `{ts, iteracion, tarea, tipo, motivo, rama}`. Never
+    crashes the loop on a write failure."""
     linea = json.dumps({
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "iteracion": int(iteracion),

@@ -1,16 +1,16 @@
-# Config de gitleaks: sólo se relaja el falso secreto de los tests.
+# gitleaks config: only the tests' fake secret is relaxed.
 #
-# El runner `secretos + dependencias` revisa TODO el historial. Los mocks
-# HTTP de tests/test_gate_backend.py simulan un endpoint /api/token con
-# `"access":"jwt-falso-123"`: las reglas de gitleaks lo leen como una
-# credencial. Ese string ES el falso positivo (sólo vive en tests y su único
-# "valor" es que lo consome el assertions del test), así que se deja fuera.
+# The `secretos + dependencias` runner reviews the WHOLE history. The HTTP
+# mocks in tests/test_gate_backend.py simulate a /api/token endpoint with
+# `"access":"jwt-falso-123"`: gitleaks rules read that as a credential.
+# That string IS the false positive (it only lives in tests and its only
+# "value" is that the test's assertion consumes it), so it is left out.
 
 [extend]
 useDefault = true
 
 [allowlist]
 description = "Falsos positivos acotados a fixtures de tests"
-# Se limita por ruta Y por contenido para no tapar nunca otra cosa.
+# Limited by path AND by content so it never hides anything else.
 paths = ['''tests/test_gate_backend\.py''']
 regexes = ['''jwt-falso-123''']

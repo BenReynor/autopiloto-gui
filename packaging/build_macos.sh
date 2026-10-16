@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# build_macos.sh — empaqueta Dédalo para macOS.
+# build_macos.sh — packages Dédalo for macOS.
 #
-# Salidas (en packaging/out/):
-#   Dedalo.app                       bundle con icono.icns
-#   dedalo-<v>-macos-<arch>.dmg  montaje en /Applications
+# Outputs (in packaging/out/):
+#   Dedalo.app                       bundle with icono.icns
+#   dedalo-<v>-macos-<arch>.dmg  mount in /Applications
 #
-# Uso:
+# Usage:
 #   bash packaging/build_macos.sh
 #
-# Firma y notarización opcionales (con las variables vacías se omiten):
+# Optional signing and notarization (empty variables skip them):
 #   APPLE_CERT_P12 (base64) + APPLE_CERT_PASSWORD
-#       importa el certificado de Developer ID en una keychain descartable
+#       imports the Developer ID certificate into a disposable keychain
 #   APPLE_SIGN_IDENTITY
-#       firma el .app (hardened runtime) y el .dmg con codesign
+#       signs the .app (hardened runtime) and the .dmg with codesign
 #   APPLE_ID + APPLE_TEAM_ID + APPLE_APP_PASSWORD
-#       notariza con notarytool --wait y grapa el .dmg (stapler)
+#       notarizes with notarytool --wait and staples the .dmg (stapler)
 #
-# Sin ningún secreto sólo genera el .dmg sin firmar: sirve para probar el
-# pipeline. Requiere macOS con Xcode Command Line Tools (hdiutil, codesign,
-# notarytool, security) y python con el proyecto + PyInstaller.
+# Without any secret it only generates the unsigned .dmg: useful for testing
+# the pipeline. Requires macOS with Xcode Command Line Tools (hdiutil, codesign,
+# notarytool, security) and python with the project + PyInstaller.
 set -euo pipefail
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -45,12 +45,12 @@ rm -rf "$OUT" build
     packaging/"$NOMBRE".spec
 [ -d "$APP" ] || { echo "el bundle no salió en $APP" >&2; exit 1; }
 
-# El umask de escritorio (0002) deja group-writable: dirs a 755 y ficheros
-# sin bit de escritura, antes de firmar (firma DESPUÉS, no al revés).
+# The desktop umask (0002) leaves everything group-writable: dirs at 755 and
+# files without the write bit, before signing (sign AFTER, not the other way).
 find "$APP" -type d -exec chmod 755 {} +
 find "$APP" -type f -exec chmod go-w {} +
 
-# ── Smoke test: arranca y sigue vivo a los 6 s ──────────────────────────────
+# ── Smoke test: starts and still alive at 6 s ────────────────────────────────
 echo "==> smoke test"
 QT_QPA_PLATFORM=offscreen "$APP/Contents/MacOS/$NOMBRE" &
 SMOKE=$!
@@ -63,7 +63,7 @@ fi
 kill -TERM "$SMOKE" 2>/dev/null || true
 wait "$SMOKE" 2>/dev/null || true
 
-# ── Certificado (opcional): keychain descartable en CI ──────────────────────
+# ── Certificate (optional): disposable keychain in CI ────────────────────────
 if [ -n "${APPLE_CERT_P12:-}" ]; then
     echo "==> importando certificado Developer ID"
     KC="$OUT/firmas.keychain"
@@ -81,7 +81,7 @@ pathlib.Path(sys.argv[2]).write_bytes(base64.b64decode(sys.argv[1]))' \
     rm -f "$OUT/cert.p12"
 fi
 
-# ── Firma (opcional) ─────────────────────────────────────────────────────────
+# ── Signing (optional) ───────────────────────────────────────────────────────
 if [ -n "${APPLE_SIGN_IDENTITY:-}" ]; then
     echo "==> codesign ($APPLE_SIGN_IDENTITY)"
     codesign --force --options runtime --timestamp \
@@ -106,7 +106,7 @@ if [ -n "${APPLE_SIGN_IDENTITY:-}" ]; then
     codesign --force --sign "$APPLE_SIGN_IDENTITY" "$DMG"
 fi
 
-# ── Notarización (opcional) ──────────────────────────────────────────────────
+# ── Notarization (optional) ──────────────────────────────────────────────────
 if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] \
    && [ -n "${APPLE_APP_PASSWORD:-}" ]; then
     echo "==> notarización (notarytool)"

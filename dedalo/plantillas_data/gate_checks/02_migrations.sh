@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 02_migrations.sh — Migraciones al día (comando configurable)
-# Sobreescribe con MIGRATE_CHECK env. Ej (Django):
+# 02_migrations.sh — Migrations up to date (configurable command)
+# Override with the MIGRATE_CHECK env var. E.g. (Django):
 #   "cd <backend> && python manage.py migrate --check"
 set -uo pipefail
 

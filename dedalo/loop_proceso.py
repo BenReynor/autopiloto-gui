@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Control de subprocesos del loop nativo.
+"""Subprocess control of the native loop.
 
-Port de `_timeout`/`_matar_hijo`/`limpiar_sesiones` de dedalo.sh:
-ejecución con tope de tiempo y muerte de todo el GRUPO de procesos (el hijo
-directo suele ser `timeout` y el agente cuelga de él; sólo funciona si se
-mata el grupo). En Python no hace falta el fichero de PID intermedio: el
-Popen guarda el proceso y la limpieza vive en el motor; se mantiene el
-mismo sentinel `124` de GNU timeout para que el bucle reconozca el corte.
+Port of `_timeout`/`_matar_hijo`/`limpiar_sesiones` of dedalo.sh:
+execution with a time cap and killing the whole process GROUP (the direct
+child is usually `timeout` and the agent hangs off it; it only works if the
+group is killed). In Python there is no need for the intermediate PID file: the
+Popen keeps the process and cleanup lives in the engine; the same sentinel
+`124` from GNU timeout is kept so the loop recognizes the cutoff.
 """
 
 import json
@@ -17,11 +17,11 @@ import time
 
 _POSIX = os.name == "posix"
 
-RC_TIMEOUT = 124  # mismo sentinel que GNU timeout / _timeout del script
+RC_TIMEOUT = 124  # same sentinel as GNU timeout / the script's _timeout
 
 
 def _golpe_grupo(proc, espera=5):
-    """SIGTERM al grupo del proceso; si sigue vivo a los `espera`s, SIGKILL."""
+    """SIGTERM to the process group; if still alive after `espera`s, SIGKILL."""
     def _kill(sig):
         if _POSIX:
             try:
@@ -44,28 +44,28 @@ def _golpe_grupo(proc, espera=5):
 
 
 def matar_grupo(proc, espera=5):
-    """Mata a un proceso y a TODO su grupo (hijos incluidos), TERM→KILL.
+    """Kills a process and its WHOLE group (children included), TERM→KILL.
 
-    Para el camino de señales del motor: el handle de SIGTERM/SIGINT del loop
-    necesita matar el agente aunque `run_con_timeout` siga bloqueado. Se pasa
-    el mismo proc que corre; `espera=0` corta al instante (KILL directo).
+    For the engine's signal path: the loop's SIGTERM/SIGINT handler
+    needs to kill the agent even while `run_con_timeout` is still blocked. The
+    same running proc is passed; `espera=0` cuts instantly (direct KILL).
     """
     return _golpe_grupo(proc, espera)
 
 
 def run_con_timeout(cmd, timeout, *, env=None, cwd=None,
                     stdout=None, stderr=None, vivo=None):
-    """Ejecuta `cmd` con tope de `timeout` segundos.
+    """Runs `cmd` with a `timeout`-second cap.
 
-    Devuelve `(returncode, salida, timed_out)`:
-      · timed_out True si excedió el tope → returncode = RC_TIMEOUT (124) y
-        el grupo entero fue TERM→KILL, como hace `_timeout` del script.
-      · `salida` = (stdout_bytes, stderr_bytes); si `stdout`/`stderr` son
-        ficheros o None, devuelve None en esa posición (como communicate).
-      · Empieza el hijo en su PROPIA sesión/grupo (start_new_session), de
-        modo que `killpg(pid)` se lleva también al agente colgando de él.
-      · `vivo`: diccionario opcional; se rellena con {"proc": Popen} ANTES de
-        bloquear para que un manejador de señales pueda matar el grupo.
+    Returns `(returncode, salida, timed_out)`:
+      · timed_out True if it exceeded the cap → returncode = RC_TIMEOUT (124) and
+        the whole group was TERM→KILL'd, like the script's `_timeout` does.
+      · `salida` = (stdout_bytes, stderr_bytes); if `stdout`/`stderr` are
+        files or None, returns None in that position (like communicate).
+      · Starts the child in its OWN session/group (start_new_session), so
+        that `killpg(pid)` also takes down the agent hanging off it.
+      · `vivo`: optional dictionary; filled with {"proc": Popen} BEFORE
+        blocking so a signal handler can kill the group.
     """
     kwargs = dict(env=env, cwd=cwd, stdout=stdout, stderr=stderr)
     if _POSIX:
@@ -89,13 +89,13 @@ def run_con_timeout(cmd, timeout, *, env=None, cwd=None,
 
 
 def limpiar_sesiones(binario, proyecto, desde_ms, log, log_resultado=None):
-    """Borra las sesiones de opencode creadas por este run en `proyecto`.
+    """Deletes the opencode sessions created by this run in `proyecto`.
 
-    Port de `limpiar_sesiones()` del script con el mismo criterio
-    (directory == proyecto y created >= desde_ms), pero SIN dependencia de
-    `jq` (se parsea el JSON con la stdlib). Cada llamada a la CLI va con un
-    tope de 20 s: esta función está en el camino de parada y no puede
-    colgarse. Devuelve el número de sesiones borradas.
+    Port of the script's `limpiar_sesiones()` with the same criterion
+    (directory == proyecto and created >= desde_ms), but WITHOUT dependency on
+    `jq` (the JSON is parsed with the stdlib). Each CLI call goes with a
+    20 s cap: this function is on the stop path and cannot
+    hang. Returns the number of deleted sessions.
     """
     if not binario or not os.path.exists(binario):
         return 0

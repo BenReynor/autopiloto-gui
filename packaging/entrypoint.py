@@ -1,20 +1,20 @@
-"""Punto de entrada para el binario de PyInstaller.
+"""Entry point for the PyInstaller binary.
 
-El import va dentro de main() para que PyInstaller no arrastre Qt a
-tiempo de importación del spec (y para que el fallo de carga de PySide6
-se pueda reportar antes de que Qt tome el control).
+The import goes inside main() so PyInstaller does not drag Qt into
+the spec's import time (and so a PySide6 load failure can be reported
+before Qt takes control).
 
-Triple modo:
-  · sin argumentos (o con argumentos de la GUI): arranca el panel de control.
-  · `--dedalo-loop <args…>`: arranca el MOTOR del loop (dedalo.loop)
-    como subproceso. La GUI en el binario lo lanza así en vez de
-    `python -m` (que en un ejecutable congelado no resuelve el módulo);
-    en el código fuente la GUI usa `python -m dedalo.loop` en su lugar.
-  · `--dedalo-gate [--proyecto DIR]`: corre el gate portable (dedalo.gate).
-    El loop en el binario lo lanza así; en el código fuente usa
+Triple mode:
+  · no arguments (or GUI arguments): starts the control panel.
+  · `--dedalo-loop <args…>`: starts the loop ENGINE (dedalo.loop)
+    as a subprocess. The GUI in the binary launches it this way instead of
+    `python -m` (which in a frozen executable does not resolve the module);
+    in the source code the GUI uses `python -m dedalo.loop` instead.
+  · `--dedalo-gate [--proyecto DIR]`: runs the portable gate (dedalo.gate).
+    The loop in the binary launches it this way; in the source it uses
     `python -m dedalo.gate`.
-  · `--dedalo-mcp`: arranca el servidor MCP por stdio (dedalo.mcp_server).
-    Requiere el extra `mcp`; en el código fuente: `python -m dedalo.mcp_server`.
+  · `--dedalo-mcp`: starts the MCP server over stdio (dedalo.mcp_server).
+    Requires the `mcp` extra; in the source: `python -m dedalo.mcp_server`.
 """
 import sys
 
@@ -42,7 +42,7 @@ def main(argv=None):
             file=sys.stderr,
         )
         return 1
-    _main()  # main() cierra con sys.exit(app.exec())
+    _main()  # main() ends with sys.exit(app.exec())
     return 0
 
 
