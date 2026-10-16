@@ -16,7 +16,7 @@ jobs:
     name: ruff + pytest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The tests make REAL git commits/reverts: without a global identity,
       # `git commit` fails and the revert/initialize_git tests break.
@@ -25,7 +25,7 @@ jobs:
           git config --global user.name "dedalo CI"
           git config --global user.email "ci@dedalo.local"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -61,9 +61,9 @@ jobs:
     name: portabilidad (macOS)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -101,7 +101,7 @@ jobs:
     name: ruff + pytest (macOS)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Global git identity (same reason as in test/test-windows).
       - name: Identidad git
@@ -109,7 +109,7 @@ jobs:
           git config --global user.name "dedalo CI"
           git config --global user.email "ci@dedalo.local"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -145,7 +145,7 @@ jobs:
       # the app's behavior.
       PYTHONUTF8: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The tests make REAL git commits (same reason as in test-linux).
       - name: Identidad git
@@ -165,7 +165,7 @@ jobs:
           "PATH=$git\bin;$git\usr\bin;$env:PATH" |
             Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -193,7 +193,7 @@ jobs:
     name: secretos + dependencias
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # gitleaks reviews the WHOLE history, not the diff
 
@@ -203,15 +203,15 @@ jobs:
         # only bump versions, they don't add secrets; the weekly push to
         # main does audit.
         if: github.actor != 'dependabot[bot]'
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
 
       - name: El lock está al día con pyproject.toml
         # On Dependabot PRs the "Dependabot lock" workflow regenerates it;
