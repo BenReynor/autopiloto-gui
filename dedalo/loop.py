@@ -61,9 +61,9 @@ from .loop_proceso import limpiar_sesiones, matar_grupo, run_con_timeout
 from .loop_util import ahora_ms, alerta, hora_limite, incidencia, logx, suma_coste
 from .plan import Plan
 
-GATE_TIMEOUT = 43200  # 12 h: el gate bash no tiene tope propio (como el script)
-HIJO = {"proc": None}  # proceso agente/gate actual (lo matan las señales)
-_RECHAZO_MOTIVO = {"txt": ""}  # variable global estilo ${RECHAZO_MOTIVO} del script
+GATE_TIMEOUT = 43200  # 12 h: the bash gate has no cap of its own (like the script)
+HIJO = {"proc": None}  # current agent/gate process (the signals kill it)
+_RECHAZO_MOTIVO = {"txt": ""}  # global variable in the style of the script's ${RECHAZO_MOTIVO}
 
 
 class Config:
@@ -83,12 +83,12 @@ class Config:
         self.contexto = os.path.join(self.proyecto, "CONTEXTO.md")
         self.incidencias = os.path.join(self.proyecto, "incidencias.jsonl")
         self.metrics = os.path.join(self.proyecto, "metrics.jsonl")
-        self.ultimo_motivo = None  # dict del último fallo de la tarea actual
+        self.ultimo_motivo = None  # dict of the last failure of the current task
 
         self.max_iter = int(env.get("MAX_ITER", "40"))
         self.timeout_por_tarea = int(env.get("TIMEOUT_POR_TAREA", "900"))
         self.timeout_navegador = int(env.get("TIMEOUT_NAVEGADOR", "60"))
-        self.max_reintentos = 2  # hardcode del script (no llega por env)
+        self.max_reintentos = 2  # hardcoded in the script (not passed via env)
         self.agente_tarea = env.get("AGENTE_TAREA", "") or ""
         self.agentes_preferidos = env.get("AGENTES_PREFERIDOS",
                                           "opencode codex claude") or ""
@@ -97,7 +97,7 @@ class Config:
                                         "opencode/big-pickle") or ""
         self.navegador = env.get("NAVEGADOR", "0")
         self.agente_revisor = env.get("AGENTE_REVISOR", "") or ""
-        self.revisor = ""  # resuelto en run() (elegir_revisor)
+        self.revisor = ""  # resolved in run() (elegir_revisor)
         self.modelo_revisor = env.get("MODELO_REVISOR", "") or ""
         self.modelo_juez = env.get(
             "MODELO_JUEZ", "opencode/nemotron-3.5-lightning-free") or ""
@@ -223,7 +223,7 @@ def gate_intacto(dir_backup, cfg):
     if not os.path.isdir(backup_checks):
         return True
     for f in sorted(os.listdir(backup_checks)):
-        # Cubre tanto los checks bash como los del port Python (Windows).
+        # Covers both the bash checks and the Python port ones (Windows).
         if not f.endswith((".sh", ".py")):
             continue
         original = os.path.join(backup_checks, f)
@@ -237,7 +237,7 @@ def gate_intacto(dir_backup, cfg):
 
 
 def restaurar_gate(dir_backup, cfg):
-    """Restaura gate.sh/gate_checks desde el backup (restaurar_gate())."""
+    """Restores gate.sh/gate_checks from the backup (restaurar_gate())."""
     backup_gate_sh = os.path.join(dir_backup, "gate.sh")
     if os.path.exists(backup_gate_sh):
         shutil.copyfile(backup_gate_sh, cfg.gate)
@@ -251,13 +251,13 @@ def restaurar_gate(dir_backup, cfg):
 def _run_gate(cfg, criterio):
     """`python -m dedalo.gate 2>&1 | tee "$GATE_OUT"`.
 
-    Devuelve (rc, ruta_con_la_salida_del_gate). La salida se ve en consola y
-    se usa como feedback al agente si el gate falla. El gate muta el
-    repositorio (p. ej. 98_criterio lanza el juez).
+    Returns (rc, path_with_the_gate_output). The output is shown on the console
+    and is used as feedback to the agent if the gate fails. The gate mutates the
+    repository (e.g. 98_criterio launches the judge).
 
-    El gate es el orquestador portable (gate.py): corre los checks .py y, si
-    hay bash, prefiere los .sh equivalentes. En el binario congelado se lanza
-    como `dedalo --dedalo-gate`.
+    The gate is the portable orchestrator (gate.py): it runs the .py checks and,
+    if bash is available, prefers the equivalent .sh ones. In the frozen binary
+    it is launched as `dedalo --dedalo-gate`.
     """
     gate_out = cfg.tmp("gate")
     env = dict(cfg.environ)
@@ -265,8 +265,8 @@ def _run_gate(cfg, criterio):
     env["MODELO_JUEZ"] = cfg.modelo_juez
     env["OPENCODE_AGENT_JUEZ"] = cfg.opencode_agente_juez
     if not getattr(sys, "frozen", False):
-        # `python -m dedalo.gate` arranca con cwd=proyecto: sin esto,
-        # un intérprete sin el paquete instalado (desarrollo) no lo encuentra.
+        # `python -m dedalo.gate` starts with cwd=project: without this,
+        # an interpreter without the installed package (development) won't find it.
         raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         env["PYTHONPATH"] = raiz + (
             os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
@@ -283,7 +283,7 @@ def _run_gate(cfg, criterio):
 
 
 def proxima_tarea(plan_md):
-    """Primera línea `- [ ] ` (columna 0) sin el prefijo; None si no quedan."""
+    """First line `- [ ] ` (column 0) without the prefix; None if none are left."""
     for linea in _leer(plan_md).splitlines():
         if linea.startswith("- [ ] "):
             return linea[len("- [ ] "):]
@@ -291,10 +291,10 @@ def proxima_tarea(plan_md):
 
 
 def criterio_tarea(plan_md):
-    """Criterio de la PRIMERA tarea pendiente (inline o indentado), port de
-    criterio_tarea(): `- [ ] ` caja con criterio inline, o línea indentada
-    bajo la primera pendiente; corte al ver `- [x]`/`- [B]` o línea sin
-    indentar."""
+    """Criterion of the FIRST pending task (inline or indented), port of
+    criterio_tarea(): `- [ ] ` box with an inline criterion, or an indented line
+    under the first pending one; cut when seeing `- [x]`/`- [B]` or a line with no
+    indent."""
     en_tarea = 0
     rx_inline = re.compile(r"criterio:[ \t]+(.*)$")
     rx_indent = re.compile(r"criterio:[ \t]*(.*)$")
@@ -319,8 +319,8 @@ def criterio_tarea(plan_md):
 
 
 def _instalar_senales(cfg):
-    """SIGTERM→143 / SIGINT→130 (como los traps del script): mata al grupo
-    del proceso actual, limpia sesiones de opencode y sale."""
+    """SIGTERM→143 / SIGINT→130 (like the script's traps): kills the current
+    process group, cleans up opencode sessions and exits."""
     if threading.current_thread() is not threading.main_thread():
         return
 
@@ -339,17 +339,17 @@ def _instalar_senales(cfg):
 
 
 def _marcar(cfg, estado):
-    """marcar_primera en el plan (marcar_plan del script)."""
+    """marcar_primera on the plan (the script's marcar_plan)."""
     p = Plan(cfg.plan_md)
     p.cargar()
     return p.marcar_primera(estado)
 
 
 def _resumen_bloqueadas(cfg):
-    """Líneas de resumen de las tareas [B] de plan.md con su último motivo.
+    """Summary lines of the [B] tasks in plan.md with their last reason.
 
-    El motivo se busca en `incidencias.jsonl` (última incidencia por tarea), así
-    el cierre responde "qué quedó sin hacer y por qué" sin bucear en el log."""
+    The reason is looked up in `incidencias.jsonl` (last incident per task), so
+    the closing answers "what was left undone and why" without digging into the log."""
     try:
         p = Plan(cfg.plan_md)
         p.cargar()
@@ -375,12 +375,12 @@ def _resumen_bloqueadas(cfg):
 
 
 def run(cfg):
-    """Bucle completo; devuelve el código de salida (0-7, como el script)."""
+    """Full loop; returns the exit code (0-7, like the script)."""
     _proteger_salidas()
     _RECHAZO_MOTIVO["txt"] = ""
     _instalar_senales(cfg)
 
-    # Autodetección: "auto" y vacío = primer agente disponible.
+    # Autodetection: "auto" and empty = first available agent.
     if not cfg.agente_tarea or cfg.agente_tarea == "auto":
         cfg.agente_tarea = detectar_agente(cfg)
         if not cfg.agente_tarea:
@@ -872,13 +872,13 @@ def run(cfg):
         rc, url, _ = run_git(cfg.proyecto, "remote", "get-url", "origin")
         if rc == 0:
             push_rama = cfg.rama_trabajo or rama_run
-            # Salvaguarda: nunca empujar la rama base (protegida) por accidente.
+            # Safeguard: never push the (protected) base branch by accident.
             if push_rama in (cfg.rama_base, "master", "main"):
                 mensaje(cfg, f"[dedalo] ✗ push abortado: '{push_rama}' es la "
                              "rama base; el trabajo debe ir en una rama dedalo/*.")
                 logx(cfg.log, f"push abortado: '{push_rama}' es rama base")
             else:
-                # Visibilidad: deja claro a qué remoto se sube antes de hacerlo.
+                # Visibility: make clear which remote it is pushed to before doing it.
                 print(f"[dedalo] push → origin ({url.strip()}) rama "
                       f"{push_rama}")
                 logx(cfg.log, f"push: origin ({url.strip()}) {push_rama}")
@@ -936,8 +936,8 @@ def _gh_api_crear_repo(owner, nombre, token):
 
 
 def asegurar_remote_origin(cfg):
-    """Port de _asegurar_remote_origin(): crea repo en GitHub si no hay
-    origin (gh preferido, fallback GITHUB_TOKEN vía API)."""
+    """Port of _asegurar_remote_origin(): creates a GitHub repo if there is no
+    origin (gh preferred, fallback GITHUB_TOKEN via API)."""
     rc, _, _ = run_git(cfg.proyecto, "remote", "get-url", "origin")
     if rc == 0:
         return
@@ -1014,9 +1014,9 @@ def _motivo_rechazo(crudo):
 
 
 def _esperar_revision_manual(cfg, tarea):
-    """Port de esperar_revision_manual(): devuelve 0 aprobado, 2 timeout,
-    1 rechazado (deja el motivo en _RECHAZO_MOTIVO), 4 sin internet
-    (aborta el run como `exit 4` del script)."""
+    """Port of esperar_revision_manual(): returns 0 approved, 2 timeout,
+    1 rejected (leaves the reason in _RECHAZO_MOTIVO), 4 no internet
+    (aborts the run like the script's `exit 4`)."""
     if cfg.revision_manual != "1":
         return 0
     dir_rev = os.path.join(cfg.proyecto, ".dedalo_review")

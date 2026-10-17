@@ -9,35 +9,11 @@ an active risk or is just technical debt.
 
 ---
 
-## 1. `liberar()` with the wrong attribute name — `paneles.py`
-
-**Active risk: none.** Technical debt.
-
-`dedalo/paneles.py:1493` calls `w.liberar(self, "worker")` (no underscore)
-when the real attribute is `self._worker` (line 1487). `Trabajo.liberar` does
-`setattr(owner, nombre, None)`, so:
-
-- it creates a brand-new `worker` attribute nobody uses,
-- `self._worker` **is never cleared**.
-
-It does not cause the "QThread: Destroyed while thread is still running" crash because line
-1489 already has the guard `if self._worker and self._worker.isRunning(): return`,
-which keeps two threads from coexisting. The real cost is a retained reference to the
-last finished thread, which is replaced on the next start.
-
-The severe twin of this bug was fixed in `webhooks.py` (commit `d45dbd3`), where there
-was no guard and two overlapping events did abort the application.
-
-**Fix when that panel is touched:** change `"worker"` to `"_worker"` and move
-`self._worker = w` before `w.start()`, as `app.py:164-175` already does.
-
----
-
-## 2. The gate kills any process on the port — `03_backend.sh`
+## 1. The gate kills any process on the port — `03_backend.sh`
 
 **Active risk: accepted at the user's explicit request.**
 
-`dedalo/plantillas_data/gate_checks/03_backend.sh:28-37` kills with
+`dedalo/plantillas_data/gate_checks/03_backend.sh:71-74` kills with
 `lsof -ti :"$PUERTO" | xargs kill -9`. The code comment says "another process
 **of the gate**", but what it actually kills is **any** process listening on that port,
 including the user's development backend, and without any warning.
@@ -46,7 +22,7 @@ It was reviewed and **left as is** at explicit request. Partial mitigation alrea
 in place: the check frees the port on every iteration, so a zombie process from a
 previous round does get cleaned up.
 
-Known consequence: `kill $BPID` (line 41) does not kill the grandchildren spawned by the
+Known consequence: `kill $BPID` (line 81) does not kill the grandchildren spawned by the
 server, which can be left holding the socket open. The next `lsof` finds them and
 kills them with `kill -9`.
 
@@ -61,7 +37,7 @@ processes.
 
 ---
 
-## 2b. A 3xx on endpoints is now a failure
+## 2. A 3xx on endpoints is now a failure
 
 **Active risk: cosmetic, with diagnostics.**
 
@@ -79,9 +55,10 @@ false 2xx on a mistyped route.
 
 **Active risk: low.** Technical debt.
 
-`dedalo/registro.py` already protects the registry against syntactic corruption
-(atomic write, `.corrupto` copy and a blocked startup instead of losing
-projects — commit `ffef4d6`), but the format carries no version. A future migration
+`dedalo/proyectos.py` already protects the registry against syntactic corruption
+(atomic write via `os.replace`, `.corrupto` copy and a blocked startup instead of
+losing projects — see `descartar_registro_corrupto` and `guardar`), but the format
+carries no version. A future migration
 that changes keys has no way to tell "old configuration" from "corrupt file".
 
 When the first real migration lands: write `version: N` when creating the
@@ -95,8 +72,9 @@ registry and validate the number when reading.
 
 Marking a task as `[B]` because a merge failed (user decision) keeps the branch
 `dedalo/tareas/<fecha>/t<n>` around so the work can be inspected. The reaper in
-`dedalo.sh:878-883` only deletes the branch for the same `<fecha>/t<iter>` of the
-run in progress, so branches from earlier days stay behind.
+`dedalo.sh:1149-1152` (and the cleanup at `:1364`/`:1381`) only deletes the branch
+for the same `<fecha>/t<iter>` of the run in progress, so branches from earlier days
+stay behind.
 
 To list and delete them:
 

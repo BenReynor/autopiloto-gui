@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Tests del diff que recibe el revisor (diff_revision en dedalo.sh).
+"""Tests for the diff the reviewer receives (diff_revision in dedalo.sh).
 
-El bug que motivó este fichero: `revisar_diff` pasaba la lista multilínea de
-ficheros modificados como UN único argumento entrecomillado a `git diff`, es
-decir como un pathspec literal con saltos de línea. Ese pathspec no casa con
-ningún fichero, así que con dos o más ficheros modificados el revisor recibía
-un diff vacío y aprobaba sin haber visto nada.
+The bug that motivated this file: `revisar_diff` passed the multiline list of
+modified files as a SINGLE quoted argument to `git diff`, that is, as a
+literal pathspec with newlines. That pathspec matches no file, so with two or
+more modified files the reviewer received an empty diff and approved without
+having seen anything.
 
-Se extrae `diff_revision` de la plantilla y se ejecuta con un repo git real
-para comprobar que el diff llega completo.
+`diff_revision` is extracted from the template and run against a real git repo
+to check that the full diff arrives.
 """
 
 import os
@@ -33,7 +33,7 @@ CONTROL = r"plan\.md|progreso\.log|lecciones\.md|mapeo\.txt"
 
 
 def _extraer_funcion(texto, nombre):
-    """Devuelve el texto de `nombre() { ... }` usando balance de llaves."""
+    """Returns the text of `nombre() { ... }` using brace balancing."""
     inicio = texto.index(f"{nombre}() {{")
     i = texto.index("{", inicio)
     profundidad = 0
@@ -66,7 +66,7 @@ def _repo(tmp_path):
 
 
 def _diff_revision(repo, env):
-    """Ejecuta diff_revision() real contra el repo y devuelve su stdout."""
+    """Runs the real diff_revision() against the repo and returns its stdout."""
     texto = PLANTILLA.read_text(encoding="utf-8")
     func = repo.parent / "func.sh"
     func.write_text(_extraer_funcion(texto, "diff_revision"), encoding="utf-8")
@@ -79,7 +79,7 @@ def _diff_revision(repo, env):
 
 
 def test_diff_revision_incluye_todos_los_ficheros_modificados(tmp_path):
-    """Con 3 ficheros modificados el diff debe traer los 3, no uno ni cero."""
+    """With 3 modified files the diff must bring all 3, not one nor zero."""
     repo, env = _repo(tmp_path)
     (repo / "app.py").write_text("print('hola 2')\n", encoding="utf-8")
     (repo / "leeme.md").write_text("base 2\n", encoding="utf-8")
@@ -103,7 +103,7 @@ def test_diff_revision_un_solo_fichero(tmp_path):
 
 
 def test_diff_revision_excluye_los_archivos_control(tmp_path):
-    """plan.md/progreso.log son trazabilidad de Dédalo, no de la tarea."""
+    """plan.md/progreso.log are Dédalo traceability, not the task's."""
     repo, env = _repo(tmp_path)
     (repo / "app.py").write_text("print('y')\n", encoding="utf-8")
     (repo / "plan.md").write_text("- [x] algo\n", encoding="utf-8")
@@ -124,7 +124,7 @@ def test_diff_revision_sin_cambios_avisa(tmp_path):
 
 
 def test_diff_revision_solo_cambios_de_control_avisa(tmp_path):
-    """Si lo único modificado es CONTROL, el revisor debe saber que no hay diff."""
+    """If the only thing modified is CONTROL, the reviewer must know there is no diff."""
     repo, env = _repo(tmp_path)
     (repo / "plan.md").write_text("- [x] tarea\n", encoding="utf-8")
     r = _diff_revision(repo, env)
@@ -133,7 +133,7 @@ def test_diff_revision_solo_cambios_de_control_avisa(tmp_path):
 
 
 def test_diff_revision_ignora_ficheros_nuevos_sin_anadir(tmp_path):
-    """Un fichero sin `git add` también debe llegar al revisor (git add -N)."""
+    """A file without `git add` must also reach the reviewer (git add -N)."""
     repo, env = _repo(tmp_path)
     (repo / "suelto.py").write_text("y = 2\n", encoding="utf-8")
     r = _diff_revision(repo, env)

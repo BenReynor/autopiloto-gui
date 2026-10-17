@@ -1,11 +1,11 @@
-"""Lint de portabilidad de las plantillas shell.
+"""Portability lint for the shell templates.
 
-Las plantillas se copian a proyectos de otros usuarios, que pueden estar en
-macOS o Windows (WSL/Git Bash). Las construcciones exclusivas de GNU fallan
-allí de forma silenciosa o con errores confusos, así que se prohíben aquí.
+The templates are copied into other users' projects, which may be on
+macOS or Windows (WSL/Git Bash). GNU-only constructs fail there silently or
+with confusing errors, so they are forbidden here.
 
-Este fichero no sustituye a probar en la máquina real: sólo evita reintroducir
-construcciones que ya sabemos incompatibles.
+This file does not replace testing on the real machine: it only prevents
+reintroducing constructs we already know are incompatible.
 """
 from __future__ import annotations
 
@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
-# Este módulo analiza .sh con `bash -n`, `locale`, permisos +x y symlinks:
-# en Windows no tiene sentido (allí se salta entero). La portabilidad de las
-# plantillas se verifica en Linux y en el job de macOS de CI.
+# This module analyzes .sh with `bash -n`, `locale`, +x permissions and symlinks:
+# on Windows it makes no sense (there it is skipped entirely). Template
+# portability is verified on Linux and in the CI macOS job.
 pytestmark = pytest.mark.skipif(
     os.name == "nt", reason="lint de plantillas shell: sólo POSIX")
 
@@ -28,20 +28,20 @@ RAIZ = Path(__file__).resolve().parent.parent
 SH_DIRS = [RAIZ / "dedalo", RAIZ]
 _IGNORAR = {".git", ".mypy_cache", ".pytest_cache", ".ruff_cache",
             "venv", ".venv", "__pycache__", "node_modules",
-            # `pip install .` / `pip wheel` dejan build/lib/ con una copia de
-            # las plantillas: sin esto, un build local duplicaba los 12 .sh y
-            # la suite de portabilidad reportaba 48 tests de más.
+            # `pip install .` / `pip wheel` leave build/lib/ with a copy of
+            # the templates: without this, a local build duplicated the 12 .sh
+            # and the portability suite reported 48 extra tests.
             "build", "dist", "dedalo.egg-info",
-            # build_linux.sh desempaqueta en packaging/out/ copias de los .sh
-            # del build anterior: analizan el fichero viejo y fallan (ningún
-            # .sh del repo vive bajo un directorio llamado `out`).
+            # build_linux.sh unpacks copies of the previous build's .sh into
+            # packaging/out/: they analyze the old file and fail (no
+            # .sh in the repo lives under a directory named `out`).
             "out"}
 
-# (regex, motivo, funciones donde el uso es legítimo)
+# (regex, reason, functions where the use is legitimate)
 PROHIBIDOS: list[tuple[str, str, tuple[str, ...]]] = [
-    # GNU %N no existe en el date de BSD: devuelve el literal "%3N" y rompe
-    # la aritmética de duraciones. Sólo se permite dentro de ahora_ms(), que
-    # detecta la salida no numérica y degrada a perl/segundos.
+    # GNU %N does not exist in BSD's date: it returns the literal "%3N" and breaks
+    # the duration arithmetic. It is only allowed inside ahora_ms(), which
+    # detects the non-numeric output and degrades to perl/seconds.
     (r"date \+%s%3N", "date %3N es GNU; usa ahora_ms()", ("ahora_ms",)),
     (r"head\s+-n\s+-\d", "head -n negativo no existe en BSD", ()),
     (r"\bseq\s+\d", "seq no existe en BSD/macOS; usa while", ()),
@@ -50,7 +50,7 @@ PROHIBIDOS: list[tuple[str, str, tuple[str, ...]]] = [
     (r"\$\{[A-Za-z_][A-Za-z_0-9]*\^\^?\}", "expansión ^ es bash 4+; usa tr", ()),
     (r"\$\{[A-Za-z_][A-Za-z_0-9]*,[^}]*\}", "expansión {a,b} es bash 4+", ()),
     (r"readarray|mapfile", "readarray/mapfile son bash 4+", ()),
-    # Resueltos para macOS: pasan a PROHIBIDOS para que no vuelvan.
+    # Resolved for macOS: they move to PROHIBIDOS so they do not come back.
     (r"\btimeout\s+[0-9]",
      "`timeout` no existe en macOS (BSD); usa _timeout()", ()),
     (r"sed -i \"0,/",
@@ -61,7 +61,7 @@ PROHIBIDOS: list[tuple[str, str, tuple[str, ...]]] = [
 
 
 def _bloques_permitidos(lineas: list[str]) -> set[int]:
-    """Números de línea que están dentro de una función con excepción."""
+    """Line numbers that are inside a function with an exception."""
     permitidos: set[int] = set()
     abierta = ""
     for n, linea in enumerate(lineas, 1):
@@ -79,7 +79,7 @@ def _bloques_permitidos(lineas: list[str]) -> set[int]:
 
 
 def _scripts() -> list[Path]:
-    """Todos los .sh del repo: plantillas, gate_checks y lanzadores."""
+    """All the .sh in the repo: templates, gate_checks and launchers."""
     out: set[Path] = set()
     for base in SH_DIRS:
         for p in base.rglob("*.sh"):
@@ -94,14 +94,14 @@ def test_hay_plantillas_que_analizar():
 
 @pytest.mark.parametrize("path", _scripts(), ids=lambda p: p.name)
 def test_sin_crlf(path: Path):
-    """Con CRLF el shebang `#!/usr/bin/env bash` se rompe (`bash\\r`)."""
+    """With CRLF the shebang `#!/usr/bin/env bash` breaks (`bash\\r`)."""
     crudo = path.read_bytes()
     assert b"\r\n" not in crudo, f"{path.name} tiene finales de línea CRLF"
 
 
 @pytest.mark.parametrize("path", _scripts(), ids=lambda p: p.name)
 def test_sin_construcciones_gnu(path: Path):
-    """Falla si aparece una construcción exclusiva de GNU/BSD-rotas."""
+    """Fails if a GNU-only/BSD-broken construct appears."""
     lineas = path.read_text(encoding="utf-8").splitlines()
     permitidos = _bloques_permitidos(lineas)
     offenders = []
@@ -122,41 +122,41 @@ def test_sintaxis_bash(path: Path):
 
 @pytest.mark.parametrize("path", _scripts(), ids=lambda p: p.name)
 def test_ejecutable(path: Path):
-    """Las plantillas que se lanzan con `bash x.sh` no lo necesitan, pero las
-    que van en el PATH del proyecto destino sí."""
+    """The templates launched with `bash x.sh` do not need it, but the ones
+    that go in the destination project's PATH do."""
     if path.name in {"_env.sh", "98_criterio.sh"}:
         pytest.skip("se sourcean/ejecutan con bash explícito")
     assert path.stat().st_mode & 0o111, f"{path.name} no tiene permiso +x"
 
 
 # ---------------------------------------------------------------------------
-# Pendientes conocidos: bloquean Windows y aún NO están resueltos.
-# Si desaparecen, bórralos de aquí (el lint de arriba impide que vuelvan).
-# macOS ya está resuelto: `timeout` y `sed 0,/` tienen alternativas portables
-# (_timeout y marcar_plan) y ahora están en PROHIBIDOS, no aquí.
+# Known pending items: they block Windows and are NOT yet resolved.
+# If they disappear, remove them from here (the lint above prevents them from coming back).
+# macOS is already resolved: `timeout` and `sed 0,/` have portable alternatives
+# (_timeout and marcar_plan) and are now in PROHIBIDOS, not here.
 # ---------------------------------------------------------------------------
 PENDIENTES_MACOS: set[str] = set()
 PENDIENTES_WINDOWS = {
-    # El loop y el gate ya son Python (no necesitan bash). Queda bash solo
-    # para el mapa del proyecto (mapear.sh, botón "Refrescar mapa") y para el
-    # motor bash opcional (dedalo.sh): sin Git Bash esas rutas fallan.
+    # The loop and the gate are already Python (they do not need bash). Bash remains only
+    # for the project map (mapear.sh, "Refrescar mapa" button) and for the
+    # optional bash engine (dedalo.sh): without Git Bash those paths fail.
     "bash": "mapear.sh/dedalo.sh siguen siendo bash: requieren WSL2 o Git Bash",
-    # "QProcess(\"bash\")" ya no está: la GUI lanza el gate como
-    # `python -m dedalo.gate` (o el binario --dedalo-gate).
-    # "os.pathsep" ya no está: app.py une el PATH con os.pathsep (se arregló
-    # junto con la búsqueda de CLIs con sufijo .exe/.cmd en modelos.py).
+    # "QProcess(\"bash\")" is no longer there: the GUI launches the gate as
+    # `python -m dedalo.gate` (or the --dedalo-gate binary).
+    # "os.pathsep" is no longer there: app.py joins the PATH with os.pathsep (it was fixed
+    # along with the CLI search with .exe/.cmd suffix in modelos.py).
 }
 
 
 def test_pendientes_documentados_no_ocultan_nada_nuevo():
-    """Guardarraíl: la allowlist de pendientes debe existir y ser explícita,
-    para que quede a la vista lo que aún impide macOS/Windows."""
+    """Guardrail: the pending allowlist must exist and be explicit,
+    so that what still blocks macOS/Windows stays visible."""
     assert PENDIENTES_MACOS == set(), (
         "macOS quedó resuelto: timeout/sed ya no deben estar en pendientes")
     assert set(PENDIENTES_WINDOWS) == {"bash"}, (
         "actualiza PENDIENTES_WINDOWS (y su comentario) al arreglar o "
         "añadir un bloqueo de Windows")
-    # Resueltos: ahora están PROHIBIDOS para que no se reintroduzcan.
+    # Resolved: they are now PROHIBIDOS so they are not reintroduced.
     prohibidos = " | ".join(p for p, _, _ in PROHIBIDOS)
     assert "timeout" in prohibidos
     assert r"sed -i \"0,/" in prohibidos
@@ -164,7 +164,7 @@ def test_pendientes_documentados_no_ocultan_nada_nuevo():
 
 
 def test_gitattributes_fuerza_lf_para_sh():
-    """Sin esto, un `git clone` en Windows con autocrlf rompe todos los .sh."""
+    """Without this, a `git clone` on Windows with autocrlf breaks all the .sh."""
     ga = RAIZ / ".gitattributes"
     assert ga.is_file(), "falta .gitattributes"
     texto = ga.read_text(encoding="utf-8")
@@ -173,23 +173,23 @@ def test_gitattributes_fuerza_lf_para_sh():
 
 
 # ---------------------------------------------------------------------------
-# Formatos que no deben depender del locale del usuario
+# Formats that must not depend on the user's locale
 # ---------------------------------------------------------------------------
 
 _DEDALO = RAIZ / "dedalo" / "plantillas_data" / "dedalo.sh"
 
 
 def test_awk_de_formatos_usa_locale_c():
-    """Con un locale español, `awk 'BEGIN{printf "%.6f", x}'` da "0,500000".
+    """With a Spanish locale, `awk 'BEGIN{printf "%.6f", x}'` gives "0,500000".
 
-    Esa coma decimal escribía metrics.jsonl como JSON INVÁLIDO y rompía la
-    comparación del tope de coste. OJO: `export LC_NUMERIC=C` NO lo arregla,
-    porque LC_ALL tiene prioridad sobre LC_NUMERIC en los procesos hijos.
+    That decimal comma wrote metrics.jsonl as INVALID JSON and broke the
+    cost cap comparison. NOTE: `export LC_NUMERIC=C` does NOT fix it,
+    because LC_ALL takes priority over LC_NUMERIC in child processes.
     """
     texto = _DEDALO.read_text(encoding="utf-8")
     assert re.search(r"^num\(\)\s*\{\s*LC_ALL=C awk", texto, re.M), (
         "dedalo.sh debe definir num() con LC_ALL=C awk")
-    # Ningún awk que formatee un decimal puede quedar fuera del helper.
+    # No awk that formats a decimal may stay outside the helper.
     sueltos = [n for n, linea in enumerate(texto.splitlines(), 1)
                if re.search(r"(?<![\w-])awk .*printf \"%", linea)
                and not linea.lstrip().startswith("#")]
@@ -197,8 +197,8 @@ def test_awk_de_formatos_usa_locale_c():
 
 
 def test_exporta_lc_all_c_para_el_printf_de_bash():
-    """El otro lado del bug: el `printf "%.6f"` del propio bash usa el locale
-    del shell y rechazaba "0.500000" como número no válido."""
+    """The other side of the bug: bash's own `printf "%.6f"` uses the shell
+    locale and rejected "0.500000" as an invalid number."""
     texto = _DEDALO.read_text(encoding="utf-8")
     m = re.search(r"^export LC_ALL=C$", texto, re.M)
     assert m, "dedalo.sh debe hacer `export LC_ALL=C`"
@@ -207,7 +207,7 @@ def test_exporta_lc_all_c_para_el_printf_de_bash():
 
 
 def test_registrar_metrica_escribe_json_valido(tmp_path):
-    """Ejecuta la función real de la plantilla bajo LC_ALL=es_ES."""
+    """Runs the template's real function under LC_ALL=es_ES."""
     if "es_es" not in subprocess.run(["locale", "-a"], capture_output=True,
                                      text=True).stdout.lower():
         pytest.skip("el runner no tiene locale es_ES; el test A ya lo cubre")
@@ -220,8 +220,8 @@ def test_registrar_metrica_escribe_json_valido(tmp_path):
     salida.write_text("")
     prog = "\n".join([
         "set -uo pipefail",
-        "export LC_ALL=C",              # el export, tal cual en la plantilla
-        'num() { LC_ALL=C awk "$@"; }',  # y el helper, por si se sourcea
+        "export LC_ALL=C",              # the export, exactly as in the template
+        'num() { LC_ALL=C awk "$@"; }',  # and the helper, in case it is sourced
         f'PROYECTO="{tmp_path}"',
         "iter=1",
         'TAREA="#1 prueba"',
@@ -234,20 +234,20 @@ def test_registrar_metrica_escribe_json_valido(tmp_path):
 
     lineas = [x for x in (tmp_path / "metrics.jsonl").read_text().splitlines() if x.strip()]
     assert len(lineas) == 1, lineas
-    # Si el locale rompe el decimal, esto lanza JSONDecodeError.
+    # If the locale breaks the decimal, this raises JSONDecodeError.
     dato = json.loads(lineas[0])
     assert dato["costo_usd"] == 0.0
     assert dato["dur_ms"] == 1234
-    # "0,500000" dentro del número (no una coma separadora de campos).
+    # "0,500000" inside the number (not a field-separating comma).
     assert not re.search(r'":\d+,\d+', lineas[0]), (
         f"coma decimal dentro de un número del JSON: {lineas[0]}")
 
 
 def test_registrar_metrica_falla_sin_lc_all_c(tmp_path):
-    """Contraprueba: sin el export, la MISMA función revienta en es_ES.
+    """Counter-check: without the export, the SAME function crashes under es_ES.
 
-    Si este test dejara de fallar, el bug original habría vuelto (o el locale
-    del runner ha cambiado y los tests de arriba pasarían por casualidad).
+    If this test stopped failing, the original bug would have returned (or the
+    runner's locale has changed and the tests above would pass by chance).
     """
     if "es_es" not in subprocess.run(["locale", "-a"], capture_output=True,
                                      text=True).stdout.lower():
@@ -270,14 +270,14 @@ def test_registrar_metrica_falla_sin_lc_all_c(tmp_path):
     ])
     r = subprocess.run(["bash", "-c", prog], capture_output=True, text=True,
                        env={"LC_ALL": "es_ES.UTF-8", "PATH": os.environ["PATH"]})
-    # Sin `export LC_ALL=C`, el printf de bash no reconoce el decimal con punto.
+    # Without `export LC_ALL=C`, bash's printf does not recognize the decimal point.
     assert r.returncode != 0, (
         "el printf de bash aceptó el punto: revisa que el locale de es_ES "
         "siga.teniendo coma decimal")
 
 
 # ---------------------------------------------------------------------------
-# Helpers portables: _timeout y marcar_plan (macOS base no trae GNU)
+# Portable helpers: _timeout and marcar_plan (base macOS does not ship GNU)
 # ---------------------------------------------------------------------------
 
 def _extraer_bloque(nombre: str) -> str:
@@ -292,8 +292,8 @@ def _extraer_bloque(nombre: str) -> str:
     ("B", "- [B] #1 primera"),
 ])
 def test_marcar_plan_portable(tmp_path, marca, esperado):
-    """Sustituye a `sed -i "0,/^- \\[ \\]/s//- [x]/"` (GNU) con awk+cat (POSIX):
-    marca SOLO la primera tarea pendiente y conserva los permisos del plan."""
+    """Replaces `sed -i "0,/^- \\[ \\]/s//- [x]/"` (GNU) with awk+cat (POSIX):
+    it marks ONLY the first pending task and preserves the plan's permissions."""
     plan = tmp_path / "plan.md"
     plan.write_text(
         "# PLAN\n\n- [x] #0 ya hecha\n- [ ] #1 primera\ncriterio: ok\n"
@@ -309,7 +309,7 @@ def test_marcar_plan_portable(tmp_path, marca, esperado):
     lineas = plan.read_text(encoding="utf-8").splitlines()
     assert esperado in lineas, lineas
     assert "- [ ] #2 segunda" in lineas, "no debe tocar la tarea siguiente"
-    # la fixture ya tiene #0 hecha: `x` suma una, `B` no suma `[x]` ninguna
+    # the fixture already has #0 done: `x` adds one, `B` adds no `[x]` at all
     esperadas = 2 if marca == "x" else 1
     assert sum(1 for ln in lineas if ln.startswith("- [x]")) == esperadas
     assert plan.stat().st_mode & 0o777 == 0o644, (
@@ -331,7 +331,7 @@ def test_marcar_plan_con_plan_vacio_no_revienta(tmp_path):
 
 
 def test_timeout_con_gnu_devuelve_124_y_completa(tmp_path):
-    """Rama GNU (Linux/CI): idéntico al `timeout` de antes, 124 al colgarse."""
+    """GNU branch (Linux/CI): identical to the old `timeout`, 124 when it hangs."""
     prog = "\n".join([
         _extraer_bloque("_timeout"),
         "_timeout 1 sleep 30",
@@ -346,8 +346,8 @@ def test_timeout_con_gnu_devuelve_124_y_completa(tmp_path):
 
 
 def test_timeout_fallback_de_124_y_mata_al_hijo(tmp_path):
-    """Sin `timeout` ni `gtimeout` en el PATH (macOS base): respaldo en bash
-    puro que debe devolver 124 y dejar al hijo muerto, como GNU."""
+    """Without `timeout` or `gtimeout` in PATH (base macOS): a pure bash
+    fallback that must return 124 and leave the child dead, like GNU."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     sleep_real = shutil.which("sleep")
@@ -361,7 +361,7 @@ def test_timeout_fallback_de_124_y_mata_al_hijo(tmp_path):
     os.chmod(dormir, 0o755)
     pidf = tmp_path / "pid.txt"
     prog = "\n".join([
-        f'PATH="{bin_dir}"',  # ni timeout ni gtimeout se encuentran
+        f'PATH="{bin_dir}"',  # neither timeout nor gtimeout is found
         f'PIDF="{pidf}"',
         "export PIDF",
         _extraer_bloque("_timeout"),
@@ -378,9 +378,9 @@ def test_timeout_fallback_de_124_y_mata_al_hijo(tmp_path):
 
 
 def test_auto_localizacion_sin_readlink_f(tmp_path):
-    """El bloque de auto-localización de lanzar.sh/acceso.sh debe dar la ruta
-    real del proyecto también con symlinks absolutos, relativos y en cadena
-    (readlink -f no existe en macOS)."""
+    """The self-location block of lanzar.sh/acceso.sh must yield the project's
+    real path also with absolute, relative and chained symlinks
+    (readlink -f does not exist on macOS)."""
     texto = (RAIZ / "lanzar.sh").read_text(encoding="utf-8")
     ini = texto.index('ORIGEN="${BASH_SOURCE')
     fin = texto.index('PROYECTO="$(dirname "$ORIGEN")"', ini)
@@ -406,9 +406,9 @@ def test_auto_localizacion_sin_readlink_f(tmp_path):
 
 
 def test_gui_une_el_path_con_pathsep():
-    """Regresión: app.py unía el PATH con ":" fijo, que corrompe el PATH del
-    loop en Windows (separador ';'). Ya no está en PENDIENTES_WINDOWS, así
-    que este test evita que vuelva."""
+    """Regression: app.py joined the PATH with a hardcoded ":", which corrupts
+    the loop's PATH on Windows (separator ';'). It is no longer in
+    PENDIENTES_WINDOWS, so this test prevents it from coming back."""
     app = (RAIZ / "dedalo" / "app.py").read_text(encoding="utf-8")
     assert 'env["PATH"] = ":"' not in app, "usa os.pathsep para unir el PATH"
     assert "os.pathsep" in app

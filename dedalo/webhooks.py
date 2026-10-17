@@ -1,7 +1,7 @@
-"""Webhooks para notificaciones push: Telegram, Discord, WhatsApp.
+"""Webhooks for push notifications: Telegram, Discord, WhatsApp.
 
-Envío asíncrono vía QThread (Trabajo) para no bloquear la UI.
-Configuración global (un solo lugar para todos los proyectos).
+Asynchronous sending via QThread (Trabajo) so as not to block the UI.
+Global configuration (a single place for all projects).
 """
 
 import json
@@ -14,10 +14,10 @@ from .proceso import Trabajo
 
 
 class WebhookManager(QObject):
-    """Gestiona envío de notificaciones a Telegram, Discord, WhatsApp."""
+    """Manages the sending of notifications to Telegram, Discord, WhatsApp."""
 
-    enviado = Signal(str, str)      # evento, mensaje
-    error = Signal(str, str)        # plataforma, error
+    enviado = Signal(str, str)      # event, message
+    error = Signal(str, str)        # platform, error
 
     PLANTILLAS = {
         "inicio": "🚀 *Loop iniciado*\nProyecto: `{proyecto}`\nModelo tarea: `{modelo_tarea}`\nModelo revisor: `{modelo_revisor}`",
@@ -36,10 +36,10 @@ class WebhookManager(QObject):
         self.config = config
 
     def _sanitizar(self, mensaje: str) -> str:
-        """Oculta tokens y URLs embebidas antes de emitir el error.
+        """Hides tokens and embedded URLs before emitting the error.
 
-        El token de Telegram viaja en la propia URL (api.telegram.org/bot<token>/…)
-        y urllib puede incluirlo en el mensaje de excepción; lo enmascaramos.
+        The Telegram token travels in the URL itself (api.telegram.org/bot<token>/…)
+        and urllib may include it in the exception message; we mask it.
         """
         if not mensaje:
             return ""
@@ -50,7 +50,7 @@ class WebhookManager(QObject):
         return mensaje
 
     def esta_activo(self, evento: str) -> bool:
-        """Verifica si el evento está habilitado y hay al menos una plataforma configurada."""
+        """Checks whether the event is enabled and at least one platform is configured."""
         if not self.config.get("eventos", {}).get(evento, False):
             return False
         return any([
@@ -60,15 +60,15 @@ class WebhookManager(QObject):
         ])
 
     def enviar(self, evento: str, datos: dict[str, Any]):
-        """Envía notificación de forma asíncrona (no bloquea UI).
+        """Sends the notification asynchronously (does not block the UI).
 
-        Cada envío es un QThread independiente y TODOS se mantienen referenciados
-        en `self._workers` hasta que terminan. Con un único atributo compartido,
-        dos eventos solapados (p. ej. `inicio` y `fin`, cada uno con hasta 3
-        peticiones HTTP de 10 s) se pisaban: el segundo `send()` reasignaba el
-        atributo y el primer QThread se quedaba sin referencia de Python. Como
-        `Trabajo` se crea con `parent=None`, el recolector podía liberarlo en
-        caliente y la aplicación abortaba con
+        Each send is an independent QThread and ALL of them stay referenced
+        in `self._workers` until they finish. With a single shared attribute,
+        two overlapping events (e.g. `inicio` and `fin`, each with up to 3
+        HTTP requests of 10 s) clobbered each other: the second `send()` reassigned the
+        attribute and the first QThread was left without a Python reference. Since
+        `Trabajo` is created with `parent=None`, the collector could free it
+        while running and the application aborted with
         "QThread: Destroyed while thread is still running".
         """
         if not self.esta_activo(evento):
@@ -85,7 +85,7 @@ class WebhookManager(QObject):
         worker.start()
 
     def _pendientes(self) -> int:
-        """Número de envíos aún en vuelo (diagnóstico y tests)."""
+        """Number of sends still in flight (diagnostics and tests)."""
         return sum(1 for w in self._workers if w.isRunning())
 
     def _formatear(self, evento: str, datos: dict[str, Any]) -> str:
@@ -96,7 +96,7 @@ class WebhookManager(QObject):
             return f"{evento}: {datos}"
 
     def _enviar_todas(self, texto: str):
-        """Envía a todas las plataformas configuradas."""
+        """Sends to all configured platforms."""
         # Telegram
         if self.config.get("telegram_token") and self.config.get("telegram_chat_id"):
             self._enviar_telegram(texto)
@@ -144,11 +144,11 @@ class WebhookManager(QObject):
             self.error.emit("discord", self._sanitizar(str(e)))
 
     def _enviar_whatsapp(self, texto: str):
-        """WhatsApp via Meta Cloud API (requiere Business Account)."""
+        """WhatsApp via Meta Cloud API (requires a Business Account)."""
         url = self.config["whatsapp_api_url"].rstrip("/") + "/messages"
         token = self.config["whatsapp_token"]
         phone_id = self.config.get("whatsapp_phone_id", "")
-        to = self.config.get("whatsapp_to", "")  # número destino en formato internacional
+        to = self.config.get("whatsapp_to", "")  # destination number in international format
 
         if not phone_id or not to:
             self.error.emit("whatsapp", "Falta phone_id o to")
@@ -176,7 +176,7 @@ class WebhookManager(QObject):
             self.error.emit("whatsapp", self._sanitizar(str(e)))
 
     def _configurada(self, plataforma: str) -> bool:
-        """Verifica si la plataforma tiene las claves mínimas para enviar."""
+        """Checks whether the platform has the minimum keys to send."""
         if plataforma == "telegram":
             return bool(self.config.get("telegram_token")
                         and self.config.get("telegram_chat_id"))
@@ -188,7 +188,7 @@ class WebhookManager(QObject):
         return False
 
     def probar(self, plataforma: str) -> bool:
-        """Envía mensaje de prueba a una plataforma específica."""
+        """Sends a test message to a specific platform."""
         if not self._configurada(plataforma):
             return False
 

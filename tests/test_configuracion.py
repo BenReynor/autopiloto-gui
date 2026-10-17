@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests para configuracion.py - defaults coherentes."""
+"""Tests for configuracion.py - coherent defaults."""
 
 import os
 import sys

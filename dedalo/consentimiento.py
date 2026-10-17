@@ -1,14 +1,14 @@
-"""Consentimiento de primer uso para el gate del proyecto (gate_checks/).
+"""First-use consent for the project gate (gate_checks/).
 
-Ejecutar el gate corre código que vive en el repo destino (gate.sh,
-gate_checks/*.sh|.py) con los privilegios del usuario: un repo clonado puede
-traer comandos arbitrarios. Antes del primer gate de un proyecto se muestra qué
-se va a ejecutar y se exige una decisión explícita, que se recuerda ligada a un
-hash del contenido de los checks: si los checks cambian, se vuelve a preguntar.
+Running the gate executes code that lives in the target repo (gate.sh,
+gate_checks/*.sh|.py) with the user's privileges: a cloned repo can
+bring arbitrary commands. Before a project's first gate it shows what
+is going to be run and requires an explicit decision, which is remembered tied to a
+hash of the checks' content: if the checks change, it asks again.
 
-Opt-in sin diálogo: `DEDALO_GATE_CONSENT=1` (recomendado en CI). La confianza se
-guarda en `~/.config/dedalo/confianza.json` (0o600, fuera del repo, de modo que
-el propio repo no pueda auto-concederse el permiso).
+Opt-in without a dialog: `DEDALO_GATE_CONSENT=1` (recommended in CI). Trust is
+stored in `~/.config/dedalo/confianza.json` (0o600, outside the repo, so that
+the repo itself cannot grant itself the permission).
 """
 
 import hashlib
@@ -72,7 +72,7 @@ def _leer_confianza():
 
 
 def esta_confiado(proyecto, manifiesto=None):
-    """¿El usuario ya aprobó ESTE contenido del gate de ESTE proyecto?"""
+    """Has the user already approved THIS gate content for THIS project?"""
     manifiesto = manifest(proyecto) if manifiesto is None else manifiesto
     if not manifiesto:
         return True
@@ -80,7 +80,7 @@ def esta_confiado(proyecto, manifiesto=None):
 
 
 def confiar(proyecto, manifiesto=None):
-    """Persiste la aprobación del manifiesto actual (escritura atómica 0o600)."""
+    """Persists the approval of the current manifest (atomic write 0o600)."""
     manifiesto = manifest(proyecto) if manifiesto is None else manifiesto
     datos = _leer_confianza()
     datos[os.path.abspath(proyecto)] = manifiesto
@@ -104,7 +104,7 @@ def confiar(proyecto, manifiesto=None):
 
 
 def revocar(proyecto):
-    """Olvida la aprobación de un proyecto (vuelve a pedir consentimiento)."""
+    """Forgets a project's approval (asks for consent again)."""
     datos = _leer_confianza()
     if datos.pop(os.path.abspath(proyecto), None) is not None:
         ruta = _ruta_confianza()
@@ -113,11 +113,11 @@ def revocar(proyecto):
 
 
 def concedido(proyecto, entorno=None):
-    """¿Puede correr el gate?
+    """Can the gate run?
 
-    True si no hay checks, si `DEDALO_GATE_CONSENT=1` (que además persiste la
-    confianza) o si el manifiesto actual ya fue aprobado. False en cualquier
-    otro caso: sin consentimiento, el gate de un repo desconocido no se ejecuta.
+    True if there are no checks, if `DEDALO_GATE_CONSENT=1` (which also persists
+    trust) or if the current manifest has already been approved. False in any
+    other case: without consent, the gate of an unknown repo does not run.
     """
     entorno = os.environ if entorno is None else entorno
     if not manifest(proyecto):

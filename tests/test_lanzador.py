@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Tests de cómo la GUI lanza el motor del loop (F4).
+"""Tests of how the GUI launches the loop engine (F4).
 
-Cubre _argv_motor (dev = `python -m dedalo.loop`, binario =
-`--dedalo-loop`) y un smoke real del arranque por `-m` desde otro cwd
-(el mismo comando que construye la GUI, con PYTHONPATH al repo), skip si no
-hay internet.
+Covers _argv_motor (dev = `python -m dedalo.loop`, binary =
+`--dedalo-loop`) and a real smoke test of startup via `-m` from another cwd
+(the same command the GUI builds, with PYTHONPATH pointing to the repo), skipped
+if there is no internet.
 """
 
 import os
@@ -48,8 +48,8 @@ def _git(*args, cwd):
                            "(POSIX): se valida en Linux")
 @pytest.mark.skipif(not net.hay_internet(), reason="requiere internet")
 def test_arranque_por_python_m_desde_otro_cwd(tmp_path):
-    """Comando exacto de la GUI en modo fuente: `python -m
-    dedalo.loop` con cwd=proyecto y PYTHONPATH al repo."""
+    """Exact command the GUI uses in source mode: `python -m
+    dedalo.loop` with cwd=project and PYTHONPATH pointing to the repo."""
     proyecto = tmp_path / "proyecto"
     proyecto.mkdir()
     _git("init", "-q", "-b", "master", cwd=proyecto)

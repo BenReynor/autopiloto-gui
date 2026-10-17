@@ -1,8 +1,8 @@
-"""Tests del servidor MCP (herramientas y recursos headless).
+"""Tests for the MCP server (headless tools and resources).
 
-Llaman a las funciones directamente (los decoradores de MCPServer devuelven la
-función sin envolverla) con el registro de proyectos y el pidfile aislados en
-un tmp_path, sin arrancar el transporte stdio.
+They call the functions directly (MCPServer decorators return the
+unwrapped function) with the project registry and the pidfile isolated in
+a tmp_path, without starting the stdio transport.
 """
 
 import asyncio
@@ -17,7 +17,7 @@ from dedalo import mcp_server as m  # noqa: E402
 
 @pytest.fixture
 def proyecto(tmp_path, monkeypatch):
-    """Proyecto de prueba con plan/lecciones/contexto y registro aislado."""
+    """Test project with plan/lessons/context and an isolated registry."""
     (tmp_path / "plan.md").write_text(
         "# Plan\n\n- [x] hecha\n- [ ] pendiente\n- [B] bloqueada\n",
         encoding="utf-8")

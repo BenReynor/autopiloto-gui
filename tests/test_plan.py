@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests para plan.py - parsing de plan.md"""
+"""Tests for plan.py - plan.md parsing"""
 
 import os
 import sys
@@ -37,23 +37,23 @@ def test_plan_cargar():
         tareas = plan.tareas
         assert len(tareas) == 4
 
-        # Tarea 1 - pendiente
+        # Task 1 - pending
         assert tareas[0]["estado"] == "pendiente"
         assert "Tarea 1" in tareas[0]["texto"]
         assert tareas[0]["linea"] == 5
 
-        # Tarea 2 - hecha
+        # Task 2 - done
         assert tareas[1]["estado"] == "hecha"
         assert "Tarea 2" in tareas[1]["texto"]
 
-        # Tarea 3 - bloqueada
+        # Task 3 - blocked
         assert tareas[2]["estado"] == "bloqueada"
         assert "Tarea 3" in tareas[2]["texto"]
 
-        # Tarea 4 - pendiente
+        # Task 4 - pending
         assert tareas[3]["estado"] == "pendiente"
 
-        # Conteo
+        # Count
         pend, hechas, bloqueadas = plan.conteo()
         assert pend == 2
         assert hechas == 1
@@ -73,11 +73,11 @@ def test_plan_guardar():
         plan = Plan(path)
         plan.cargar()
 
-        # Modificar: marcar primera como hecha
+        # Modify: mark the first one as done
         nuevo_texto = plan.texto.replace("- [ ] Tarea 1", "- [x] Tarea 1")
         plan.guardar(nuevo_texto)
 
-        # Recargar y verificar
+        # Reload and verify
         plan2 = Plan(path)
         plan2.cargar()
         pend, hechas, bloqueadas = plan2.conteo()
@@ -118,7 +118,7 @@ def test_marcar_primera_x():
         assert (pend, hechas, bloqueadas) == (1, 2, 1)
         assert "- [x] Tarea 1: Primera tarea" in plan.texto
         assert plan.tareas[0]["estado"] == "hecha"
-        # No toca más de una tarea
+        # Doesn't touch more than one task
         assert plan.tareas[3]["estado"] == "pendiente"
     finally:
         os.unlink(path)

@@ -1,9 +1,9 @@
-"""Tests del empaquetado: iconos generados y spec de PyInstaller.
+"""Tests for packaging: generated icons and the PyInstaller spec.
 
-El build de macOS no se puede ejecutar en Linux, así que aquí se cubre lo
-comprobable en cualquier SO: que la spec sea Python válido, que los iconos
-committeados sean legibles y que el generador sigue funcionando (si se rompe,
-el build de Windows/macOS fallaría al encontrar un .ico/.icns corrupto).
+The macOS build cannot be run on Linux, so what is covered here is what can be
+checked on any OS: that the spec is valid Python, that the committed icons are
+readable and that the generator still works (if it breaks, the Windows/macOS
+build would fail when it finds a corrupt .ico/.icns).
 """
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ PACKAGING = RAIZ / "packaging"
 
 
 def test_spec_es_python_sintactico():
-    """La spec sólo puede comprobarse con compile(): PyInstaller inyecta
-    SPECPATH/Analysis/EXE... en tiempo de ejecución."""
+    """The spec can only be checked with compile(): PyInstaller injects
+    SPECPATH/Analysis/EXE... at runtime."""
     fuente = (PACKAGING / "dedalo.spec").read_text(encoding="utf-8")
     compile(fuente, "dedalo.spec", "exec")
     assert "BUNDLE" in fuente and "icono.icns" in fuente, (
@@ -40,9 +40,9 @@ def test_iconos_generados_son_validos():
 
 
 def test_build_windows_smk_checkea_el_motor_empaquetado():
-    """El smoke del build de Windows debe valider el branch `--dedalo-loop`
-    del entrypoint (si alguien lo quita, el zip sale pero el motor empaquetado
-    queda sin verificar)."""
+    """The Windows build smoke test must validate the `--dedalo-loop` branch
+    of the entrypoint (if someone removes it, the zip is produced but the
+    packaged engine is left unverified)."""
     fuente = (PACKAGING / "build_windows.sh").read_text(encoding="utf-8")
     assert "--dedalo-loop" in fuente
     assert "Compress-Archive" in fuente
@@ -50,8 +50,8 @@ def test_build_windows_smk_checkea_el_motor_empaquetado():
 
 
 def test_make_iconos_regenera_desde_el_svg(tmp_path, monkeypatch):
-    """Ejecuta el generador real contra un destino temporal: si el SVG o la
-    ruta cambian de forma inesperada, el build se entera aquí y no en CI."""
+    """Runs the real generator against a temporary destination: if the SVG or
+    the path change unexpectedly, the build finds out here and not in CI."""
     Image = pytest.importorskip("PIL.Image")
     pytest.importorskip("PySide6.QtSvg")
 

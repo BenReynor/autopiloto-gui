@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Tests de regresión: un proyecto quitado NO debe reaparecer en el registro.
+"""Regression tests: a removed project must NOT reappear in the registry.
 
-Protege contra el bug donde closeEvent/_cambiar_proyecto llamaban a
-guardar_config_proyecto() y éste re-añadía (`setdefault`) el nombre del
-proyecto que el usuario acababa de quitar, haciendo que reapareciera al
-reabrir la GUI como una entrada huérfana (config sin ruta).
+Protects against the bug where closeEvent/_cambiar_proyecto called
+guardar_config_proyecto() and this re-added (`setdefault`) the name of the
+project the user had just removed, making it reappear when
+reopening the GUI as an orphan entry (config without path).
 """
 
 import json
@@ -21,10 +21,10 @@ from dedalo import proyectos
 
 
 def _config_aislada(contenido=None):
-    """Redirige CONFIG_DIR/REGISTRO a un temp y devuelve la ruta del registro.
+    """Redirects CONFIG_DIR/REGISTRO to a temp and returns the registry's path.
 
-    Por defecto escribe un registro válido y vacío; pasando `contenido` se
-    puede sembrar cualquier texto (incluido JSON inválido).
+    By default it writes a valid, empty registry; passing `contenido` lets you
+    seed any text (including invalid JSON).
     """
     tmp = tempfile.mkdtemp()
     reg = os.path.join(tmp, "proyectos.json")
@@ -48,7 +48,7 @@ def _limpiar(reg):
 def test_guardar_config_no_reañade_proyecto_quitado():
     reg = _config_aislada()
     try:
-        # Registro con dos proyectos, luego el usuario quita "A"
+        # Registry with two projects, then the user removes "A"
         proyectos_dic = {
             "A": {"ruta": "/tmp/a", "config": {"tema": "X"}},
             "B": {"ruta": "/tmp/b", "config": {}},
@@ -57,7 +57,7 @@ def test_guardar_config_no_reañade_proyecto_quitado():
         proyectos_dic.pop("A", None)
         proyectos.guardar(proyectos_dic, "Oscuro")
 
-        # closeEvent sigue llamando con el nombre activo ya quitado
+        # closeEvent keeps calling with the active name already removed
         proyectos.guardar_config_proyecto(proyectos_dic, "A", {"tema": "Y"})
 
         with open(reg, encoding="utf-8") as f:
@@ -89,17 +89,17 @@ def test_guardar_config_sigue_guardando_proyectos_existentes():
         shutil.rmtree(os.path.dirname(reg), ignore_errors=True)
 
 
-# ---------- integridad del registro ----------
+# ---------- registry integrity ----------
 #
-# Regresión grave: _leer_archivo() se tragaba el JSONDecodeError y devolvía {},
-# así que Ventana.__init__ (app.py:78) veía "sin proyectos" y llamaba a
-# guardar(), que volvía a escribir un registro VACÍO sobre el corrupto. Un
-# registro dañado = todos los proyectos del usuario borrados en el arranque
-# siguiente, sin ningún aviso.
+# Serious regression: _leer_archivo() swallowed the JSONDecodeError and returned {},
+# so Ventana.__init__ (app.py:78) saw "no projects" and called
+# guardar(), which wrote an EMPTY registry over the corrupt one. A
+# damaged registry = all the user's projects deleted on the next startup,
+# with no warning.
 
 
 def test_registro_corrupto_no_se_sobreescribe():
-    """verificar_registro() debe lanzar Y dejar el original intacto."""
+    """verificar_registro() must raise AND leave the original intact."""
     reg = _config_aislada(contenido='{"proyectos": {"A": {"ruta": "/tmp/a"')
     try:
         with pytest.raises(proyectos.RegistroCorrupto) as exc:
@@ -114,7 +114,7 @@ def test_registro_corrupto_no_se_sobreescribe():
 
 
 def test_registro_corrupto_hace_copia_de_seguridad():
-    """La copia .corrupto conserva los datos para que el usuario los recupere."""
+    """The .corrupto copy keeps the data so the user can recover it."""
     reg = _config_aislada(contenido='{"proyectos": {"A": {"ruta": "/tmp/a"')
     try:
         with pytest.raises(proyectos.RegistroCorrupto) as exc:
@@ -126,8 +126,8 @@ def test_registro_corrupto_hace_copia_de_seguridad():
 
 
 def test_registro_corrupto_bloquea_en_cada_arranque():
-    """Mientras el usuario no decida, el aviso se repite: no se pierde el
-    registro en silencio por haber cerrado y reabierto la app."""
+    """Until the user decides, the warning repeats: the registry is not
+    lost silently for having closed and reopened the app."""
     reg = _config_aislada(contenido="no soy json")
     try:
         for _ in range(2):
@@ -140,7 +140,7 @@ def test_registro_corrupto_bloquea_en_cada_arranque():
 
 
 def test_copia_corrupta_no_pisa_la_anterior():
-    """Dos corrompidos seguidos = dos copias distintas."""
+    """Two corrupt runs in a row = two different copies."""
     reg = _config_aislada(contenido="basura1")
     try:
         with pytest.raises(proyectos.RegistroCorrupto) as c1:
@@ -160,8 +160,8 @@ def test_copia_corrupta_no_pisa_la_anterior():
 
 
 def test_descartar_registro_permite_arrancar_vacio():
-    """Con el consentimiento del usuario, se borra el corrupto y guardar()
-    reconstruye un registro válido; la copia se conserva."""
+    """With the user's consent, the corrupt one is deleted and guardar()
+    rebuilds a valid registry; the copy is kept."""
     reg = _config_aislada(contenido="basura")
     try:
         with pytest.raises(proyectos.RegistroCorrupto) as exc:
@@ -170,7 +170,7 @@ def test_descartar_registro_permite_arrancar_vacio():
         proyectos.descartar_registro_corrupto()
         assert not os.path.exists(reg)
 
-        proyectos.verificar_registro()  # ya no lanza
+        proyectos.verificar_registro()  # no longer raises
 
         proyectos.guardar({"B": {"ruta": "/tmp/b"}}, "Oscuro")
         with open(reg, encoding="utf-8") as f:
@@ -183,7 +183,7 @@ def test_descartar_registro_permite_arrancar_vacio():
 
 
 def test_escribir_es_atomico_y_no_deja_temporales():
-    """Nada de .tmp huérfanos: replace() sustituye de golpe."""
+    """No orphan .tmp files: replace() swaps in one go."""
     reg = _config_aislada()
     try:
         proyectos.guardar({"A": {"ruta": "/tmp/a"}}, "Oscuro")
@@ -197,8 +197,8 @@ def test_escribir_es_atomico_y_no_deja_temporales():
 
 
 def test_escribir_no_deja_el_registro_roto_si_falla_la_serializacion():
-    """Si json.dump revienta a media escritura, el registro bueno anterior
-    debe seguir legible (por eso se escribe a un temporal y no in situ)."""
+    """If json.dump blows up mid-write, the previous good registry
+    must still be readable (that is why it is written to a temp and not in place)."""
     reg = _config_aislada()
     try:
         proyectos.guardar({"A": {"ruta": "/tmp/a"}}, "Oscuro")
@@ -217,23 +217,23 @@ def test_escribir_no_deja_el_registro_roto_si_falla_la_serializacion():
         _limpiar(reg)
 
 
-# ---------- permisos del registro (tokens de webhooks) ----------
+# ---------- registry permissions (webhook tokens) ----------
 #
-# El registro guarda telegram_token/whatsapp_token/discord en claro. Con los
-# permisos por omisión del umask salía en 0664, legible por el grupo. El
-# fix: crear el temporal con 0600 ANTES de escribir (replace mueve el inodo,
-# así que el destino hereda el modo) y endurecer en verificar_registro los
-# registros antiguos.
+# The registry stores telegram_token/whatsapp_token/discord in cleartext. With the
+# default umask permissions it came out as 0664, readable by the group. The
+# fix: create the temp with 0600 BEFORE writing (replace moves the inode,
+# so the destination inherits the mode) and harden old registries in
+# verificar_registro.
 
 
 @pytest.mark.skipif(
     os.name == "nt",
     reason="Windows no aplica bits de permiso POSIX (no hay 0600)")
 def test_escribir_deja_el_registro_en_0600():
-    """Ni el umask laxo ni el temporal deben dejar permisos de grupo/otros."""
+    """Neither the lax umask nor the temp must leave group/other permissions."""
     reg = _config_aislada()
     try:
-        umask_previo = os.umask(0o022)  # umask de por defecto, permisivo
+        umask_previo = os.umask(0o022)  # default, permissive umask
         try:
             proyectos.guardar({"A": {"ruta": "/tmp/a", "config": {
                 "webhooks": {"telegram_token": "123:abc"}}}}, "Oscuro")
@@ -250,11 +250,11 @@ def test_escribir_deja_el_registro_en_0600():
     os.name == "nt",
     reason="Windows no aplica bits de permiso POSIX (no hay 0600)")
 def test_verificar_registro_endurece_un_registro_antiguo():
-    """Un proyectos.json heredado (0664) se endurece al arrancar."""
+    """A legacy proyectos.json (0664) is hardened on startup."""
     reg = _config_aislada()
     try:
         os.chmod(reg, 0o664)
-        proyectos.verificar_registro()  # no lanza: el JSON es válido
+        proyectos.verificar_registro()  # does not raise: the JSON is valid
 
         modo = os.stat(reg).st_mode & 0o777
         assert modo == 0o600, f"tras verificar: {modo:04o}, esperado 0600"

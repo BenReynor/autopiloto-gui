@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests para plantillas.py - creación de lecciones.md (memoria del proyecto)."""
+"""Tests for plantillas.py - creation of lecciones.md (project memory)."""
 
 import glob
 import os
@@ -16,10 +16,10 @@ PYPROJECT = os.path.join(RAIZ, "pyproject.toml")
 
 
 def _globs_de_package_data():
-    """Extrae los globs de [tool.setuptools.package-data] sin depender de tomli.
+    """Extracts the globs from [tool.setuptools.package-data] without depending on tomli.
 
-    Se lee el texto a propósito: así el test funciona con Python 3.10, donde
-    tomllib no existe (requires-python del proyecto es >=3.10).
+    The text is read on purpose: this way the test works on Python 3.10, where
+    tomllib does not exist (the project's requires-python is >=3.10).
     """
     with open(PYPROJECT, encoding="utf-8") as f:
         texto = f.read()
@@ -33,11 +33,11 @@ def _globs_de_package_data():
 
 
 def _lo_que_instala_en_runtime():
-    """Los nombres que instalar() copia sin condición desde PLANTILLA_DIR.
+    """The names that instalar() copies unconditionally from PLANTILLA_DIR.
 
-    Refleja plantillas.instalar(): list(ARCHIVOS) + list(GATE_CHECKS) +
-    [".gitignore"]. Si esto crece sin tocar package-data, el paquete deja de
-    ser instalable de forma no editable.
+    Mirrors plantillas.instalar(): list(ARCHIVOS) + list(GATE_CHECKS) +
+    [".gitignore"]. If this grows without touching package-data, the package stops
+    being installable in a non-editable way.
     """
     return list(plantillas.ARCHIVOS) + list(plantillas.GATE_CHECKS) + [
         ".gitignore"
@@ -45,12 +45,12 @@ def _lo_que_instala_en_runtime():
 
 
 def test_package_data_cubre_lo_que_instala():
-    """pyproject.toml debe empaquetar TODO lo que instalar() copia.
+    """pyproject.toml must package EVERYTHING instalar() copies.
 
-    Sin esto, `pip install .` produce un paquete al que le falta
-    plantillas_data/.gitignore; instalar() hace shutil.copy2 sin try y revienta
-    con FileNotFoundError al agregar el primer proyecto. Los tests no lo
-    detectaban porque la CI instala siempre con `-e`.
+    Without this, `pip install .` produces a package missing
+    plantillas_data/.gitignore; instalar() does shutil.copy2 without try and blows up
+    with FileNotFoundError when adding the first project. The tests did not
+    catch it because CI always installs with `-e`.
     """
     patrones = _globs_de_package_data()
     base = os.path.join(RAIZ, "dedalo")
@@ -63,8 +63,8 @@ def test_package_data_cubre_lo_que_instala():
     sin_cubrir = [
         nombre
 for nombre in _lo_que_instala_en_runtime()
-    # Comparar SIEMPRE con "/": en Windows os.path.join mezclaría muchísimas
-    # barras y glob.relpath usa las del SO, por eso ambos lados se normalizan.
+    # ALWAYS compare with "/": on Windows os.path.join would mix in many
+    # backslashes and glob.relpath uses the OS ones, so both sides are normalized.
     if os.path.join("plantillas_data", nombre).replace("\\", "/") not in {
         p.replace("\\", "/") for p in cubiertos
     }
@@ -78,7 +78,7 @@ for nombre in _lo_que_instala_en_runtime()
 
 
 def test_package_data_no_declara_ficheros_inexistentes():
-    """Los globs no deben apuntar a nada: globs fantasma promoción a bugs."""
+    """Globs must not point at nothing: phantom globs promote bugs."""
     base = os.path.join(RAIZ, "dedalo")
     for patron in _globs_de_package_data():
         assert glob.glob(os.path.join(base, patron)), (
@@ -112,7 +112,7 @@ def test_faltan_incluye_lecciones():
 
 
 def test_instalar_crea_contexto():
-    """CONTEXTO.md se instala con esqueleto y nunca se sobreescribe."""
+    """CONTEXTO.md is installed with a skeleton and never overwritten."""
     import shutil
     tmp = _proyecto_tmp()
     try:
@@ -121,7 +121,7 @@ def test_instalar_crea_contexto():
         ruta = os.path.join(tmp, "CONTEXTO.md")
         with open(ruta, encoding="utf-8") as f:
             assert "CONTEXTO DEL PROYECTO" in f.read()
-        # Contenido propio del usuario: no se pisa en la segunda instalación
+        # The user's own content: it is not overwritten on the second install
         with open(ruta, "w", encoding="utf-8") as f:
             f.write("# Mi contexto propio")
         creados2 = plantillas.instalar(tmp)
@@ -142,7 +142,7 @@ def test_instalar_crea_lecciones():
         with open(ruta, encoding="utf-8") as f:
             contenido = f.read()
         assert "Lecciones aprendidas" in contenido
-        # No se sobreescribe si ya existe contenido del usuario
+        # It is not overwritten if the user's content already exists
         with open(ruta, "w", encoding="utf-8") as f:
             f.write("# Mi memoria propia")
         creados2 = plantillas.instalar(tmp)
@@ -171,16 +171,16 @@ def test_quitar_borra_lecciones():
 
 
 def test_instalar_propaga_checks_nuevos_sin_pisar_custom():
-    """Un check NUEVO de plantilla se instala; un check CUSTOM no se toca."""
+    """A NEW template check is installed; a CUSTOM check is not touched."""
     import shutil
     tmp = _proyecto_tmp()
     try:
         plantillas.instalar(tmp)
-        # El usuario crea un check propio con contenido distinto de plantilla
+        # The user creates their own check with content different from the template
         custom = os.path.join(tmp, "gate_checks", "99_custom.sh")
         with open(custom, "w", encoding="utf-8") as f:
             f.write("echo 'check custom'\n")
-        # Proyecto "viejo": sin el check nuevo de la plantilla
+        # "Old" project: without the new template check
         os.remove(os.path.join(tmp, "gate_checks", "98_criterio.sh"))
 
         creados = plantillas.instalar(tmp)
@@ -193,13 +193,13 @@ def test_instalar_propaga_checks_nuevos_sin_pisar_custom():
 
 
 def test_actualizar_no_toca_gate_checks_custom():
-    """actualizar() solo renueva los SCRIPTS; gate_checks custom quedan intactos."""
+    """actualizar() only renews the SCRIPTS; custom gate_checks stay intact."""
     import shutil
     tmp = _proyecto_tmp()
     try:
         plantillas.instalar(tmp)
 
-        # Personalizar un check y forzar diferencia en dedalo.sh
+        # Customize a check and force a difference in dedalo.sh
         custom = os.path.join(tmp, "gate_checks", "99_custom.sh")
         with open(custom, "w", encoding="utf-8") as f:
             f.write("echo 'check custom'\n")
@@ -224,7 +224,7 @@ def test_actualizar_no_toca_gate_checks_custom():
 
 
 def test_instalar_crea_gitignore_del_framework():
-    """Un proyecto nuevo recibe .gitignore que excluye los archivos del framework."""
+    """A new project receives a .gitignore that excludes the framework files."""
     tmp = _proyecto_tmp()
     try:
         creados = plantillas.instalar(tmp)
@@ -233,7 +233,7 @@ def test_instalar_crea_gitignore_del_framework():
         assert os.path.exists(ruta)
         with open(ruta, encoding="utf-8") as f:
             contenido = f.read()
-        # El repo del proyecto jamás debe commitear/pushear archivos de Dédalo
+        # The project's repo must never commit/push Dédalo files
         for entrada in ("dedalo.sh", "gate.sh", "gate_checks/", "plan.md",
                         "lecciones.md", "CONTEXTO.md", "progreso.log",
                         "metrics.jsonl", "incidencias.jsonl",
@@ -245,7 +245,7 @@ def test_instalar_crea_gitignore_del_framework():
 
 
 def test_instalar_no_pisa_gitignore_existente():
-    """Si el proyecto ya tiene .gitignore propio, se respeta (no se sobreescribe)."""
+    """If the project already has its own .gitignore, it is respected (not overwritten)."""
     import shutil
     tmp = _proyecto_tmp()
     try:
@@ -261,7 +261,7 @@ def test_instalar_no_pisa_gitignore_existente():
 
 
 def test_asegurar_gitignore_anade_bloque_existente():
-    """asegurar_gitignore añade el bloque de Dédalo a un .gitignore existente."""
+    """asegurar_gitignore adds the Dédalo block to an existing .gitignore."""
     import shutil
     tmp = tempfile.mkdtemp()
     try:
@@ -277,7 +277,7 @@ def test_asegurar_gitignore_anade_bloque_existente():
                         "metrics.jsonl", "incidencias.jsonl",
                         ".dedalo_review/"):
             assert entrada in contenido, f"falta entrada {entrada!r}"
-        # Idempotente: segunda llamada no duplica
+        # Idempotent: the second call does not duplicate
         assert plantillas.asegurar_gitignore(tmp) is False
         with open(ruta, encoding="utf-8") as f:
             assert f.read().count("dedalo.sh") == 1
@@ -286,7 +286,7 @@ def test_asegurar_gitignore_anade_bloque_existente():
 
 
 def test_asegurar_gitignore_crea_si_falta():
-    """Si no hay .gitignore, asegurar_gitignore copia la plantilla completa."""
+    """If there is no .gitignore, asegurar_gitignore copies the whole template."""
     import shutil
     tmp = tempfile.mkdtemp()
     try:
@@ -301,7 +301,7 @@ def test_asegurar_gitignore_crea_si_falta():
 
 
 def test_quitar_framework_del_git():
-    """quitar_framework_del_git deja de trackear pero conserva en disco."""
+    """quitar_framework_del_git stops tracking but keeps them on disk."""
     import shutil
     import subprocess
     tmp = tempfile.mkdtemp()
@@ -325,10 +325,10 @@ def test_quitar_framework_del_git():
         assert "gate_checks/01_db.sh" in salidos
         assert "CONTEXTO.md" in salidos
         assert "readme.md" not in salidos, "lo del usuario no se toca"
-        # En disco siguen
+        # They are still on disk
         assert os.path.exists(os.path.join(tmp, "dedalo.sh"))
         assert os.path.exists(os.path.join(tmp, "plan.md"))
-        # Dejaron de estar en el índice
+        # They are no longer in the index
         out = subprocess.run(["git", "ls-files"], cwd=tmp, capture_output=True,
                              text=True, check=True)
         trackeados = out.stdout.splitlines()
@@ -350,7 +350,7 @@ def test_inicializar_git_crea_repo_si_falta():
         assert res["repo"] == "creado"
         assert res["archivos"] >= 1
         assert plantillas._es_repo_git(tmp)
-        # Segunda llamada no re-inicializa
+        # The second call does not re-initialize
         res2 = plantillas.inicializar_git(tmp)
         assert res2["repo"] == "ya-existia"
     finally:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests para sensor.py - lectura y filtrado de temperatura."""
+"""Tests for sensor.py - temperature reading and filtering."""
 
 import os
 import sys

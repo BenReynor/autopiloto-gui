@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests para net.py - conectividad (socket simulado)."""
+"""Tests for net.py - connectivity (simulated socket)."""
 
 import os
 import sys

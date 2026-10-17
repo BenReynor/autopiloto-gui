@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Tests de dedalo.loop_agentes (port de la capa de agentes del loop).
+"""Tests for dedalo.loop_agentes (port of the loop's agent layer).
 
-Se toman de las secciones de dedalo.sh (cli_agente, agente_ok,
+They are taken from the sections of dedalo.sh (cli_agente, agente_ok,
 detectar_agente, elegir_revisor, sin_autenticacion, tokens_agotados,
-_registrar_metrica, revisar_diff) manteniendo la MISMA semántica, incluyendo
-la corroboración de auth (sólo aborta si además no hubo trabajo).
+_registrar_metrica, revisar_diff) keeping the SAME semantics, including the
+auth corroboration (it only aborts if there was also no work).
 """
 
 import json
@@ -79,7 +79,7 @@ def test_agente_ok_falso_si_no_existe(tmp_path):
     assert not agente_ok("opencode", cfg)
 
 
-# Binarios ineistentes en CLI_*: bloquean el `which <global>` del sistema.
+# Non-existent binaries in CLI_*: they block the system's `which <global>`.
 _INE = "/no/existe/"
 
 def test_detectar_agente_usa_primer_disponible(tmp_path):
@@ -120,7 +120,7 @@ def test_elegir_revisor_otro_distinto_de_tarea(tmp_path):
     cfg = _config(tmp_path, env)
     cfg.agentes_preferidos = "opencode codex claude"
     cfg.agente_tarea = "codex"
-    # codex es el agente de tarea; el revisor prefiere otro agente.
+    # codex is the task agent; the reviewer prefers another agent.
     assert elegir_revisor(cfg) == "claude"
 
 
@@ -138,22 +138,22 @@ def test_sin_autenticacion_detecta_401_en_stderr(tmp_path):
 
 
 def test_sin_autenticacion_falso_positivo_por_narrativa(tmp_path):
-    """Una mención de *auth* en stdout no basta si la iteración produjo
-    trabajo (corroborar=0): el loop no debe abortar."""
+    """A mention of *auth* in stdout is not enough if the iteration produced
+    work (corroborar=0): the loop must not abort."""
     err = tmp_path / "out.err"
     err.write_text("", encoding="utf-8")
     out = tmp_path / "out"
-    # '401' suelto en narrativa NO es patrón de alta confianza.
+    # A stray '401' in narrative is NOT a high-confidence pattern.
     out.write_text("el cliente dice '401' en narrativa\n" * 5, encoding="utf-8")
     assert not sin_autenticacion(str(err), str(out), 0)
     assert not sin_autenticacion(str(err), str(out), 1)
-    # Patrón REAL (HTTP 401) en stdout: con trabajo NO aborta, sin trabajo SÍ.
+    # REAL pattern (HTTP 401) in stdout: with work it does NOT abort, without work it DOES.
     out2 = tmp_path / "out2"
     out2.write_text("trabajo real\n" * 40 + "HTTP 401 Unauthorized\n",
                     encoding="utf-8")
     assert not sin_autenticacion(str(err), str(out2), 0)
     assert sin_autenticacion(str(err), str(out2), 1)
-    # stderr con patrón claro aborta siempre que corrobore.
+    # stderr with a clear pattern aborts whenever it corroborates.
     err2 = tmp_path / "out2.err"
     err2.write_text("Please run opencode auth login\n", encoding="utf-8")
     assert sin_autenticacion(str(err2), str(out2), 1)
@@ -168,7 +168,7 @@ def test_tokens_agotados_detecta_cuota(tmp_path):
     assert not tokens_agotados(str(out))
 
 
-# ------------------------------------------------------------------- costes
+# ------------------------------------------------------------------- costs
 
 
 def test_costo_por_modelo_distingue_tarifas():
@@ -272,8 +272,8 @@ def test_revisar_diff_fail_devuelve_feedback(tmp_path):
 
 
 def test_revisar_diff_sin_veredicto_como_fail(tmp_path):
-    """Salida sin VERDICT: el revisor no pudo evaluar → FAIL (no sin_auth
-    porque tampoco hay patrón de auth)."""
+    """Output without VERDICT: the reviewer could not evaluate → FAIL (not
+    sin_auth because there is no auth pattern either)."""
     bin_ = _revisor_falso(tmp_path, "no se que paso")
     cfg = _config(tmp_path, {"CLI_CLAUDE": str(bin_)})
     cfg.timeout_por_tarea = 30
@@ -283,7 +283,7 @@ def test_revisar_diff_sin_veredicto_como_fail(tmp_path):
 
 
 def test_revisar_diff_auth_sin_veredicto(tmp_path):
-    """Sin veredicto + patrón de auth → sin_auth (el loop aborta con 7)."""
+    """No verdict + auth pattern → sin_auth (the loop aborts with 7)."""
     bin_ = _revisor_falso(
         tmp_path, "Please run claude /login\nveremos")
     cfg = _config(tmp_path, {"CLI_CLAUDE": str(bin_)})
@@ -293,8 +293,8 @@ def test_revisar_diff_auth_sin_veredicto(tmp_path):
 
 
 def test_revisar_diff_auth_con_veredicto_es_falso_positivo(tmp_path):
-    """Con VERDICT presente la mención de auth es narrativa: cuenta como
-    pass (el revisor SÍ funcionó)."""
+    """With VERDICT present the auth mention is narrative: it counts as
+    pass (the reviewer DID work)."""
     bin_ = _revisor_falso(
         tmp_path, 'texto dice "401" pero reviso\nVERDICT: PASS')
     cfg = _config(tmp_path, {"CLI_CLAUDE": str(bin_)})
@@ -304,7 +304,7 @@ def test_revisar_diff_auth_con_veredicto_es_falso_positivo(tmp_path):
 
 
 def test_revisar_diff_incluye_contexto_del_proyecto(tmp_path):
-    """El revisor recibe CONTEXTO.md para juzgar con el marco del proyecto."""
+    """The reviewer receives CONTEXTO.md to judge with the project's frame."""
     bin_ = tmp_path / "bin" / "claude"
     bin_.parent.mkdir(parents=True, exist_ok=True)
     bin_.write_text(

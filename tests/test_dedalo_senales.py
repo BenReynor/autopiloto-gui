@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Tests de las señales de dedalo.sh: "Detener" tiene que parar el loop.
+"""Tests for dedalo.sh signals: "Detener" has to stop the loop.
 
-Regresión de `trap limpiar_sesiones EXIT TERM INT`, que tenía tres fallos:
+Regression of `trap limpiar_sesiones EXIT TERM INT`, which had three failures:
 
-  1. Un trap no detiene un script. Bash ejecuta el handler y sigue con el bucle,
-     así que la GUI tenía que esperar 5 s y recurrir a SIGKILL.
-  2. Con EXIT y TERM/INT en la misma línea, la limpieza se ejecutaba DOS veces
-     por una sola señal (una en el trap de la señal y otra al salir).
-  3. El que más cuesta: con el agente en PRIMER PLANO, bash aplaza el handler
-     del trap hasta que el hijo termina, porque así funciona un shell no
-     interactivo. Traducido: "Detener" no hacía nada mientras opencode siguiera
-     trabajando, que es justo cuando más urge parar.
+  1. A trap does not stop a script. Bash runs the handler and continues with the
+     loop, so the GUI had to wait 5 s and resort to SIGKILL.
+  2. With EXIT and TERM/INT on the same line, cleanup ran TWICE for a single
+     signal (one in the signal's trap and another on exit).
+  3. The costliest one: with the agent in the FOREGROUND, bash postpones the trap
+     handler until the child finishes, because that is how a non-interactive
+     shell works. Translated: "Detener" did nothing while opencode kept
+     working, which is exactly when stopping is most urgent.
 
-Estos tests scaffoldean un proyecto git real, un agente falso y mandan SIGTERM
-de verdad, midiendo que el script termine pronto y que no queden nietos vivos.
+These tests scaffold a real git project and a fake agent and send a real SIGTERM,
+measuring that the script finishes soon and that no grandchildren remain alive.
 """
 
 import os
@@ -34,8 +34,8 @@ PLANTILLAS = RAIZ / "dedalo" / "plantillas_data"
 TMPDIR = Path(os.environ.get("TMPDIR", "/tmp"))
 
 pytestmark = pytest.mark.skipif(
-    # En Windows el módulo no tiene os.killpg/os.getpgid y los procesos no
-    # tienen grupo POSIX: aunque exista Git Bash, esta suite no es válida.
+    # On Windows the module has no os.killpg/os.getpgid and processes have no
+    # POSIX group: even if Git Bash exists, this suite is not valid.
     shutil.which("bash") is None or os.name == "nt",
     reason="bash no disponible o sin semántica POSIX de señales")
 
@@ -46,16 +46,16 @@ def _git(*args, cwd):
 
 
 def _script_que_registra_y_espera(destino):
-    """Escribe su PID en `destino` y se queda esperando indefinidamente."""
+    """Writes its PID to `destino` and waits indefinitely."""
     return f'echo "$$" >> {destino}\nexec sleep 600\n'
 
 
 def _agente_falso(dir_bin, rapido=False):
-    """Agente falso. `rapido` lo hace salir con 0 en vez de quedarse colgado.
+    """Fake agent. `rapido` makes it exit with 0 instead of hanging.
 
-    Tiene que saber responder a `session list` / `session delete`, porque
-    dedalo.sh las invoca en `limpiar_sesiones` al salir. Si no, el test
-    cuelga en la limpieza y parece que el SIGTERM no funciona.
+    It has to know how to respond to `session list` / `session delete`, because
+    dedalo.sh invokes them in `limpiar_sesiones` on exit. Otherwise the test
+    hangs during cleanup and it looks like SIGTERM does not work.
     """
     dir_bin.mkdir(parents=True, exist_ok=True)
     if rapido:
@@ -77,16 +77,16 @@ def _agente_falso(dir_bin, rapido=False):
 
 
 def _escenario(tmp_path, agente_rapido=False):
-    """Proyecto con el framework copiado, un plan de una tarea y agente falso."""
+    """Project with the framework copied, a one-task plan and a fake agent."""
     proyecto = tmp_path / "proyecto"
     proyecto.mkdir()
     _git("init", "-q", "-b", "master", cwd=proyecto)
     (proyecto / "plan.md").write_text(
         "# PLAN\n\n- [ ] #1 hacer algo\n      criterio: algo existe\n",
         encoding="utf-8")
-    # El .gitignore es parte de la instalación real (plantillas.asegurar_gitignore):
-    # excluye gate_checks/ y el resto del framework. Sin él, `ruff check .` del
-    # gate lintearía los .py del port y el baseline abortaría.
+    # The .gitignore is part of the real installation (plantillas.asegurar_gitignore):
+    # it excludes gate_checks/ and the rest of the framework. Without it, the gate's
+    # `ruff check .` would lint the port's .py files and the baseline would abort.
     for nombre in ("dedalo.sh", "gate.sh", "mapear.sh", "plan.md",
                    "lecciones.md", ".gitignore"):
         origen = PLANTILLAS / nombre
@@ -98,16 +98,16 @@ def _escenario(tmp_path, agente_rapido=False):
 
     dir_bin = tmp_path / "bin"
     _agente_falso(dir_bin, rapido=agente_rapido)
-    # El ICMP de los runners de GitHub está bloqueado (y `ping` existe, así
-    # que el fallback curl de hay_internet no entra): sin estos stubs estos
-    # tests dependerían de la red REAL y abortarían con "sin internet".
+    # GitHub runners' ICMP is blocked (and `ping` exists, so
+    # hay_internet's curl fallback does not kick in): without these stubs these
+    # tests would depend on the REAL network and abort with "sin internet".
     _stub_red(dir_bin, "ping")
     _stub_red(dir_bin, "curl")
     return proyecto, dir_bin
 
 
 def _stub_red(dir_bin, nombre):
-    """ping/curl falsos para que `hay_internet` no dependa de la red real."""
+    """Fake ping/curl so `hay_internet` does not depend on the real network."""
     stub = dir_bin / nombre
     stub.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     stub.chmod(0o755)
@@ -125,20 +125,20 @@ def _entorno(dir_bin):
         "MAX_COSTO": "0",
         "VOZ": "0",
         "CLI_OPENCODE": str(dir_bin / "opencode"),
-        # Sin fijar el agente, la autodeteccion puede elegir claude segun
-        # el PATH y el test no miraria al binario falso.
+        # Without pinning the agent, auto-detection may choose claude based on
+        # the PATH and the test would not look at the fake binary.
         "AGENTE_TAREA": "opencode",
         "DEDALO_GATE_CONSENT": "1",
     }
 
 
 def _arrancar(proyecto, env, marca):
-    """Arranca dedalo.sh y espera a que aparezca el fichero `marca`."""
+    """Starts dedalo.sh and waits for the `marca` file to appear."""
     proc = subprocess.Popen(
         ["bash", "dedalo.sh", "plan.md"], cwd=str(proyecto), env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-        # Sesión propia: así el SIGTERM llega al script y a toda su familia sin
-        # tocar al pytest, que comparte grupo de procesos con este test.
+        # Own session: this way SIGTERM reaches the script and its whole family without
+        # touching pytest, which shares a process group with this test.
         start_new_session=True,
     )
     limite = time.time() + 90
@@ -150,7 +150,7 @@ def _arrancar(proyecto, env, marca):
 
 
 def _parar(proc, sig=signal.SIGTERM, timeout=25):
-    """Manda la señal al grupo entero y espera la salida."""
+    """Sends the signal to the whole group and waits for the exit."""
     t0 = time.time()
     os.killpg(os.getpgid(proc.pid), sig)
     try:
@@ -171,14 +171,14 @@ def _vivos(pids):
 
 
 def test_sigterm_para_el_loop_y_no_deja_nietos(tmp_path):
-    """SIGTERM con el agente trabajando: sale en 143 y nadie sigue con vida."""
+    """SIGTERM with the agent working: it exits in 143 and no one stays alive."""
     proyecto, dir_bin = _escenario(tmp_path)
     env = _entorno(dir_bin)
     pids_txt = dir_bin / "pids.txt"
 
     proc = _arrancar(proyecto, env, pids_txt)
     assert pids_txt.exists(), "el agente nunca llegó a lanzarse"
-    time.sleep(1.0)  # que se quede ya dentro del sleep
+    time.sleep(1.0)  # so it is already inside the sleep
 
     rc, salida, elapsed = _parar(proc, signal.SIGTERM)
 
@@ -195,7 +195,7 @@ def test_sigterm_para_el_loop_y_no_deja_nietos(tmp_path):
 
 
 def test_sigint_sale_con_130(tmp_path):
-    """SIGINT usa el código convencional 130, no 143."""
+    """SIGINT uses the conventional code 130, not 143."""
     proyecto, dir_bin = _escenario(tmp_path)
     env = _entorno(dir_bin)
     pids_txt = dir_bin / "pids.txt"
@@ -210,7 +210,7 @@ def test_sigint_sale_con_130(tmp_path):
 
 
 def test_una_sola_limpieza_por_senal(tmp_path):
-    """El handler corre una vez: el log no puede repetir la limpieza."""
+    """The handler runs once: the log cannot repeat the cleanup."""
     proyecto, dir_bin = _escenario(tmp_path)
     env = _entorno(dir_bin)
     pids_txt = dir_bin / "pids.txt"
@@ -224,8 +224,8 @@ def test_una_sola_limpieza_por_senal(tmp_path):
 
     log = proyecto / "progreso.log"
     texto = log.read_text(errors="replace") if log.exists() else ""
-    # Con el bug anterior salían dos limpiezas: una por el trap de la señal y
-    # otra por el EXIT que venía detrás.
+    # With the previous bug two cleanups appeared: one from the signal's trap and
+    # another from the EXIT that came after.
     limpiezas = texto.count("Sesiones opencode eliminadas")
     assert limpiezas <= 1, (
         f"la limpieza se ejecutó {limpiezas} veces para una sola señal:\n"
@@ -233,7 +233,7 @@ def test_una_sola_limpieza_por_senal(tmp_path):
 
 
 def test_no_quedan_ficheros_de_pid(tmp_path):
-    """Ni por señal ni por salida normal debe quedar el fichero de PID."""
+    """Neither by signal nor by normal exit should the PID file be left behind."""
     previos = set(TMPDIR.glob("dedalo_hijo.*.pid"))
 
     proyecto, dir_bin = _escenario(tmp_path)
@@ -251,17 +251,17 @@ def test_no_quedan_ficheros_de_pid(tmp_path):
 
 
 def test_gate_interruptible_no_deja_huerfanos(tmp_path):
-    """El gate también es un árbol de procesos que hay que cerrar.
+    """The gate is also a process tree that has to be closed.
 
-    El gate se ejecuta como lado izquierdo de un pipe, o sea en un subshell, así
-    que su PID no llega al padre: por eso _matar_hijo lo busca también en un
-    fichero. Aquí el agente termina bien y el gate se queda colgado, que es el
-    caso real: el gate lanza los tests del proyecto, que pueden tardar minutos.
+    The gate runs as the left side of a pipe, that is, in a subshell, so
+    its PID does not reach the parent: that is why _matar_hijo also looks for it in a
+    file. Here the agent finishes fine and the gate hangs, which is the
+    real case: the gate launches the project's tests, which can take minutes.
     """
     proyecto, dir_bin = _escenario(tmp_path, agente_rapido=True)
 
-    # Gate lento. Se sustituye ANTES de arrancar para que gate_intacto lo acepte
-    # (compara contra la copia que el script hace al arrancar).
+    # Slow gate. It is replaced BEFORE starting so gate_intacto accepts it
+    # (it compares against the copy the script makes at startup).
     pids_gate = tmp_path / "gate_pids.txt"
     (proyecto / "gate.sh").write_text(
         "#!/usr/bin/env bash\n"

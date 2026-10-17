@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests para proceso.py - Trabajo (ejecución en segundo plano) y Proceso (QProcess)."""
+"""Tests for proceso.py - Trabajo (background execution) and Proceso (QProcess)."""
 
 import os
 import sys
@@ -13,7 +13,7 @@ from dedalo.proceso import Proceso, Trabajo  # noqa: E402
 
 
 def _ejecutar(worker, timeout_ms=3000):
-    """Arranca el worker y espera su resultado (hilo de UI)."""
+    """Starts the worker and waits for its result (UI thread)."""
     loop = QEventLoop()
     capturado = []
 
@@ -46,8 +46,8 @@ def test_trabajo_excepcion_emite_none(app):
 
 
 def test_proceso_erroroccurred_failedtostart_llama_on_fin(app):
-    """Si QProcess no puede arrancar (dir inexistente), errorOccurred(FailedToStart)
-    debe invocar on_fin para no dejar la UI bloqueada."""
+    """If QProcess cannot start (nonexistent dir), errorOccurred(FailedToStart)
+    must invoke on_fin so the UI is not left blocked."""
     from dedalo.paneles import PanelTarea
 
     panel = PanelTarea()
@@ -56,7 +56,7 @@ def test_proceso_erroroccurred_failedtostart_llama_on_fin(app):
     def on_fin():
         llamado.append(True)
 
-    # Directorio que no existe → FailedToStart
+    # Nonexistent directory → FailedToStart
     with tempfile.TemporaryDirectory() as tmp:
         dir_inexistente = os.path.join(tmp, "no_existe")
 
@@ -64,7 +64,7 @@ def test_proceso_erroroccurred_failedtostart_llama_on_fin(app):
         p.setWorkingDirectory(dir_inexistente)
         p.start("bash", ["-c", "echo hola"])
 
-        # Dar tiempo a que Qt procese el error
+        # Give Qt time to process the error
         from PySide6.QtCore import QEventLoop, QTimer
         loop = QEventLoop()
         QTimer.singleShot(500, loop.quit)

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import configuracion as cfg
+from .i18n import t
 from .metricas import parsear_log
 from .paneles import _BtnGhost, _fuente_monospace, _fuente_ui, _LabelMuted
 from .temas import ACCENTO_CABINA, DATOS_ERROR, DATOS_EXITO
@@ -40,15 +41,16 @@ class PanelMetricas(QWidget):
 
         # Header
         h = QHBoxLayout()
-        lbl = QLabel("📊 Métricas del Loop")
+        lbl = QLabel(t("📊 Loop Metrics"))
         _fuente_ui(lbl)
         lbl.setStyleSheet("font-size: 16px; font-weight: 600;")
         h.addWidget(lbl)
         h.addStretch()
-        self.lbl_estado = _LabelMuted("Sin proyecto")
+        self.lbl_estado = _LabelMuted(t("No project"))
         h.addWidget(self.lbl_estado)
         self.cmb_rango = QComboBox()
-        self.cmb_rango.addItems(["Últimas 50 iter", "Últimas 100 iter", "Todo el histórico"])
+        self.cmb_rango.addItems([
+            t("Last 50 iters"), t("Last 100 iters"), t("Full history")])
         self.cmb_rango.currentTextChanged.connect(self._actualizar)
         h.addWidget(self.cmb_rango)
         v.addLayout(h)
@@ -56,10 +58,10 @@ class PanelMetricas(QWidget):
         # Quick summary (4 KPIs)
         kpi = QHBoxLayout()
         kpi.setSpacing(12)
-        self.kpi_total = self._crear_kpi("Total", "0")
-        self.kpi_hechas = self._crear_kpi("Hechas", "0", DATOS_EXITO)
-        self.kpi_bloqueadas = self._crear_kpi("Bloqueadas", "0", DATOS_ERROR)
-        self.kpi_coste = self._crear_kpi("Coste USD", "$0.00", ACCENTO_CABINA)
+        self.kpi_total = self._crear_kpi(t("Total"), "0")
+        self.kpi_hechas = self._crear_kpi(t("Done"), "0", DATOS_EXITO)
+        self.kpi_bloqueadas = self._crear_kpi(t("Blocked"), "0", DATOS_ERROR)
+        self.kpi_coste = self._crear_kpi(t("Cost USD"), "$0.00", ACCENTO_CABINA)
         kpi.addWidget(self.kpi_total)
         kpi.addWidget(self.kpi_hechas)
         kpi.addWidget(self.kpi_bloqueadas)
@@ -78,17 +80,17 @@ class PanelMetricas(QWidget):
         g.setContentsMargins(0, 0, 0, 0)
 
         # 1. Tasks/hour (timeline)
-        self.plot_tareas = self._crear_plot("Tareas completadas / iteración")
+        self.plot_tareas = self._crear_plot(t("Tasks completed / iteration"))
         self.curve_tareas = self.plot_tareas.plot(pen=mkPen(DATOS_EXITO, width=2), symbol='o', symbolSize=6, symbolBrush=mkBrush(DATOS_EXITO))
         g.addWidget(self.plot_tareas, 0, 0)
 
         # 2. Accumulated cost (amber, cockpit accent)
-        self.plot_coste = self._crear_plot("Coste acumulado (USD)")
+        self.plot_coste = self._crear_plot(t("Accumulated cost (USD)"))
         self.curve_coste = self.plot_coste.plot(pen=mkPen(ACCENTO_CABINA, width=2), symbol='o', symbolSize=6, symbolBrush=mkBrush(ACCENTO_CABINA))
         g.addWidget(self.plot_coste, 0, 1)
 
         # 3. Gate: OK vs FAIL (stacked bars)
-        self.plot_gate = self._crear_plot("Gate: OK / FAIL")
+        self.plot_gate = self._crear_plot(t("Gate: OK / FAIL"))
         self.bar_gate_ok = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush(DATOS_EXITO))
         self.bar_gate_fail = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush(DATOS_ERROR))
         self.plot_gate.addItem(self.bar_gate_ok)
@@ -96,7 +98,7 @@ class PanelMetricas(QWidget):
         g.addWidget(self.plot_gate, 1, 0)
 
         # 4. Reviewer: PASS vs FAIL
-        self.plot_rev = self._crear_plot("Revisor: PASS / FAIL")
+        self.plot_rev = self._crear_plot(t("Reviewer: PASS / FAIL"))
         self.bar_rev_pass = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush(DATOS_EXITO))
         self.bar_rev_fail = pg.BarGraphItem(x=[], height=[], width=0.6, brush=mkBrush(DATOS_ERROR))
         self.plot_rev.addItem(self.bar_rev_pass)
@@ -108,7 +110,10 @@ class PanelMetricas(QWidget):
         # ---- Summary table ----
         self.tabla = QTableWidget()
         self.tabla.setColumnCount(12)
-        self.tabla.setHorizontalHeaderLabels(["Iter", "Tarea", "Duración", "Coste Est.", "Coste Real", "Tokens In", "Tokens Out", "Latencia", "Modelo", "Gate", "Revisor", "Estado"])
+        self.tabla.setHorizontalHeaderLabels([
+            t("Iter"), t("Task"), t("Duration"), t("Est. Cost"), t("Real Cost"),
+            t("Tokens In"), t("Tokens Out"), t("Latency"), t("Model"),
+            t("Gate"), t("Reviewer"), t("Status")])
         self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         _fuente_monospace(self.tabla)
@@ -122,9 +127,9 @@ class PanelMetricas(QWidget):
 
         # Buttons
         h = QHBoxLayout()
-        b_refresh = _BtnGhost("🔄 Actualizar ahora")
+        b_refresh = _BtnGhost(t("🔄 Refresh now"))
         b_refresh.clicked.connect(self._actualizar)
-        b_export = _BtnGhost("📥 Exportar CSV")
+        b_export = _BtnGhost(t("📥 Export CSV"))
         b_export.clicked.connect(self._exportar_csv)
         h.addStretch()
         h.addWidget(b_refresh)
@@ -151,7 +156,7 @@ class PanelMetricas(QWidget):
     def _crear_plot(self, titulo: str) -> PlotWidget:
         pw = PlotWidget(title=titulo)
         pw.setLabel('left', '')
-        pw.setLabel('bottom', 'Iteración')
+        pw.setLabel('bottom', t("Iteration"))
         pw.showGrid(x=True, y=True, alpha=0.3)
         text_pen = pg.mkPen('#64748b')  # slate-500
         pw.getPlotItem().getAxis('bottom').setTextPen(text_pen)
@@ -181,7 +186,8 @@ class PanelMetricas(QWidget):
         self.kpi_hechas.lbl_valor.setText(str(resumen["hechas"]))
         self.kpi_bloqueadas.lbl_valor.setText(str(resumen["bloqueadas"]))
         self.kpi_coste.lbl_valor.setText(f"${resumen['coste_total']:.2f}")
-        self.lbl_estado.setText(f"Última actualización: {len(iters)} iteraciones")
+        self.lbl_estado.setText(
+            t("Last update: {n} iterations", n=len(iters)))
 
         # Range
         rango_txt = self.cmb_rango.currentText()
@@ -215,7 +221,7 @@ class PanelMetricas(QWidget):
         self.bar_rev_pass.setOpts(x=x, height=rev_pass)
         self.bar_rev_fail.setOpts(x=[xi + 0.3 for xi in x], height=rev_fail)
 
-        # Tabla
+        # Table
         self.tabla.setRowCount(len(iters))
         for row, it in enumerate(iters):
             vals = [
@@ -246,7 +252,8 @@ class PanelMetricas(QWidget):
         if not self._ruta_proyecto:
             return
         from PySide6.QtWidgets import QFileDialog
-        ruta, _ = QFileDialog.getSaveFileName(self, "Exportar métricas CSV", "metricas.csv", "CSV (*.csv)")
+        ruta, _ = QFileDialog.getSaveFileName(
+            self, t("Export metrics CSV"), "metricas.csv", "CSV (*.csv)")
         if not ruta:
             return
         import csv
@@ -254,7 +261,10 @@ class PanelMetricas(QWidget):
         datos = parsear_log(log)
         with open(ruta, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(["Iter", "Tarea", "Duración (s)", "Coste Est. (USD)", "Coste Real (USD)", "Tokens In", "Tokens Out", "Latencia (ms)", "Modelo", "Gate", "Revisor", "Estado"])
+            w.writerow([t("Iter"), t("Task"), t("Duration (s)"),
+                        t("Est. Cost (USD)"), t("Real Cost (USD)"),
+                        t("Tokens In"), t("Tokens Out"), t("Latency (ms)"),
+                        t("Model"), t("Gate"), t("Reviewer"), t("Status")])
             for it in datos["iteraciones"]:
                 w.writerow([
                     it["iter"], it["tarea"],

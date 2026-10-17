@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Tests del orquestador portable gate.py (port de gate.sh).
+"""Tests for the portable orchestrator gate.py (port of gate.sh).
 
-Espejo de tests/test_gate.py, pero para el motor Python: NO depende de bash,
-así que también corre en Windows. Donde importa el camino sin Git Bash se
-fuerza la rama .py pasando `bash=""` (cadena vacía = "no hay bash"; `None`
-significa autodetectar).
+Mirror of tests/test_gate.py, but for the Python engine: it does NOT depend on
+bash, so it also runs on Windows. Where the path without Git Bash matters, the
+.py branch is forced by passing `bash=""` (empty string = "no bash"; `None`
+means autodetect).
 
-Contrato verificado (el mismo que consume loop.py):
-  · un check que falla -> rc != 0 y NUNCA "[GATE] ✅ TODO OK";
-  · un check que revienta -> rc != 0 (no un verde falso);
-  · todos OK -> rc 0 + "[GATE] ✅ TODO OK";
-  · sin checks o sin gate_checks/ -> rc 0 con aviso;
-  · con bash se prefiere el .sh; sin bash se usa el .py.
+Verified contract (the same one loop.py consumes):
+  · a check that fails -> rc != 0 and NEVER "[GATE] ✅ TODO OK";
+  · a check that blows up -> rc != 0 (not a false green);
+  · all OK -> rc 0 + "[GATE] ✅ TODO OK";
+  · no checks or no gate_checks/ -> rc 0 with a warning;
+  · with bash the .sh is preferred; without bash the .py is used.
 """
 
 import os
@@ -54,7 +54,7 @@ def test_gate_pasa_si_todos_los_checks_pasan(tmp_path, capsys):
 
 
 def test_gate_check_que_revienta_no_da_verde(tmp_path, capsys):
-    """Un check con excepción debe dar rc != 0, no un verde falso silencioso."""
+    """A check with an exception must give rc != 0, not a silent false green."""
     proyecto = _escenario(tmp_path, {"01_boom.py": CHECK_REVIENTA})
     rc = gate.correr(str(proyecto), bash="")
     salida = capsys.readouterr().out
@@ -63,7 +63,7 @@ def test_gate_check_que_revienta_no_da_verde(tmp_path, capsys):
 
 
 def test_gate_separa_un_check_que_falla_de_uno_que_pasa(tmp_path, capsys):
-    """El fallo temprano no se oculta tras el check posterior que pasa."""
+    """An early failure is not hidden behind a later check that passes."""
     proyecto = _escenario(tmp_path, {"01_falla.py": CHECK_FALLA,
                                      "02_ok.py": CHECK_OK})
     rc = gate.correr(str(proyecto), bash="")
@@ -100,23 +100,23 @@ def test_gate_check_sin_run_se_omite_avisando(tmp_path, capsys):
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="sin bash")
 def test_prefiere_sh_con_bash_y_py_sin_bash(tmp_path, capsys):
-    """Con bash gana el check .sh; sin bash se usa el .py del mismo prefijo."""
+    """With bash the .sh check wins; without bash the .py with the same prefix is used."""
     proyecto = _escenario(tmp_path, {"01_x.py": CHECK_FALLA})
     (proyecto / "gate_checks" / "01_x.sh").write_text(
         'ok "sh gana"\n', encoding="utf-8")
-    # Con bash -> corre el .sh (verde aunque el .py fallaría).
+    # With bash -> the .sh runs (green even though the .py would fail).
     assert gate.correr(str(proyecto), bash=shutil.which("bash")) == 0
     capsys.readouterr()
-    # Sin bash -> corre el .py (rojo).
+    # Without bash -> the .py runs (red).
     assert gate.correr(str(proyecto), bash="") != 0
 
 
 def test_env_django_define_db_check_por_defecto(tmp_path):
-    """Backend Django (manage.py): DB_CHECK toma el pg_isready de _env.sh.
+    """Django backend (manage.py): DB_CHECK takes the pg_isready from _env.sh.
 
-    Regresión: la rama Django llamaba a `_db_por_defecto`, que no existía, y
-    reventaba con NameError. Solo se activa con manage.py, por eso no la cubría
-    ningún test hasta ahora."""
+    Regression: the Django branch called `_db_por_defecto`, which did not
+    exist, and blew up with NameError. It only activates with manage.py, which
+    is why no test covered it until now."""
     from dedalo import gate_env
     proyecto = tmp_path / "p"
     (proyecto / "Backend").mkdir(parents=True)
@@ -145,7 +145,7 @@ def test_es_local_detecta_hosts_locales():
 
 
 def test_credenciales_dev_solo_para_localhost(tmp_path):
-    """admin/admin123 es un andamio de desarrollo: NUNCA a un host remoto."""
+    """admin/admin123 is a development scaffold: NEVER to a remote host."""
     from dedalo import gate_env
     proyecto = _proyecto_django(tmp_path)
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Tests del timeout de la revisión manual de dedalo.sh.
+"""Tests for the manual review timeout in dedalo.sh.
 
-Extrae `esperar_revision_manual` de la plantilla y la ejecuta con stubs de
-red/sleep para verificar: aprobación (rc=0), timeout (rc=2) y caída de red
-(rc=4). En todos los casos el estado `waiting`/`decision` debe quedar limpio.
+Extracts `esperar_revision_manual` from the template and runs it with
+network/sleep stubs to verify: approval (rc=0), timeout (rc=2), and network
+outage (rc=4). In every case the `waiting`/`decision` state must be left clean.
 """
 
 import os
@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _extraer_funcion(texto, nombre):
-    """Devuelve el texto de `nombre() { ... }` usando balance de llaves."""
+    """Returns the text of `nombre() { ... }` using brace balancing."""
     inicio = texto.index(f"{nombre}() {{")
     i = texto.index("{", inicio)
     profundidad = 0

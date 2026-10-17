@@ -1,7 +1,7 @@
-"""Métricas: parseo de progreso.log + metrics.jsonl → series temporales para gráficas.
+"""Metrics: parsing of progreso.log + metrics.jsonl → time series for charts.
 
-Extrae de cada iteración: tarea, estado, duración, coste, gate, revisor.
-Añade métricas reales (tokens, latencia, coste real) desde metrics.jsonl.
+Extracts from each iteration: task, state, duration, cost, gate, reviewer.
+Adds real metrics (tokens, latency, real cost) from metrics.jsonl.
 """
 
 import json
@@ -10,30 +10,30 @@ import re
 from datetime import datetime
 from typing import Any
 
-# Formato timestamp en log: [YYYY-MM-DD HH:MM:SS]
+# Timestamp format in log: [YYYY-MM-DD HH:MM:SS]
 TIMESTAMP_RE = r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]"
 
-# Formato real del script: [TS] == Iteración N: TAREA (rama dedalo/.../tN) ==
-# La rama puede ser dedalo/FECHA/tN (legado) o dedalo/tareas/FECHA/tN.
-# Y el script añade " | criterio: <texto>" cuando la tarea del plan.md lo trae
-# (obligatorio según la plantilla). Ese sufijo es opcional aquí: sin él, el
-# regex exigía ") ==" justo tras la rama, NO casaba con ninguna iteración
-# normal y el panel perdía el total, las hechas y el coste.
+# Real script format: [TS] == Iteración N: TAREA (rama dedalo/.../tN) ==
+# The branch may be dedalo/FECHA/tN (legacy) or dedalo/tareas/FECHA/tN.
+# And the script appends " | criterio: <texto>" when the plan.md task brings it
+# (required by the template). That suffix is optional here: without it, the
+# regex required ") ==" right after the branch, did NOT match any normal
+# iteration and the panel lost the total, the done count and the cost.
 LINEA_ITER_NUEVO = re.compile(
     TIMESTAMP_RE
     + r" == Iteración (\d+): (.+?) \(rama dedalo/(?:tareas/)?\d{4}-\d{2}-\d{2}/t(\d+)\)"
     + r"(?: \| criterio:.*?)? =="
 )
-# Formato alternativo tolerado: [TS] [N/MAX] TAREA -> dedalo/.../tN
+# Tolerated alternative format: [TS] [N/MAX] TAREA -> dedalo/.../tN
 LINEA_ITER_LEGACY = re.compile(
     TIMESTAMP_RE + r" \[(\d+)/(\d+)\] (.+?) -> dedalo/(?:tareas/)?\d{4}-\d{2}-\d{2}/t(\d+)"
 )
-# Líneas de cierre de iteración tras el timestamp (commit / completada / BLOQUEADA)
+# Iteration closing lines after the timestamp (commit / completada / BLOQUEADA)
 LINEA_ESTADO = re.compile(TIMESTAMP_RE + r"\s*(?:✔|✗)?\s*(.+)")
 LINEA_COSTE = re.compile(
     TIMESTAMP_RE + r" (?:Costo estimado acumulado:|💰 Costo estimado acumulado:)\s*([\d.,]+)\s*USD"
 )
-# Coste exacto por iteración (log idéntico a la variable COSTO_ITER_ACTUAL del script)
+# Exact cost per iteration (log identical to the script's COSTO_ITER_ACTUAL variable)
 LINEA_COSTE_ITER = re.compile(
     TIMESTAMP_RE + r" Costo iteración (\d+):\s*([\d.,]+)\s*USD"
 )
@@ -43,7 +43,7 @@ LINEA_FIN = re.compile(
 
 
 def _diff_seg(fecha_ini: str, fecha_fin: str) -> int:
-    """Segundos entre dos timestamps `YYYY-MM-DD HH:MM:SS` (0 si no parsean)."""
+    """Seconds between two timestamps `YYYY-MM-DD HH:MM:SS` (0 if they do not parse)."""
     try:
         fmt = "%Y-%m-%d %H:%M:%S"
         a = datetime.strptime(fecha_ini, fmt)
@@ -54,7 +54,7 @@ def _diff_seg(fecha_ini: str, fecha_fin: str) -> int:
 
 
 def _inicio_iteracion(linea: str):
-    """Devuelve (fecha, numero, tarea) si la línea abre una iteración o None."""
+    """Returns (date, number, task) if the line opens an iteration, else None."""
     m = LINEA_ITER_NUEVO.search(linea)
     if m:
         return m.group(1), int(m.group(2)), m.group(3).strip()
@@ -64,14 +64,14 @@ def _inicio_iteracion(linea: str):
     return None
 
 
-# Caché de parseo por (tamaño, mtime_ns): el panel refresca cada 5 s y antes
-# reparseaba el log completo en cada tick (coste lineal con el tamaño del log).
-# El dict cacheado se comparte: los llamadores deben tratarlo como solo-lectura.
+# Parse cache by (size, mtime_ns): the panel refreshes every 5 s and used to
+# reparse the whole log on every tick (linear cost with log size).
+# The cached dict is shared: callers must treat it as read-only.
 _CACHE_LOG: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}
 
 
 def invalidar_cache_metricas(ruta_log: str | None = None) -> None:
-    """Invalida la caché de parseo (todo, o solo `ruta_log`)."""
+    """Invalidates the parse cache (everything, or only `ruta_log`)."""
     if ruta_log is None:
         _CACHE_LOG.clear()
     else:
@@ -79,11 +79,11 @@ def invalidar_cache_metricas(ruta_log: str | None = None) -> None:
 
 
 def parsear_log(ruta_log: str) -> dict[str, Any]:
-    """Parsea progreso.log y devuelve series temporales y tabla.
+    """Parses progreso.log and returns time series and table.
 
-    Resultado cacheado por (tamaño, mtime): si el fichero no cambió desde la
-    última llamada, devuelve el dict ya parseado sin releerlo. El dict devuelto
-    se comparte con la caché: trátalo como solo-lectura.
+    Result cached by (size, mtime): if the file has not changed since the
+    last call, returns the already-parsed dict without re-reading it. The returned
+    dict is shared with the cache: treat it as read-only.
     """
     try:
         st = os.stat(ruta_log)
@@ -99,14 +99,14 @@ def parsear_log(ruta_log: str) -> dict[str, Any]:
 
 
 def _parsear_log(ruta_log: str) -> dict[str, Any]:
-    """Parsea progreso.log desde cero (sin caché). Ver `parsear_log`.
+    """Parses progreso.log from scratch (no cache). See `parsear_log`.
 
     Returns:
         {
-            "iteraciones": [...],           # lista de dicts por iteración
+            "iteraciones": [...],           # list of dicts per iteration
             "series": {
-                "tareas_hora": [(timestamp, acumuladas)],
-                "coste_acum": [(timestamp, coste)],
+                "tareas_hora": [(timestamp, accumulated)],
+                "coste_acum": [(timestamp, cost)],
                 "gate": [(timestamp, ok, fail)],
                 "revisor": [(timestamp, pass_, fail)],
             },
@@ -128,16 +128,16 @@ def _parsear_log(ruta_log: str) -> dict[str, Any]:
 
     iteraciones = []
     iter_actual = None
-    ultima_completada = None  # Para asignar coste después de completar
+    ultima_completada = None  # To assign cost after completing
     coste_acum = 0.0
-    coste_por_iter: dict[int, float] = {}  # Coste exacto por iteración (nuevo formato)
+    coste_por_iter: dict[int, float] = {}  # Exact cost per iteration (new format)
     gate_ok = gate_fail = 0
     rev_pass = rev_fail = 0
 
     for linea in lineas:
         linea = linea.rstrip("\n")
 
-        # Inicio de iteración
+        # Start of iteration
         m = _inicio_iteracion(linea)
         if m:
             if iter_actual:
@@ -155,7 +155,7 @@ def _parsear_log(ruta_log: str) -> dict[str, Any]:
             }
             continue
 
-        # Estado final de tarea (commit o bloqueada)
+        # Final task state (commit or blocked)
         m = LINEA_ESTADO.search(linea)
         if m and iter_actual:
             fecha, resto = m.groups()
@@ -171,11 +171,11 @@ def _parsear_log(ruta_log: str) -> dict[str, Any]:
                     iter_actual["estado"] = "bloqueada"
                 iter_actual["duracion_s"] = _diff_seg(iter_actual["timestamp"], fecha)
                 iteraciones.append(iter_actual)
-                ultima_completada = iter_actual  # Guardar para asignar coste posterior
+                ultima_completada = iter_actual  # Save to assign cost later
                 iter_actual = None
                 continue
 
-        # Coste exacto por iteración (asignar a su iteración abierta)
+        # Exact cost per iteration (assign to its open iteration)
         m = LINEA_COSTE_ITER.search(linea)
         if m:
             num = int(m.group(2))
@@ -185,8 +185,8 @@ def _parsear_log(ruta_log: str) -> dict[str, Any]:
                 iter_actual["coste_usd"] = costo
             continue
 
-        # Coste acumulado - asignar a la última completada (solo formato legado,
-        # cuando no hay coste exacto por iteración que lo sobreescriba)
+        # Accumulated cost - assign to the last completed one (legacy format only,
+        # when there is no exact per-iteration cost to override it)
         m = LINEA_COSTE.search(linea)
         if m:
             coste_acum = float(m.group(2).replace(",", "."))
@@ -218,11 +218,11 @@ def _parsear_log(ruta_log: str) -> dict[str, Any]:
             if iter_actual:
                 iter_actual["revisor"] = "fail"
 
-    # Última iteración si quedó abierta
+    # Last iteration if it was left open
     if iter_actual:
         iteraciones.append(iter_actual)
 
-    # Construir series temporales
+    # Build time series
     tareas_hora = []
     coste_series = []
     gate_series = []
@@ -236,8 +236,8 @@ def _parsear_log(ruta_log: str) -> dict[str, Any]:
         if it["estado"] == "hecha":
             hechas_acum += 1
         tareas_hora.append((ts, hechas_acum))
-        # Si hay coste exacto por iteración, acumular en serie; si no, usar el
-        # valor asignado (formato legado ya acumulado).
+        # If there is an exact per-iteration cost, accumulate it into the series; if not, use the
+        # assigned value (legacy format already accumulated).
         if it["iter"] in coste_por_iter:
             coste_acumulado += coste_por_iter[it["iter"]]
             coste_por_iter_total = coste_acumulado
@@ -254,10 +254,10 @@ def _parsear_log(ruta_log: str) -> dict[str, Any]:
     bloqueadas = sum(1 for it in iteraciones if it["estado"] == "bloqueada")
     total = len(iteraciones)
 
-    # Enriquecer con métricas reales (tokens, latencia, coste real, modelo) desde metrics.jsonl
+    # Enrich with real metrics (tokens, latency, real cost, model) from metrics.jsonl
     iteraciones = _enriquecer_con_metricas_reales(iteraciones, os.path.dirname(ruta_log))
 
-    # Recalcular coste_total usando coste real si está disponible
+    # Recalculate coste_total using the real cost if available
     coste_total_real = sum(it.get("costo_real_usd", 0.0) for it in iteraciones)
     coste_total = coste_total_real if coste_total_real > 0 else (coste_por_iter_total if coste_por_iter else coste_acum)
 
@@ -275,13 +275,13 @@ def _parsear_log(ruta_log: str) -> dict[str, Any]:
             "bloqueadas": bloqueadas,
             "pendientes": max(0, total - hechas - bloqueadas),
             "coste_total": coste_total,
-            "duracion_min": 0.0,  # Se calcula en UI si hay timestamps
+            "duracion_min": 0.0,  # Computed in the UI if there are timestamps
         },
     }
 
 
 def _leer_metrics_jsonl(ruta_proyecto: str) -> list[dict]:
-    """Lee metrics.jsonl y devuelve lista de dicts con métricas reales por llamada a agente."""
+    """Reads metrics.jsonl and returns a list of dicts with real metrics per agent call."""
     ruta = os.path.join(ruta_proyecto, "metrics.jsonl")
     if not os.path.isfile(ruta):
         return []
@@ -302,11 +302,11 @@ def _leer_metrics_jsonl(ruta_proyecto: str) -> list[dict]:
 
 
 def _enriquecer_con_metricas_reales(iteraciones: list[dict], ruta_proyecto: str) -> list[dict]:
-    """Añade tokens, latencia, coste real, modelo a cada iteración desde metrics.jsonl."""
+    """Adds tokens, latency, real cost and model to each iteration from metrics.jsonl."""
     metricas = _leer_metrics_jsonl(ruta_proyecto)
     if not metricas:
         return iteraciones
-    # Agrupar métricas por iteración
+    # Group metrics by iteration
     by_iter: dict[int, list[dict]] = {}
     for m in metricas:
         it = m.get("iter")
@@ -319,7 +319,7 @@ def _enriquecer_con_metricas_reales(iteraciones: list[dict], ruta_proyecto: str)
         metricas_it = by_iter.get(num, [])
         if not metricas_it:
             continue
-        # Sumar tokens y coste real de todas las llamadas de esa iteración
+        # Sum tokens and real cost of all the calls in that iteration
         tokens_in = sum(m.get("tokens_in", 0) for m in metricas_it)
         tokens_out = sum(m.get("tokens_out", 0) for m in metricas_it)
         costo_real = sum(m.get("costo_usd", 0.0) for m in metricas_it)
@@ -334,7 +334,7 @@ def _enriquecer_con_metricas_reales(iteraciones: list[dict], ruta_proyecto: str)
         it["duracion_s"] = round(dur_ms / 1000, 1)
         it["modelos"] = ", ".join(modelos) if modelos else ""
         it["agentes"] = ", ".join(agentes) if agentes else ""
-        # Preferir coste real si existe
+        # Prefer real cost if it exists
         if costo_real > 0:
             it["costo_usd_real"] = round(costo_real, 4)
     return iteraciones

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests para loop_util.py - utilidades base del loop nativo."""
+"""Tests for loop_util.py - base utilities of the native loop."""
 
 import os
 import sys
@@ -76,7 +76,7 @@ def test_d2_redondea_dos_decimales():
 def test_suma_coste_dos_decimales():
     assert suma_coste("10.00", "2.345") == "12.35"
     assert suma_coste("0.50", "0.50") == "1.00"
-    assert suma_coste("", "1.00") == "1.00"  # actual vacío = 0
+    assert suma_coste("", "1.00") == "1.00"  # empty current = 0
 
 
 def test_incidencia_jsonl():

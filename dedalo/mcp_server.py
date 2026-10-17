@@ -126,7 +126,7 @@ def _cola(texto, lineas):
 
 
 def _leer_jsonl(ruta):
-    """Lista de dicts de un .jsonl; ignora líneas corruptas o vacías."""
+    """List of dicts from a .jsonl; ignores corrupt or empty lines."""
     if not os.path.isfile(ruta):
         return []
     datos = []
@@ -192,7 +192,7 @@ def _vivo(pid):
 
 
 def _matar_pid(pid, espera=5):
-    """TERM→KILL al grupo del proceso `pid` (lanzado con start_new_session)."""
+    """TERM→KILL for the process group of `pid` (started with start_new_session)."""
     if os.name != "nt":
         import signal
         try:
@@ -217,7 +217,7 @@ def _matar_pid(pid, espera=5):
 
 
 def _estado_loop(nombre):
-    """Dict con el estado del loop del proyecto: corriendo, pid, revisión pendiente."""
+    """Dict with the project's loop state: running, pid, pending review."""
     proc = _LOOPS.get(nombre)
     pid = proc.pid if proc and proc.poll() is None else _pids().get(nombre)
     if pid and not _vivo(pid):
@@ -243,11 +243,11 @@ def _estado_loop(nombre):
 
 
 # ---------------------------------------------------------------------------
-# Herramientas de LECTURA
+# READ tools
 # ---------------------------------------------------------------------------
 
 def listar_proyectos() -> str:
-    """Lista los proyectos registrados: nombre, ruta y si la ruta existe."""
+    """Lists the registered projects: name, path and whether the path exists."""
     reg = proyectos.cargar()
     return json.dumps([
         {"nombre": n, "ruta": d.get("ruta", ""), "existe": os.path.isdir(d.get("ruta", ""))}
@@ -256,7 +256,7 @@ def listar_proyectos() -> str:
 
 
 def estado_proyecto(nombre: str) -> str:
-    """Resumen de un proyecto: plan, lecciones, contexto y estado del loop."""
+    """Summary of a project: plan, lessons, context and loop state."""
     ruta = _ruta_de(nombre)
     from .plan import Plan as _Plan
     p = _Plan(os.path.join(ruta, "plan.md"))
@@ -278,9 +278,9 @@ def estado_proyecto(nombre: str) -> str:
 
 
 def leer_fichero(nombre: str, fichero: str) -> str:
-    """Devuelve el contenido de un fichero permitido del proyecto.
+    """Returns the content of an allowed project file.
 
-    `fichero` debe estar en la lista blanca (plan.md, lecciones.md,
+    `fichero` must be in the whitelist (plan.md, lecciones.md,
     CONTEXTO.md, progreso.log, metrics.jsonl, incidencias.jsonl, mapeo.txt).
     """
     if fichero not in FICHEROS_RECURSO:
@@ -298,7 +298,7 @@ def _leer_fichero(nombre, fichero):
 
 
 def leer_incidencias(nombre: str, limite: int = 50) -> str:
-    """Últimas incidencias estructuradas (incidencias.jsonl) del proyecto."""
+    """Latest structured incidents (incidencias.jsonl) of the project."""
     datos = _leer_incidencias(nombre, limite)
     return json.dumps(datos, ensure_ascii=False, indent=2)
 
@@ -312,7 +312,7 @@ def _leer_incidencias(nombre, limite):
 
 
 def resumen_metricas(nombre: str) -> str:
-    """Resumen de métricas del proyecto (progreso.log + metrics.jsonl)."""
+    """Project metrics summary (progreso.log + metrics.jsonl)."""
     from .metricas import parsear_log as _parsear
     ruta = os.path.join(_ruta_de(nombre), "progreso.log")
     datos = _parsear(ruta)
@@ -323,7 +323,7 @@ def resumen_metricas(nombre: str) -> str:
 
 
 def cola_log(nombre: str, lineas: int = 60) -> str:
-    """Últimas `lineas` líneas de progreso.log."""
+    """Last `lineas` lines of progreso.log."""
     ruta = os.path.join(_ruta_de(nombre), "progreso.log")
     if not os.path.isfile(ruta):
         return ""
@@ -331,12 +331,12 @@ def cola_log(nombre: str, lineas: int = 60) -> str:
 
 
 def estado_agentes() -> str:
-    """Estado de cada agente CLI: instalado, ruta y si tiene sesión."""
+    """State of each CLI agent: installed, path and whether it has a session."""
     return json.dumps(modelos.estado_agentes(), ensure_ascii=False, indent=2)
 
 
 def listar_modelos() -> str:
-    """Modelos conocidos (catálogo opencode) con el sugerido primero."""
+    """Known models (opencode catalog) with the suggested one first."""
     return json.dumps({
         "sugerido": modelos.sugerido(modelos.lista_modelos()),
         "modelos": modelos.lista_modelos(),
@@ -344,11 +344,11 @@ def listar_modelos() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Herramientas de ACCIÓN
+# ACTION tools
 # ---------------------------------------------------------------------------
 
 def instalar_proyecto(ruta: str, nombre: str = "") -> str:
-    """Instala las plantillas en `ruta`, inicializa git y registra el proyecto."""
+    """Installs the templates in `ruta`, initializes git and registers the project."""
     ruta = os.path.abspath(os.path.expanduser(ruta))
     os.makedirs(ruta, exist_ok=True)
     creados = plantillas.instalar(ruta)
@@ -363,7 +363,7 @@ def instalar_proyecto(ruta: str, nombre: str = "") -> str:
 
 
 def correr_gate(nombre: str, timeout_s: int = 1800) -> str:
-    """Ejecuta el gate del proyecto (bloqueante, con timeout) y devuelve su salida."""
+    """Runs the project gate (blocking, with timeout) and returns its output."""
     ruta = _ruta_de(nombre)
     programa, argv = argv_gate(getattr(sys, "frozen", False), ruta, ruta)
     env = dict(os.environ)
@@ -385,7 +385,7 @@ def correr_gate(nombre: str, timeout_s: int = 1800) -> str:
 
 
 def iniciar_loop(nombre: str) -> str:
-    """Lanza el loop en segundo plano para el proyecto (devuelve el pid)."""
+    """Launches the loop in the background for the project (returns the pid)."""
     _ruta_de(nombre)
     if _estado_loop(nombre)["corriendo"]:
         return json.dumps({"iniciado": False, "motivo": "ya está corriendo",
@@ -417,12 +417,12 @@ def iniciar_loop(nombre: str) -> str:
 
 
 def estado_loop(nombre: str) -> str:
-    """Estado del loop: corriendo, pid, revisión manual pendiente y su tarea."""
+    """Loop state: running, pid, pending manual review and its task."""
     return json.dumps(_estado_loop(nombre), ensure_ascii=False, indent=2)
 
 
 def detener_loop(nombre: str, espera_s: int = 5) -> str:
-    """Detiene el loop del proyecto (TERM→KILL a todo su grupo de procesos)."""
+    """Stops the project loop (TERM→KILL for its whole process group)."""
     estado = _estado_loop(nombre)
     if not estado["pid"]:
         return json.dumps({"nombre": nombre, "detenido": False,
@@ -439,16 +439,16 @@ def detener_loop(nombre: str, espera_s: int = 5) -> str:
 
 
 def resolver_revision(nombre: str, decision: str, motivo: str = "") -> str:
-    """Resuelve la revisión manual pendiente escribiendo `.dedalo_review/decision`.
+    """Resolves the pending manual review by writing `.dedalo_review/decision`.
 
-    `decision`: "APPROVE" (aceptar el diff) o "REJECT" (rechazar; usa `motivo`).
-    Es lo que permite a un agente piloto ocupar el asiento del humano cuando el
-    loop pausa esperando aprobación.
+    `decision`: "APPROVE" (accept the diff) or "REJECT" (reject; uses `motivo`).
+    It is what lets a pilot agent take the human's seat when the
+    loop pauses awaiting approval.
 
-    El fichero lleva una marca `# origen=mcp` para que el loop pueda auditar
-    quién decidió y aplicar la política `REVISION_APRUEBA_AGENTE`: por defecto
-    (0) el loop IGNORA un APPROVE emitido por un agente y sigue esperando a una
-    persona. Con `REVISION_APRUEBA_AGENTE=1` el agente puede aprobar.
+    The file carries a `# origen=mcp` marker so the loop can audit
+    who decided and apply the `REVISION_APRUEBA_AGENTE` policy: by default
+    (0) the loop IGNORES an APPROVE issued by an agent and keeps waiting for a
+    person. With `REVISION_APRUEBA_AGENTE=1` the agent may approve.
     """
     decision = decision.strip().upper()
     if decision not in ("APPROVE", "REJECT"):
@@ -458,7 +458,7 @@ def resolver_revision(nombre: str, decision: str, motivo: str = "") -> str:
     texto = ("APPROVE" if decision == "APPROVE"
              else "REJECT " + (motivo or "").strip()) + "\n# origen=mcp\n"
     destino = os.path.join(fondo, "decision")
-    # 0o600: la decisión es sensible y solo la lee el loop del mismo usuario.
+    # 0o600: the decision is sensitive and only the same user's loop reads it.
     fd = os.open(destino, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(texto)
@@ -467,38 +467,38 @@ def resolver_revision(nombre: str, decision: str, motivo: str = "") -> str:
 
 
 # ---------------------------------------------------------------------------
-# Recursos: dedalo://{nombre}/{fichero}
+# Resources: dedalo://{nombre}/{fichero}
 # ---------------------------------------------------------------------------
 
 def leer_contexto(nombre: str) -> str:
-    """Devuelve el contenido de `CONTEXTO.md` del proyecto (alias de leer_fichero)."""
+    """Returns the content of the project's `CONTEXTO.md` (alias of leer_fichero)."""
     return _leer_fichero(nombre, "CONTEXTO.md")
 
 
 def leer_plan(nombre: str) -> str:
-    """Devuelve el contenido de `plan.md` del proyecto."""
+    """Returns the content of the project's `plan.md`."""
     return _leer_fichero(nombre, "plan.md")
 
 
 def leer_lecciones(nombre: str) -> str:
-    """Devuelve el contenido de `lecciones.md` del proyecto."""
+    """Returns the content of the project's `lecciones.md`."""
     return _leer_fichero(nombre, "lecciones.md")
 
 
 def leer_recurso(nombre: str, fichero: str) -> str:
-    """Contenido de un fichero permitido del proyecto (lectura por recurso)."""
+    """Content of an allowed project file (read via resource)."""
     if fichero not in FICHEROS_RECURSO:
         raise ValueError(f"fichero no permitido: {fichero!r}")
     return _leer_fichero(nombre, fichero)
 
 
 def manual() -> str:
-    """Manual de Dédalo: qué es el programa y cómo usarlo (recurso dedalo://manual)."""
+    """Dédalo manual: what the program is and how to use it (resource dedalo://manual)."""
     return MANUAL
 
 
 # ---------------------------------------------------------------------------
-# Registro
+# Registry
 # ---------------------------------------------------------------------------
 
 def _registrar(server):
@@ -524,7 +524,7 @@ _MCPSERVER = None
 
 
 def servidor():
-    """El MCPServer con las herramientas y recursos registrados (singleton)."""
+    """The MCPServer with the tools and resources registered (singleton)."""
     global _MCPSERVER
     if _MCPSERVER is None:
         from mcp.server.mcpserver import MCPServer
@@ -533,7 +533,7 @@ def servidor():
 
 
 def main():
-    """Arranca el servidor MCP por stdio."""
+    """Starts the MCP server over stdio."""
     servidor().run(transport="stdio")
 
 

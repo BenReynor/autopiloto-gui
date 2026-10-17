@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Tests de revertir() en dedalo.sh.
+"""Tests for revertir() in dedalo.sh.
 
-El bug que motivó este fichero: revertir() usaba comm -13 sobre snapshots que
-sólo listaban nombres (sin prefijo de estado), así que en una rama recién
-creada (BEFORE vacío) TODOS los cambios del agente (nuevos, modificados,
-borrados) aparecían como "nuevos" y se borraban con rm -rf. Además, los
-nombres con espacios llegaban entrecomillados de git status y rompían el
-checkout/rm.
+The bug that motivated this file: revertir() used comm -13 over snapshots that
+only listed names (without a state prefix), so on a freshly created branch
+(empty BEFORE) ALL of the agent's changes (new, modified, deleted) showed up
+as "new" and were deleted with rm -rf. Also, names with spaces arrived quoted
+from git status and broke the checkout/rm.
 
-La solución: revertir() ahora lee git status --porcelain directamente,
-distingue por tipo de cambio (?? nuevo, D borrado, M modificado) y actúa
-correctamente en cada caso.
+The fix: revertir() now reads git status --porcelain directly, distinguishes
+by change type (?? new, D deleted, M modified) and acts correctly in each
+case.
 """
 
 import os
@@ -33,7 +32,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _extraer_funcion(texto, nombre):
-    """Devuelve el texto de `nombre() { ... }` usando balance de llaves."""
+    """Returns the text of `nombre() { ... }` using brace balancing."""
     inicio = texto.index(f"{nombre}() {{")
     i = texto.index("{", inicio)
     profundidad = 0
@@ -63,14 +62,14 @@ def _repo(tmp_path):
     subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t",
                     "commit", "-qm", "base"],
                    cwd=d, check=True, env=env, timeout=30)
-    # Crear rama de tarea (simula lo que hace dedalo.sh)
+    # Create the task branch (simulates what dedalo.sh does)
     subprocess.run(["git", "checkout", "-q", "-b", "tarea", "master"],
                    cwd=d, check=True, env=env, timeout=30)
     return d, env
 
 
 def _revertir(repo, env):
-    """Ejecuta revertir() real contra el repo y devuelve su stdout."""
+    """Runs the real revertir() against the repo and returns its stdout."""
     texto = PLANTILLA.read_text(encoding="utf-8")
     func = repo.parent / "func.sh"
     func.write_text(_extraer_funcion(texto, "revertir"), encoding="utf-8")
@@ -85,9 +84,9 @@ def _revertir(repo, env):
 
 
 def test_revertir_restaura_fichero_borrado_por_el_agente(tmp_path):
-    """Si el agente borra un fichero tracked, revertir lo restaura."""
+    """If the agent deletes a tracked file, revertir restores it."""
     repo, env = _repo(tmp_path)
-    (repo / "app.py").unlink()  # agente lo borra
+    (repo / "app.py").unlink()  # the agent deletes it
 
     r = _revertir(repo, env)
     assert r.returncode == 0, r.stderr
@@ -96,7 +95,7 @@ def test_revertir_restaura_fichero_borrado_por_el_agente(tmp_path):
 
 
 def test_revertir_restaura_fichero_modificado_por_el_agente(tmp_path):
-    """Si el agente modifica un fichero tracked, revertir lo restaura al original."""
+    """If the agent modifies a tracked file, revertir restores it to the original."""
     repo, env = _repo(tmp_path)
     (repo / "test_app.py").write_text("def test_b(): assert False\n", encoding="utf-8")
 
@@ -106,7 +105,7 @@ def test_revertir_restaura_fichero_modificado_por_el_agente(tmp_path):
 
 
 def test_revertir_borra_ficheros_nuevos_creados_por_el_agente(tmp_path):
-    """Ficheros untracked creados por el agente se eliminan."""
+    """Untracked files created by the agent are removed."""
     repo, env = _repo(tmp_path)
     (repo / "nuevo.py").write_text("x = 1\n", encoding="utf-8")
     (repo / "otro.txt").write_text("basura\n", encoding="utf-8")
@@ -118,27 +117,27 @@ def test_revertir_borra_ficheros_nuevos_creados_por_el_agente(tmp_path):
 
 
 def test_revertir_maneja_nombres_con_espacios(tmp_path):
-    """Nombres con espacios en ficheros nuevos y modificados."""
+    """Names with spaces in new and modified files."""
     repo, env = _repo(tmp_path)
-    # Nuevo con espacio
+    # New with a space
     (repo / "nuevo archivo.py").write_text("# nuevo\n", encoding="utf-8")
-    # Modificado con espacio (el que ya existe en base)
+    # Modified with a space (the one already present in base)
     (repo / "mi modulo.py").write_text("x = 999\n", encoding="utf-8")
 
     r = _revertir(repo, env)
     assert r.returncode == 0, r.stderr
-    # El nuevo con espacio debe desaparecer
+    # The new one with a space must disappear
     assert not (repo / "nuevo archivo.py").exists()
-    # El modificado con espacio debe volver a su valor original
+    # The modified one with a space must return to its original value
     assert (repo / "mi modulo.py").read_text(encoding="utf-8") == "x=1\n"
 
 
 def test_revertir_no_toca_archivos_control(tmp_path):
-    """plan.md, progreso.log, etc. no se borran ni restauran."""
+    """plan.md, progreso.log, etc. are neither deleted nor restored."""
     repo, env = _repo(tmp_path)
     (repo / "plan.md").write_text("- [x] tarea\n", encoding="utf-8")
     (repo / "progreso.log").write_text("== Iteración 1 ==\n", encoding="utf-8")
-    # También crear un fichero nuevo normal para verificar que SÍ se borra
+    # Also create a normal new file to verify that it IS in fact deleted
     (repo / "real.py").write_text("real\n", encoding="utf-8")
 
     r = _revertir(repo, env)
@@ -149,12 +148,12 @@ def test_revertir_no_toca_archivos_control(tmp_path):
 
 
 def test_revertir_mezcla_todos_los_tipos(tmp_path):
-    """Escenario completo: borrado, modificado, nuevo, nuevo con espacio."""
+    """Full scenario: deleted, modified, new, new with a space."""
     repo, env = _repo(tmp_path)
-    (repo / "app.py").unlink()              # borrado
-    (repo / "test_app.py").write_text("modificado\n")  # modificado
-    (repo / "nuevo_normal.py").write_text("nuevo\n")   # nuevo
-    (repo / "nuevo con espacio.py").write_text("nuevo\n")  # nuevo con espacio
+    (repo / "app.py").unlink()              # deleted
+    (repo / "test_app.py").write_text("modificado\n")  # modified
+    (repo / "nuevo_normal.py").write_text("nuevo\n")   # new
+    (repo / "nuevo con espacio.py").write_text("nuevo\n")  # new with a space
 
     r = _revertir(repo, env)
     assert r.returncode == 0, r.stderr
@@ -162,7 +161,7 @@ def test_revertir_mezcla_todos_los_tipos(tmp_path):
     assert (repo / "test_app.py").read_text(encoding="utf-8") == "def test_a(): assert True\n"
     assert not (repo / "nuevo_normal.py").exists()
     assert not (repo / "nuevo con espacio.py").exists()
-    # Fichero original con espacio intacto
+    # Original file with a space left intact
     assert (repo / "mi modulo.py").read_text(encoding="utf-8") == "x=1\n"
 
 

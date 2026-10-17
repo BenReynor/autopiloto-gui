@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Tests del orquestador gate.sh.
+"""Tests for the gate.sh orchestrator.
 
-El bug que motivó este fichero: `gate.sh` usaba `fail()` y `ok()`, que sólo
-estaban definidas en `gate_checks/_env.sh`. Si un proyecto se copytaba sin
-`_env.sh` (uso "portable" documentado en dedalo.sh), un check que fallaba
-provocaba `fail: orden no encontrada` con rc=127, el bucle lo ignoraba porque
-no hay `set -e`, y el gate imprimía "✅ TODO OK" con rc=0. Como el rc del gate
-decide el merge en dedalo.sh, eso meteía código roto en master en silencio.
+The bug that motivated this file: `gate.sh` used `fail()` and `ok()`, which
+were only defined in `gate_checks/_env.sh`. If a project was copied without
+`_env.sh` (the "portable" use documented in dedalo.sh), a failing check
+produced `fail: command not found` with rc=127, the loop ignored it because
+there is no `set -e`, and the gate printed "✅ TODO OK" with rc=0. Since the
+gate's rc decides the merge in dedalo.sh, that silently slipped broken code
+into master.
 
-Aquí se ejercita el gate.sh real con checks stubs, con y sin `_env.sh`.
+Here the real gate.sh is exercised with stub checks, with and without `_env.sh`.
 """
 
 import os
@@ -32,7 +33,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _escenario(tmp_path, checks, con_env):
-    """Copia gate.sh a un temporal y crea gate_checks/ con los checks dados."""
+    """Copies gate.sh to a temp location and creates gate_checks/ with the given checks."""
     proyecto = tmp_path / "proyecto"
     proyecto.mkdir()
     shutil.copy2(GATE, proyecto / "gate.sh")
@@ -69,7 +70,7 @@ CHECK_OK = """\
 @pytest.mark.parametrize("con_env", [True, False],
                          ids=["con_env", "sin_env"])
 def test_gate_falla_si_algun_check_falla(tmp_path, con_env):
-    """Un check con exit 1 debe dar rc!=0 y nunca printing TODO OK."""
+    """A check with exit 1 must give rc!=0 and never print TODO OK."""
     proyecto = _escenario(tmp_path, {"01_falla.sh": CHECK_FALLA}, con_env)
     r = _correr(proyecto)
     assert r.returncode != 0, (
@@ -87,7 +88,7 @@ def test_gate_pasa_si_todos_los_checks_pasan(tmp_path, con_env):
 
 
 def test_gate_no_da_verde_por_faltar_env_sin_avisar(tmp_path):
-    """Sin _env.sh el gate debe seguir fallando, y decir por qué."""
+    """Without _env.sh the gate must still fail, and say why."""
     proyecto = _escenario(tmp_path, {"01_falla.sh": CHECK_FALLA}, con_env=False)
     r = _correr(proyecto)
     assert "orden no encontrada" not in r.stderr, (
@@ -96,7 +97,7 @@ def test_gate_no_da_verde_por_faltar_env_sin_avisar(tmp_path):
 
 
 def test_gate_separa_un_check_que_falla_de_uno_que_pasa(tmp_path):
-    """El fallo de un check temprano no debe ocultarse tras los posteriores."""
+    """The failure of an early check must not be hidden behind the later ones."""
     proyecto = _escenario(
         tmp_path,
         {"01_falla.sh": CHECK_FALLA, "02_ok.sh": CHECK_OK},
@@ -107,7 +108,7 @@ def test_gate_separa_un_check_que_falla_de_uno_que_pasa(tmp_path):
 
 
 def test_gate_sin_checks_no_falla(tmp_path):
-    """Sin checks no hay nada que verificar: el gate debe ser verde."""
+    """Without checks there is nothing to verify: the gate must be green."""
     proyecto = _escenario(tmp_path, {}, con_env=False)
     r = _correr(proyecto)
     assert r.returncode == 0, r.stdout + r.stderr

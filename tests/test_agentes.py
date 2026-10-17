@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Tests del soporte multiagente (opencode / codex / claude).
+"""Tests for multi-agent support (opencode / codex / claude).
 
-No se requiere ninguna suscripción: se crean CLIs falsos en un PATH temporal y
-se ejercitan las funciones reales de la plantilla (autodetección, flags de
-invocación, corte por falta de login y juez de criterio) más la detección de
-agentes instalados que usa la GUI.
+No subscription is required: fake CLIs are created in a temporary PATH and the
+real template functions are exercised (auto-detection, invocation flags, abort
+on missing login, and criteria judge) plus the detection of installed agents
+that the GUI uses.
 """
 
 import json
@@ -30,7 +30,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _extraer_funcion(texto, nombre):
-    """Devuelve el texto de `nombre() { ... }` usando balance de llaves."""
+    """Returns the text of `nombre() { ... }` using brace balancing."""
     inicio = texto.index(f"{nombre}() {{")
     i = texto.index("{", inicio)
     profundidad = 0
@@ -49,21 +49,21 @@ def _leer_plantilla():
         return f.read()
 
 
-# run_agente depende de ejecutar_esperando y de las variables AGENTE_PID/
-# PID_HIJO. Cualquier harness que lo extraiga debe incluir estas piezas, o
-# obtendrá "command not found" (rc=127) en vez del código de salida real.
+# run_agente depends on ejecutar_esperando and the AGENTE_PID/PID_HIJO
+# variables. Any harness that extracts it must include these pieces, or it
+# will get "command not found" (rc=127) instead of the real exit code.
 _PRELUPIO_RUN_AGENTE = (
     'AGENTE_PID=""\nPID_HIJO="${TMPDIR:-/tmp}/harness_agente.$$.pid"\n'
-    # run_agente envuelve al agente en _timeout (portable); sin ella en el
-    # harness, `"$@" &` daría 127 (command not found) y no se probaría el
-    # código real.
+    # run_agente wraps the agent in _timeout (portable); without it in the
+    # harness, `"$@" &` would give 127 (command not found) and the real
+    # code would not be tested.
     + _extraer_funcion(_leer_plantilla(), "_timeout") + "\n\n"
     + _extraer_funcion(_leer_plantilla(), "ejecutar_esperando") + "\n\n"
 )
 
 
 def _extraer_run_agente(texto, *extras):
-    """Bloque listo para `run_agente` con sus dependencias."""
+    """Block ready for `run_agente` with its dependencies."""
     partes = [_PRELUPIO_RUN_AGENTE]
     partes += [_extraer_funcion(texto, n) for n in extras]
     partes.append(_extraer_funcion(texto, "run_agente"))
@@ -71,7 +71,7 @@ def _extraer_run_agente(texto, *extras):
 
 
 def _valor_control():
-    """Saca el valor real de CONTROL= de la plantilla para no duplicarlo."""
+    """Pulls the real CONTROL= value from the template so it is not duplicated."""
     for linea in _leer_plantilla().splitlines():
         if linea.startswith("CONTROL="):
             return linea[len("CONTROL="):].strip().strip('"')
@@ -82,7 +82,7 @@ _CONTROL = _valor_control()
 
 
 def _cli_falso(directorio, nombre, cuerpo):
-    """Escribe un CLI ejecutable que registra sus argumentos y devuelve cuerpo."""
+    """Writes an executable CLI that logs its arguments and returns cuerpo."""
     ruta = os.path.join(directorio, nombre)
     with open(ruta, "w", encoding="utf-8") as f:
         f.write("#!/usr/bin/env bash\n"
@@ -93,10 +93,10 @@ def _cli_falso(directorio, nombre, cuerpo):
     return ruta
 
 
-# ---------- estado de sesión (login) ----------
+# ---------- session state (login) ----------
 
 def _monkey_cli(monkeypatch, modelos, tmp_path, disponibles, cuerpos):
-    """Fakea `which` y el contenido de cada CLI para sondear su sesión."""
+    """Fakes `which` and each CLI's content to probe its session."""
     d = str(tmp_path)
     for nombre in disponibles:
         _cli_falso(d, nombre, cuerpos[nombre])
@@ -123,8 +123,8 @@ def test_sesion_detecta_login_correcto(monkeypatch, tmp_path):
 
 
 def test_sesion_opencode_es_desconocida_sin_credenciales(monkeypatch, tmp_path):
-    """`opencode auth list` responde 0 siempre: 0 credenciales no es prueba de
-    que no sirva (los modelos free del catálogo no necesitan key)."""
+    """`opencode auth list` always returns 0: 0 credentials is not proof
+    that it does not work (the catalog's free models do not need a key)."""
     from dedalo import modelos
 
     _monkey_cli(monkeypatch, modelos, tmp_path, {"opencode"},
@@ -151,14 +151,14 @@ def test_sesion_se_cachea(monkeypatch, tmp_path):
     _monkey_cli(monkeypatch, modelos, tmp_path, {"claude"},
                 {"claude": 'echo "Not logged in"\n'})
     assert modelos.sesion_agente("claude") is False
-    # Segunda llamada: no vuelve a lanzar el CLI (quedaría cacheado False).
+    # Second call: it does not launch the CLI again (False would be cached).
     modelos.shutil.which = lambda n: (_ for _ in ()).throw(
         AssertionError("no debe volver a sondear"))
     assert modelos.sesion_agente("claude") is False
 
 
 def test_agentes_operativos_excluye_sin_login(monkeypatch, tmp_path):
-    """El agente sin sesión se detecta pero no se ofrece para trabajar."""
+    """The agent without a session is detected but not offered for work."""
     from dedalo import modelos
 
     _monkey_cli(monkeypatch, modelos, tmp_path, {"opencode", "claude"},
@@ -199,7 +199,7 @@ def test_estado_agentes_tecnifica(monkeypatch, tmp_path):
     assert por_nombre["claude"]["ruta"].endswith("claude")
 
 
-# ---------- detección de agentes instalados (Python / GUI) ----------
+# ---------- detection of installed agents (Python / GUI) ----------
 
 def test_agentes_instalados_respeta_preferencia(tmp_path):
     from dedalo import modelos
@@ -208,9 +208,9 @@ def test_agentes_instalados_respeta_preferencia(tmp_path):
     _cli_falso(d, "claude", "exit 0\n")
     _cli_falso(d, "codex", "exit 0\n")
 
-    # Sólo codex y claude existen: opencode NO debe ganar aunque sea el primero
-    # de la lista de preferencia. HOME aislado para que el fallback
-    # ~/.opencode/bin del equipo de pruebas no se cuele.
+    # Only codex and claude exist: opencode must NOT win even though it is first
+    # in the preference list. HOME isolated so the test machine's
+    # ~/.opencode/bin fallback does not leak in.
     monkey = pytest.MonkeyPatch()
     monkey.setattr(modelos.shutil, "which", lambda n: (
         os.path.join(d, n) if n in ("codex", "claude") else None))
@@ -239,7 +239,7 @@ def test_agentes_instalados_vacio_no_inventa(tmp_path):
 
 
 def test_ruta_binario_usa_fallback_dot_dir(tmp_path):
-    """Instalado en ~/.codex/bin/codex y fuera del PATH: debe resolverse."""
+    """Installed at ~/.codex/bin/codex and outside PATH: it must resolve."""
     from dedalo import modelos
 
     d = tmp_path / ".codex" / "bin"
@@ -258,10 +258,10 @@ def test_ruta_binario_usa_fallback_dot_dir(tmp_path):
         monkey.undo()
 
 
-# ---------- autodetección en bash ----------
+# ---------- auto-detection in bash ----------
 
 def _harness_deteccion(tmp_path, instalados):
-    """Ejecuta detectar_agente/elegir_revisor con un PATH controlado."""
+    """Runs detectar_agente/elegir_revisor with a controlled PATH."""
     d = tmp_path / "bin"
     d.mkdir(exist_ok=True)
     for nombre in ("opencode", "codex", "claude"):
@@ -302,7 +302,7 @@ def test_autodetecta_claude_si_es_el_unico(tmp_path):
     r = _harness_deteccion(tmp_path, {"claude"})
     assert r.returncode == 0, r.stderr
     assert "detectado=claude" in r.stdout
-    # "auto" = sin preferencia: con un solo agente, el revisor es ese mismo.
+    # "auto" = no preference: with a single agent, the reviewer is that same one.
     assert "revisor=claude" in r.stdout
 
 
@@ -335,15 +335,16 @@ def test_autodetecta_vacio_sin_agentes(tmp_path):
 
 
 def test_revisor_explicito_gana_a_otro_agente(tmp_path):
-    """La GUI resuelve 'auto' al detectado y lo envía explícito: si el usuario
-    (o la GUI) pidió opencode, el revisor es opencode aunque haya otro CLI."""
+    """The GUI resolves 'auto' to the detected one and sends it explicitly: if
+    the user (or the GUI) asked for opencode, the reviewer is opencode even if
+    another CLI exists."""
     r = _harness_deteccion(tmp_path, {"opencode", "claude"})
     assert "detectado=opencode" in r.stdout
     assert "revisor_mismo=opencode" in r.stdout
 
 
 def test_revisor_auto_prefiere_otro_agente(tmp_path):
-    """Sin preferencia explícita, busca ojos frescos (otro agente)."""
+    """Without an explicit preference, it looks for fresh eyes (another agent)."""
     d = tmp_path / "bin"
     d.mkdir(exist_ok=True)
     _cli_falso(str(d), "opencode", "exit 0\n")
@@ -367,18 +368,18 @@ def test_revisor_auto_prefiere_otro_agente(tmp_path):
 
 
 def test_revisor_auto_con_un_solo_agente_reusa_el_mismo(tmp_path):
-    """Si no hay un segundo CLI, revisa el mismo antes que dejar el gate vacío."""
+    """If there is no second CLI, it reviews the same one rather than leaving the gate empty."""
     r = _harness_deteccion(tmp_path, {"opencode"})
     assert "detectado=opencode" in r.stdout
     assert "revisor=opencode" in r.stdout
 
 
 def test_agente_ok_rechaza_la_etiqueta_decorativa_del_combo(tmp_path):
-    """La etiqueta "auto → opencode" es para el ojo; el env exige el valor.
+    """The "auto → opencode" label is for the eye; the env requires the value.
 
-    Si la GUI mandara la etiqueta, cli_agente cae en su rama *) y devuelve "",
-    por lo que agente_ok falla y dedalo.sh aborta con exit 2. Este test
-    fija esa frontera para que config() no vuelva a leer currentText().
+    If the GUI sent the label, cli_agente falls into its *) branch and returns
+    "", so agente_ok fails and dedalo.sh aborts with exit 2. This test
+    pins that boundary so config() does not read currentText() again.
     """
     d = tmp_path / "bin"
     d.mkdir(exist_ok=True)
@@ -401,7 +402,7 @@ def test_agente_ok_rechaza_la_etiqueta_decorativa_del_combo(tmp_path):
     assert "opencode OK" in r.stdout, r.stdout + r.stderr
 
 
-# ---------- invocación por CLI ----------
+# ---------- invocation per CLI ----------
 
 def _harness_run_agente(tmp_path, agent_stub_body, modelo="", metrica_real=True):
     texto = _leer_plantilla()
@@ -412,12 +413,12 @@ def _harness_run_agente(tmp_path, agent_stub_body, modelo="", metrica_real=True)
         _extraer_funcion(texto, "detectar_agente"),
         _extraer_funcion(texto, "cli_agente"),
         _extraer_funcion(texto, "agente_ok"),
-        # run_agente llama a ejecutar_esperando, que es la que pone al hijo en
-        # segundo plano para que un SIGTERM no espere a que termine. Sin ella
-        # aquí, el harness daría 127 (command not found) y los asserts de los
-        # tests pasarían a comprobar el error equivocado.
+        # run_agente calls ejecutar_esperando, which is what puts the child in
+        # the background so a SIGTERM does not wait for it to finish. Without it
+        # here, the harness would give 127 (command not found) and the test
+        # asserts would end up checking the wrong error.
         'AGENTE_PID=""\nPID_HIJO="${TMPDIR:-/tmp}/harness_agente.$$.pid"\n',
-        # run_agente envuelve al agente en _timeout (portable, ver _PRELUPIO).
+        # run_agente wraps the agent in _timeout (portable, see _PRELUPIO).
         _extraer_funcion(texto, "_timeout"),
         _extraer_funcion(texto, "ejecutar_esperando"),
         _extraer_funcion(texto, "run_agente"),
@@ -455,7 +456,7 @@ def test_codex_usa_exec_y_skip_git_repo_check(tmp_path):
     assert "exec" in args
     assert "--skip-git-repo-check" in args
     assert "TAREA DE PRUEBA" in args
-    # codex no recibe --model (no existe ese flag en `codex exec`).
+    # codex does not receive --model (that flag does not exist in `codex exec`).
     assert "--model" not in args
 
 
@@ -489,8 +490,8 @@ def test_claude_usa_modo_print_y_sin_modelo(tmp_path):
 
 
 def test_claude_no_recibe_argumento_vacio(tmp_path):
-    """Regresión: `${CLAUDE_FLAGS:-}` entrecomillado añadía un argumento vacío
-    y claude lo tomaba como el prompt, dejando el prompt real huérfano."""
+    """Regression: a quoted `${CLAUDE_FLAGS:-}` added an empty argument
+    and claude took it as the prompt, leaving the real prompt orphaned."""
     texto = _leer_plantilla()
     (tmp_path / "func.sh").write_text("\n\n".join([
         _extraer_funcion(texto, "cli_agente"),
@@ -499,7 +500,7 @@ def test_claude_no_recibe_argumento_vacio(tmp_path):
     ]), encoding="utf-8")
     d = tmp_path / "bin"
     d.mkdir(exist_ok=True)
-    # El stub falla si recibe un argumento vacío, como hace claude en realidad.
+    # The stub fails if it receives an empty argument, as claude actually does.
     _cli_falso(str(d), "claude",
                'for a in "$@"; do [ -n "$a" ] || exit 9; done\n'
                'echo "hecho"\n')
@@ -519,7 +520,7 @@ def test_claude_no_recibe_argumento_vacio(tmp_path):
 
 
 def test_codex_recibe_flags_sin_argumentos_vacios(tmp_path):
-    """CODEX_FLAGS con varios flags deben llegar troceados, sin huecos."""
+    """CODEX_FLAGS with several flags must arrive split up, with no gaps."""
     texto = _leer_plantilla()
     (tmp_path / "func.sh").write_text("\n\n".join([
         _extraer_funcion(texto, "cli_agente"),
@@ -548,7 +549,7 @@ def test_codex_recibe_flags_sin_argumentos_vacios(tmp_path):
     assert "-s danger-full-access" in args
 
 
-# ---------- autenticación ----------
+# ---------- authentication ----------
 
 @pytest.mark.parametrize("salida", [
     "Not logged in · Please run /login",
@@ -560,7 +561,7 @@ def test_codex_recibe_flags_sin_argumentos_vacios(tmp_path):
     "HTTP 401 Unauthorized",
 ])
 def test_sin_autenticacion_detecta_con_corroboracion(tmp_path, salida):
-    """Patrones de ALTA CONFIANZA que SÍ deben detectarse CON corroboración=1 (iteración sin trabajo)."""
+    """HIGH-CONFIDENCE patterns that SHOULD be detected WITH corroboration=1 (iteration without work)."""
     texto = _leer_plantilla()
     (tmp_path / "func.sh").write_text(
         _extraer_funcion(texto, "sin_autenticacion"), encoding="utf-8")
@@ -576,19 +577,19 @@ def test_sin_autenticacion_detecta_con_corroboracion(tmp_path, salida):
 
 
 def test_sin_autenticacion_no_falsa_positivo(tmp_path):
-    """Casos que NO deben disparar (falsos positivos históricos)."""
+    """Cases that must NOT trigger (historical false positives)."""
     texto = _leer_plantilla()
     (tmp_path / "func.sh").write_text(
         _extraer_funcion(texto, "sin_autenticacion"), encoding="utf-8")
     falsos = [
         "Tarea completada. 3 archivos modificados.",
-        "missing OPENAI_API_KEY en la configuración",  # mención narrativa
-        "run 'codex login' to authenticate",          # mención en log/revisor
-        "El error 401 apareció en el log",            # 401 suelto
-        "unauthorized branch switch",                 # unauthorized suelto
-        "Mi OPENAI_API_KEY es secreta",               # mención de API key
-        "La respuesta fue 401 pero reintentó",        # 401 en narrativa
-        "El log viejo tenía un 401 y una rama unauthorized",  # sueltos
+        "missing OPENAI_API_KEY en la configuración",  # narrative mention
+        "run 'codex login' to authenticate",          # mention in log/reviewer
+        "El error 401 apareció en el log",            # stray 401
+        "unauthorized branch switch",                 # stray unauthorized
+        "Mi OPENAI_API_KEY es secreta",               # API key mention
+        "La respuesta fue 401 pero reintentó",        # 401 in narrative
+        "El log viejo tenía un 401 y una rama unauthorized",  # stray ones
     ]
     for salida in falsos:
         f_out = tmp_path / "salida.txt"
@@ -603,8 +604,8 @@ def test_sin_autenticacion_no_falsa_positivo(tmp_path):
 
 
 def test_sin_autenticacion_exige_corroboracion_siempre(tmp_path):
-    """Sin el 3er argumento la detección NO puede dispararse: el argumento es
-    obligatorio y su ausencia equivale a 'sin corroborar'."""
+    """Without the 3rd argument detection CANNOT trigger: the argument is
+    mandatory and its absence is equivalent to 'without corroboration'."""
     texto = _leer_plantilla()
     (tmp_path / "func.sh").write_text(
         _extraer_funcion(texto, "sin_autenticacion"), encoding="utf-8")
@@ -617,10 +618,10 @@ def test_sin_autenticacion_exige_corroboracion_siempre(tmp_path):
     assert "rc=1" in r.stdout, r.stderr
 
 
-# ---------- corroboración: ¿hubo trabajo en la iteración? ----------
+# ---------- corroboration: was there work in the iteration? ----------
 
 def _harness_sin_trabajo(tmp_path, antes, despues):
-    """Ejecuta iteracion_sin_trabajo() con dos listas BEFORE/AFTER."""
+    """Runs iteracion_sin_trabajo() with two BEFORE/AFTER lists."""
     texto = _leer_plantilla()
     (tmp_path / "func.sh").write_text(
         _extraer_funcion(texto, "iteracion_sin_trabajo"), encoding="utf-8")
@@ -637,30 +638,30 @@ def _harness_sin_trabajo(tmp_path, antes, despues):
 
 
 @pytest.mark.parametrize("nombre,antes,despues,esperado", [
-    # Rama recién creada: árbol limpio, el agente no hizo nada.
+    # Freshly created branch: clean tree, the agent did nothing.
     ("sin_cambios", [], [], "r=sin_trabajo"),
-    # El loop escribe el log y las métricas en cada iteración: NO es trabajo.
+    # The loop writes the log and the metrics on every iteration: NOT work.
     ("solo_control", [], ["progreso.log", "metrics.jsonl", "plan.md"],
      "r=sin_trabajo"),
-    # Tracked ya presente en BEFORE que el agente Borra (desaparece del status).
+    # Tracked already present in BEFORE that the agent deletes (disappears from status).
     ("borrado_de_ya_modificado", ["app.py"], [], "r=con_trabajo"),
     ("tracked_modificado", [], ["app.py"], "r=con_trabajo"),
     ("tracked_borrado", [], ["viejo.py"], "r=con_trabajo"),
     ("untracked_nuevo", [], ["nuevo.py"], "r=con_trabajo"),
     ("control_y_trabajo", [], ["progreso.log", "app.py"], "r=con_trabajo"),
     ("cache_ignorado_por_snapshot", [], ["__pycache__/x.pyc"],
-     "r=con_trabajo"),  # snapshot() ya lo habría filtrado
+     "r=con_trabajo"),  # snapshot() would already have filtered it
 ])
 def test_iteracion_sin_trabajo(tmp_path, nombre, antes, despues, esperado):
-    """La corroboración de auth depende de esto: sólo los archivos CONTROL
-    (que escribe el propio loop) NO cuentan como trabajo del agente."""
+    """Auth corroboration depends on this: only CONTROL files
+    (which the loop itself writes) do NOT count as agent work."""
     r = _harness_sin_trabajo(tmp_path, antes, despues)
     assert r.returncode == 0, r.stderr
     assert esperado in r.stdout, f"{nombre}: {r.stdout}{r.stderr}"
 
 
 def _harness_auth(tmp_path, despues, salida, stderr):
-    """Sin_autenticacion() alimentado por iteracion_sin_trabajo() real."""
+    """Sin_autenticacion() fed by the real iteracion_sin_trabajo()."""
     texto = _leer_plantilla()
     (tmp_path / "func.sh").write_text(
         "\n\n".join([
@@ -683,8 +684,8 @@ def _harness_auth(tmp_path, despues, salida, stderr):
 
 
 def test_auth_no_aborta_si_la_iteracion_tubo_trabajo(tmp_path):
-    """Regresión: patrón de auth en la salida + cambios REALES del agente no
-    debe abortar (el log puede mencionar 401 al describir lo que corrigió)."""
+    """Regression: an auth pattern in the output + REAL agent changes must not
+    abort (the log may mention 401 while describing what it fixed)."""
     r = _harness_auth(
         tmp_path, ["app.py"],
         "Arreglado el manejo de 401 Unauthorized en el cliente.", "")
@@ -693,9 +694,9 @@ def test_auth_no_aborta_si_la_iteracion_tubo_trabajo(tmp_path):
 
 
 def test_auth_aborta_aunque_solo_cambiara_el_log(tmp_path):
-    """progreso.log/metrics SIEMPRE cambian, así que no pueden ser la prueba de
-    trabajo: si NO hay ningún otro cambio, la iteración cuenta como sin trabajo
-    y el patrón de auth (incluso en narrativa) confirma el fallo real."""
+    """progreso.log/metrics ALWAYS change, so they cannot be proof of work:
+    if there is NO other change, the iteration counts as without work
+    and the auth pattern (even in narrative) confirms the real failure."""
     r = _harness_auth(
         tmp_path, ["progreso.log", "metrics.jsonl"],
         "Found Authentication Error in the old log entry.",
@@ -705,14 +706,14 @@ def test_auth_aborta_aunque_solo_cambiara_el_log(tmp_path):
 
 
 def test_auth_aborta_si_la_iteracion_no_tubo_trabajo(tmp_path):
-    """El caso real: patrón de auth en stderr + árbol sin cambios → aborta."""
+    """The real case: auth pattern on stderr + unchanged tree → abort."""
     r = _harness_auth(
         tmp_path, ["progreso.log"], "Tarea completada.",
         "Error: not logged in. Please run /login")
     assert "rc=0" in r.stdout, f"no abortó sin trabajo: {r.stdout}{r.stderr}"
 
 
-# ---------- juez de criterio polivalente ----------
+# ---------- versatile criteria judge ----------
 
 def _harness_juez(tmp_path, cuerpo, veredicto, extra_env=None):
     d = tmp_path / "bin"
@@ -759,7 +760,7 @@ def test_juez_con_claude_rechaza_veredicto(tmp_path):
 
 
 def test_juez_omitido_si_falla_el_cli(tmp_path):
-    """El juez nunca bloquea: si el CLI falla, sale 0 con aviso."""
+    """The judge never blocks: if the CLI fails, it exits 0 with a warning."""
     r, _ = _harness_juez(tmp_path, "exit 3\n", None)
     assert r.returncode == 0, r.stdout
     assert "se omite" in r.stdout
@@ -774,7 +775,7 @@ def test_juez_auto_sigue_al_agente_de_tarea(tmp_path):
 
 
 def test_juez_envia_agente_que_evalua(tmp_path):
-    """El prompt del juez debe llegar al CLI con el criterio dentro."""
+    """The judge's prompt must reach the CLI with the criteria inside."""
     r, _ = _harness_juez(
         tmp_path,
         'printf "%s\\n" "$*" > "$REG_ARGS"\n'
@@ -786,7 +787,7 @@ def test_juez_envia_agente_que_evalua(tmp_path):
 
 
 def test_juez_sin_agentes_omitido(tmp_path):
-    """Sin ningún CLI disponible el juez se omite sin romper el gate."""
+    """With no CLI available the judge is skipped without breaking the gate."""
     d = tmp_path / "bin"
     d.mkdir(exist_ok=True)
     (tmp_path / "juez.sh").write_text(_leer_juez(), encoding="utf-8")
@@ -819,7 +820,7 @@ def test_configuracion_expone_agentes_conocidos():
 
 
 def test_json_de_metrice_es_una_linea(tmp_path):
-    """run_agente escribe metrics.jsonl con una línea JSON por llamada."""
+    """run_agente writes metrics.jsonl with one JSON line per call."""
     r = _harness_run_agente(tmp_path, 'echo "hecho"\n')
     assert r.returncode == 0, r.stderr
     metricas = tmp_path / "metrics.jsonl"

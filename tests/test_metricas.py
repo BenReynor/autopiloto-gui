@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests para metricas.py - parsing de progreso.log"""
+"""Tests for metricas.py - parsing of progreso.log"""
 
 import os
 import sys
@@ -22,7 +22,7 @@ SAMPLE_LOG = """[2025-01-15 10:00:00] [1/40] Tarea 1: arreglar login -> dedalo/2
 """
 
 def test_parsear_log_basico():
-    """Test parsing básico de log con tareas hechas y bloqueadas"""
+    """Test basic log parsing with done and blocked tasks"""
     with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
         f.write(SAMPLE_LOG)
         log_path = f.name
@@ -30,37 +30,37 @@ def test_parsear_log_basico():
     try:
         result = parsear_log(log_path)
 
-        # Verificar estructura
+        # Check structure
         assert "iteraciones" in result
         assert "series" in result
         assert "resumen" in result
 
-        # Verificar iteraciones parseadas
+        # Check parsed iterations
         iteraciones = result["iteraciones"]
         assert len(iteraciones) == 3
 
-        # Tarea 1 - hecha
+        # Task 1 - done
         assert iteraciones[0]["tarea"] == "Tarea 1: arreglar login"
         assert iteraciones[0]["estado"] == "hecha"
         assert iteraciones[0]["gate"] == "ok"
         assert iteraciones[0]["revisor"] == "pass"
 
-        # Tarea 2 - bloqueada
+        # Task 2 - blocked
         assert iteraciones[1]["tarea"] == "Tarea 2: validar email"
         assert iteraciones[1]["estado"] == "bloqueada"
 
-        # Tarea 3 - hecha
+        # Task 3 - done
         assert iteraciones[2]["tarea"] == "Tarea 3: tests unitarios"
         assert iteraciones[2]["estado"] == "hecha"
 
-        # Verificar resumen
+        # Check summary
         resumen = result["resumen"]
         assert resumen["total"] == 3
         assert resumen["hechas"] == 2
         assert resumen["bloqueadas"] == 1
         assert resumen["coste_total"] == 1.50
 
-        # Verificar series
+        # Check series
         series = result["series"]
         assert len(series["tareas_hora"]) == 3
         assert len(series["coste_acum"]) == 3
@@ -71,7 +71,7 @@ def test_parsear_log_basico():
 
 
 def test_parsear_log_vacio():
-    """Test con log vacío o inexistente"""
+    """Test with an empty or nonexistent log"""
     with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
         f.write("")
         log_path = f.name
@@ -86,7 +86,7 @@ def test_parsear_log_vacio():
 
 
 def test_parsear_log_solo_inicio():
-    """Test log solo con inicios de iteración (sin final)"""
+    """Test a log with only iteration starts (without end)"""
     log = """[2025-01-15 10:00:00] [1/40] Tarea 1 -> dedalo/2025-01-15/t1
 [2025-01-15 10:05:00] [2/40] Tarea 2 -> dedalo/2025-01-15/t2
 """
@@ -105,7 +105,7 @@ def test_parsear_log_solo_inicio():
 
 
 def test_series_temporales():
-    """Verificar que las series temporales se generan correctamente"""
+    """Check that the time series are generated correctly"""
     with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
         f.write(SAMPLE_LOG)
         log_path = f.name
@@ -114,11 +114,11 @@ def test_series_temporales():
         result = parsear_log(log_path)
         series = result["series"]
 
-        # tareas_hora acumulativo: 1, 1, 2 (la primera hecha, segunda bloqueada, tercera hecha)
+        # tareas_hora cumulative: 1, 1, 2 (the first done, the second blocked, the third done)
         tareas = [v for _, v in series["tareas_hora"]]
         assert tareas == [1, 1, 2]
 
-        # coste acumulativo
+        # cumulative cost
         costes = [v for _, v in series["coste_acum"]]
         assert costes == [0.5, 1.0, 1.5]
 
@@ -128,7 +128,7 @@ def test_series_temporales():
 
 
 def test_coste_con_coma_decimal():
-    """El log real (locale es_CO) escribe '0,50 USD' con coma decimal."""
+    """The real log (locale es_CO) writes '0,50 USD' with a decimal comma."""
     log = """[2025-01-15 10:00:00] [1/40] Tarea 1 -> dedalo/tareas/2025-01-15/t1
 [2025-01-15 10:02:00] ✔ commit: Tarea 1
 [2025-01-15 10:02:00] Costo estimado acumulado: 0,50 USD
@@ -142,7 +142,7 @@ def test_coste_con_coma_decimal():
 
     try:
         result = parsear_log(log_path)
-        # Formato nuevo de ramas tolerado: dedalo/tareas/FECHA/tN
+        # New branch format tolerated: dedalo/tareas/FECHA/tN
         assert len(result["iteraciones"]) == 2
         assert result["iteraciones"][0]["tarea"] == "Tarea 1"
         assert result["iteraciones"][0]["duracion_s"] == 120
@@ -155,8 +155,8 @@ def test_coste_con_coma_decimal():
 
 
 def test_coste_por_iteracion():
-    """Coste exacto por iteración: cada tarea suma su propio coste a la serie
-    acumulada (formato log_dedalo: 'Costo iteración N: X USD')."""
+    """Exact cost per iteration: each task adds its own cost to the accumulated
+    series (log format dedalo: 'Costo iteración N: X USD')."""
     log = """[2025-01-15 10:00:00] == Iteración 1: Tarea A (rama dedalo/tareas/2025-01-15/t1) ==
 [2025-01-15 10:02:00] Costo iteración 1: 1.00 USD
 [2025-01-15 10:02:00] ✔ commit: Tarea A
@@ -175,11 +175,11 @@ def test_coste_por_iteracion():
         result = parsear_log(log_path)
         iters = result["iteraciones"]
         assert [it["iter"] for it in iters] == [1, 2, 3]
-        # Coste exacto asignado a cada iteración (el acumulado ya no pisa)
+        # Exact cost assigned to each iteration (the accumulated one no longer overrides)
         assert iters[0]["coste_usd"] == 1.00
         assert iters[1]["coste_usd"] == 0.50
         assert iters[2]["coste_usd"] == 0.75
-        # Serie acumulada por iteración
+        # Accumulated series per iteration
         costes = [v for _, v in result["series"]["coste_acum"]]
         assert costes == [1.00, 1.50, 2.25]
         assert result["resumen"]["coste_total"] == 2.25
@@ -189,13 +189,13 @@ def test_coste_por_iteracion():
 
 
 def test_iteraciones_con_criterio_no_se_pierden():
-    """El sufijo " | criterio: ..." no debe esconder la iteración.
+    """The suffix " | criterio: ..." must not hide the iteration.
 
-    Este es el formato REAL que emite dedalo.sh:781 siempre que la tarea
-    del plan.md trae criterio, que la plantilla exige. El regex exigía ") =="
-    justo tras la rama, así que no casaba con ninguna iteración normal: la
-    iteración se quedaba abierta, las líneas de cierre se ignoraban y el
-    panel mostraba menos iteraciones de las que hubo (y coste 0).
+    This is the REAL format that dedalo.sh:781 emits whenever the task
+    in plan.md carries a criterio, which the template requires. The regex demanded ") =="
+    right after the branch, so it did not match any normal iteration: the
+    iteration stayed open, the closing lines were ignored and the
+    panel showed fewer iterations than there were (and cost 0).
     """
     log = """[2025-01-15 10:00:00] == Iteración 1: Tarea A (rama dedalo/tareas/2025-01-15/t1) | criterio: pytest test_a en verde ==
 [2025-01-15 10:02:00] Costo iteración 1: 1.00 USD
@@ -213,16 +213,16 @@ def test_iteraciones_con_criterio_no_se_pierden():
         iters = result["iteraciones"]
         assert [it["iter"] for it in iters] == [1, 2], (
             f"iteraciones perdidas: {[it['iter'] for it in iters]}")
-        # El criterio NO debe colarse en el nombre de la tarea
+        # The criterio must NOT slip into the task name
         assert iters[0]["tarea"] == "Tarea A", iters[0]["tarea"]
         assert iters[1]["tarea"] == "Tarea B", iters[1]["tarea"]
-        # Estados y contadores
+        # States and counters
         assert iters[0]["estado"] == "hecha", iters[0]["estado"]
         assert iters[1]["estado"] == "bloqueada", iters[1]["estado"]
         assert result["resumen"]["total"] == 2, result["resumen"]
         assert result["resumen"]["hechas"] == 1, result["resumen"]
         assert result["resumen"]["bloqueadas"] == 1, result["resumen"]
-        # Y el coste se contabiliza
+        # And the cost is accounted for
         assert iters[0]["coste_usd"] == 1.00
         assert result["resumen"]["coste_total"] == 1.50
         assert len(result["series"]["coste_acum"]) == 2
@@ -231,7 +231,7 @@ def test_iteraciones_con_criterio_no_se_pierden():
 
 
 def test_iteraciones_legadas_siguen_parseando():
-    """Sin criterio (formato antiguo) y con rama legacy: no se rompe nada."""
+    """Without criterio (old format) and with a legacy branch: nothing breaks."""
     log = """[2025-01-15 10:00:00] == Iteración 1: Sin criterio (rama dedalo/tareas/2025-01-15/t1) ==
 [2025-01-15 10:01:00] ✔ commit: Sin criterio
 [2025-01-15 10:05:00] == Iteración 2: Rama legacy (rama dedalo/2025-01-15/t2) ==
@@ -249,7 +249,7 @@ def test_iteraciones_legadas_siguen_parseando():
 
 
 def test_cache_no_reparsea_si_no_cambia():
-    """Dos llamadas seguidas sin tocar el fichero devuelven el mismo objeto."""
+    """Two consecutive calls without touching the file return the same object."""
     with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
         f.write(SAMPLE_LOG)
         log_path = f.name
@@ -263,7 +263,7 @@ def test_cache_no_reparsea_si_no_cambia():
 
 
 def test_cache_se_invalida_al_cambiar_el_log():
-    """Si el log crece, el parseo se rehace y ve las iteraciones nuevas."""
+    """If the log grows, the parsing is redone and it sees the new iterations."""
     with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
         f.write(SAMPLE_LOG)
         log_path = f.name
@@ -283,7 +283,7 @@ def test_cache_se_invalida_al_cambiar_el_log():
 
 
 def test_invalidar_cache_metricas_global():
-    """invalidar_cache_metricas() sin argumento vacía toda la caché."""
+    """invalidar_cache_metricas() with no argument empties the whole cache."""
     with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
         f.write(SAMPLE_LOG)
         log_path = f.name
@@ -299,7 +299,7 @@ def test_invalidar_cache_metricas_global():
 
 
 def test_cache_log_inexistente_no_se_guarda():
-    """Un log que no existe devuelve el vacío y no contamina la caché."""
+    """A log that does not exist returns the empty one and does not pollute the cache."""
     ruta = os.path.join(tempfile.gettempdir(), "no_existe_dedalo_metricas.log")
     if os.path.exists(ruta):
         os.unlink(ruta)

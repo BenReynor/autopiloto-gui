@@ -1,4 +1,4 @@
-"""Instalación de los scripts/plantillas necesarios en un proyecto."""
+"""Installation of the scripts/templates needed in a project."""
 
 import filecmp
 import os
@@ -11,22 +11,22 @@ SCRIPTS = ("dedalo.sh", "gate.sh", "mapear.sh")
 ARCHIVOS = SCRIPTS + ("plan.md", "lecciones.md", "CONTEXTO.md")
 GATE_CHECKS_DIR = "gate_checks"
 GATE_CHECKS = tuple(
-    # Nombres relativos SIEMPRE con "/": el listado de `instalar()` (que la GUI
-    # muestra y el test compara) no puede depender de la barra del SO.
+    # Relative names ALWAYS with "/": the listing from `instalar()` (which the GUI
+    # shows and the test compares) must not depend on the OS slash.
     os.path.relpath(os.path.join(ruta, f), PLANTILLA_DIR).replace("\\", "/")
     for ruta, _dirs, archivos in os.walk(os.path.join(PLANTILLA_DIR, GATE_CHECKS_DIR))
     for f in archivos
-    # Los .py son el port portable (se usan en Windows, sin bash); los .sh se
-    # prefieren en Unix. Ambos se copian siempre al proyecto.
+    # The .py files are the portable port (used on Windows, without bash); the .sh
+    # ones are preferred on Unix. Both are always copied into the project.
     if f.endswith((".sh", ".py"))
 )
 
 
 def quitar(ruta):
-    """Borra los archivos que la app instaló. Devuelve los eliminados.
+    """Deletes the files the app installed. Returns the deleted ones.
 
-    Solo toca dedalo.sh, gate.sh, mapear.sh, plan.md, lecciones.md,
-    CONTEXTO.md, progreso.log y gate_checks/: jamás el resto del proyecto.
+    Only touches dedalo.sh, gate.sh, mapear.sh, plan.md, lecciones.md,
+    CONTEXTO.md, progreso.log and gate_checks/: never the rest of the project.
     """
     eliminados = []
     log = os.path.join(ruta, "progreso.log")
@@ -48,15 +48,15 @@ def _es_repo_git(ruta):
 
 
 def inicializar_git(ruta):
-    """Inicializa un repo git si el proyecto no lo tiene.
+    """Initializes a git repo if the project does not have one.
 
-    El dedalo trabaja 100% con ramas/commits; sin repo aborta en el primer
-    `git checkout` (como pasó con Proyecto_nuevo). Esto:
-      1. `git init -b master` (rama base del script dedalo.sh).
-      2. Commit inicial de los archivos para que la rama exista.
+    Dedalo works 100% with branches/commits; without a repo it aborts on the first
+    `git checkout` (as happened with Proyecto_nuevo). This:
+      1. `git init -b master` (base branch of the dedalo.sh script).
+      2. Initial commit of the files so that the branch exists.
 
-    Devuelve un dict {repo: "creado"|"ya-existia"|"no-disponible", archivos: n}.
-    No disponible = git sin instalar o identidad sin configurar (no toca nada).
+    Returns a dict {repo: "creado"|"ya-existia"|"no-disponible", archivos: n}.
+    Not available = git not installed or identity not configured (touches nothing).
     """
     if _es_repo_git(ruta):
         return {"repo": "ya-existia", "archivos": 0}
@@ -70,16 +70,16 @@ def inicializar_git(ruta):
     try:
         subprocess.run(["git", "add", "-A"], cwd=ruta, capture_output=True,
                        text=True, timeout=30)
-        # --allow-empty: si el proyecto no tiene archivos propios (solo los del
-        # framework, que el .gitignore excluye), master queda con un commit
-        # vacío para que el dedalo pueda ramificar sobre él.
+        # --allow-empty: if the project has no files of its own (only the
+        # framework ones, which the .gitignore excludes), master is left with an empty
+        # commit so that dedalo can branch on top of it.
         cm = subprocess.run(["git", "commit", "-q", "--allow-empty", "-m",
                              "init: dedalo (plantillas instaladas)"],
                             cwd=ruta, capture_output=True, text=True,
                             timeout=60)
     except (OSError, subprocess.TimeoutExpired):
         return {"repo": "creado", "archivos": 0}
-    # El commit falla si no hay identidad git configurada o nada que commitear
+    # The commit fails if there is no git identity configured or nothing to commit
     return {"repo": "creado", "archivos": 0 if cm.returncode != 0 else _git_archivos(ruta)}
 
 
@@ -93,15 +93,15 @@ def _git_archivos(ruta):
 
 
 def _desactualizados(ruta):
-    """Scripts del framework que difieren entre plantilla y proyecto.
+    """Framework scripts that differ between template and project.
 
-    Solo se comparan/renuevan los SCRIPTS (dedalo.sh, gate.sh, mapear.sh):
-    son código de soporte que debe seguir la versión de plantilla.
+    Only the SCRIPTS (dedalo.sh, gate.sh, mapear.sh) are compared/renewed:
+    they are support code that must follow the template version.
 
-    plan.md, lecciones.md, CONTEXTO.md y gate_checks/*.sh NO se comparan: son
-    contenido del usuario (sus tareas, su memoria, su contexto y sus
-    verificaciones). Se crean si faltan, pero nunca se sobreescriben con la
-    plantilla.
+    plan.md, lecciones.md, CONTEXTO.md and gate_checks/*.sh are NOT compared: they
+    are user content (their tasks, their memory, their context and their
+    verifications). They are created if missing, but never overwritten with the
+    template.
     """
     diff = []
     for nombre in SCRIPTS:
@@ -114,7 +114,7 @@ def _desactualizados(ruta):
 
 
 def instalar(ruta):
-    """Copia plantillas (scripts + gate_checks) que falten. Devuelve creados."""
+    """Copies the templates (scripts + gate_checks) that are missing. Returns the created ones."""
     creados = []
     for nombre in list(ARCHIVOS) + list(GATE_CHECKS) + [".gitignore"]:
         destino = os.path.join(ruta, nombre)
@@ -133,7 +133,7 @@ def instalar(ruta):
 
 
 def _bloque_framework_gitignore():
-    """Líneas del .gitignore de plantilla que excluyen al framework."""
+    """Lines of the template .gitignore that exclude the framework."""
     ruta = os.path.join(PLANTILLA_DIR, ".gitignore")
     with open(ruta, encoding="utf-8") as f:
         lineas = f.read().splitlines()
@@ -146,11 +146,11 @@ def _bloque_framework_gitignore():
 
 
 def asegurar_gitignore(ruta):
-    """Garantiza que el .gitignore del proyecto excluya al framework.
+    """Ensures the project's .gitignore excludes the framework.
 
-    Si no existe, se copia la plantilla completa. Si ya existe (entradas propias
-    del usuario), se AÑADE únicamente el bloque del framework, sin tocar lo demás
-    y sin duplicarlo si ya está. Devuelve True si se modificó.
+    If it does not exist, the full template is copied. If it already exists (the
+    user's own entries), ONLY the framework block is ADDED, without touching the rest
+    and without duplicating it if it is already there. Returns True if it was modified.
     """
     destino = os.path.join(ruta, ".gitignore")
     if not os.path.exists(destino):
@@ -168,11 +168,11 @@ def asegurar_gitignore(ruta):
 
 
 def quitar_framework_del_git(ruta):
-    """Quita del seguimiento git los archivos del framework (sin borrarlos).
+    """Removes the framework files from git tracking (without deleting them).
 
-    El proyecto sigue conservando dedalo.sh, gate.sh, gate_checks/, plan.md,
-    etc. en disco (el dedalo los necesita), pero dejan de estar en el repo.
-    Devuelve la lista de archivos que git dejó de trackear.
+    The project keeps dedalo.sh, gate.sh, gate_checks/, plan.md,
+    etc. on disk (dedalo needs them), but they are no longer in the repo.
+    Returns the list of files that git stopped tracking.
     """
     if not _es_repo_git(ruta):
         return []
@@ -199,20 +199,20 @@ def quitar_framework_del_git(ruta):
 
 
 def actualizar(ruta):
-    """Sobrescribe plantillas que difieren. Devuelve lista de actualizados.
+    """Overwrites templates that differ. Returns the list of updated ones.
 
-    Antes de sobrescribir cada script, crea un backup timestamped
-    (p.ej. dedalo.sh.bak.20261005_123456) para poder revertir manualmente
-    si la actualización rompe algo.
+    Before overwriting each script, it creates a timestamped backup
+    (e.g. dedalo.sh.bak.20261005_123456) so it can be reverted manually
+    if the update breaks something.
     """
     actualizados = []
     for nombre in _desactualizados(ruta):
         dst = os.path.join(ruta, nombre)
-        # Backup timestamped antes de sobrescribir
+        # Timestamped backup before overwriting
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup = f"{dst}.bak.{ts}"
         shutil.copy2(dst, backup)
-        # Copia la plantilla nueva
+        # Copy the new template
         shutil.copy2(os.path.join(PLANTILLA_DIR, nombre), dst)
         if nombre.endswith(".sh"):
             os.chmod(dst, 0o755)
@@ -221,6 +221,6 @@ def actualizar(ruta):
 
 
 def faltan(ruta):
-    """Scripts y memoria que faltan (lecciones.md/CONTEXTO.md se crean si no existen)."""
+    """Scripts and memory that are missing (lecciones.md/CONTEXTO.md are created if they do not exist)."""
     return [s for s in SCRIPTS + ("lecciones.md", "CONTEXTO.md")
             if not os.path.exists(os.path.join(ruta, s))]

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Tests de temas.py y selector_modelo.py, los dos módulos sin cobertura.
+"""Tests for temas.py and selector_modelo.py, the two modules without coverage.
 
-temas.py son 959 líneas y sostiene el aspecto de toda la app (9 temas, QSS
-completo, tokens de color); si un token se renombra, el QSS se degrada a
-valores por defecto o lanza excepción, la UI se rompe entera sin que ningún
-test se entere. selector_modelo.py es el widget de los combos proveedor/modelo
-y su API (currentText/setCurrentText) es sutil: devuelve siempre
-'proveedor/modelo' y ese valor viaja a la CLI del agente.
+temas.py is 959 lines and holds up the look of the whole app (9 themes, full QSS,
+color tokens); if a token is renamed, the QSS degrades to
+default values or raises an exception, the whole UI breaks without any
+test noticing. selector_modelo.py is the widget for the provider/model combos
+and its API (currentText/setCurrentText) is subtle: it always returns
+'provider/model' and that value travels to the agent's CLI.
 """
 
 import os
@@ -22,7 +22,7 @@ from PySide6.QtGui import QColor  # noqa: E402
 
 from dedalo import selector_modelo, temas  # noqa: E402
 
-# ---------- temas ----------
+# ---------- themes ----------
 
 
 def test_hay_nueve_temas_y_no_se_repiten():
@@ -31,12 +31,12 @@ def test_hay_nueve_temas_y_no_se_repiten():
 
 
 def _color_valido(valor):
-    """Acepta las cuatro formas de token que realmente usa _qss_variables():
+    """Accepts the four token forms that _qss_variables() really uses:
 
-      * '#rrggbb'                → QColor lo parsea
-      * 'rgba(r,g,b,a)'          → el QSS lo acepta; QColor() no, y por eso
-                                   producción tiene el helper _qcolor()
-      * '37, 99, 235'            → tripleta para interpolar dentro de rgb(...)
+      * '#rrggbb'                → QColor parses it
+      * 'rgba(r,g,b,a)'          → QSS accepts it; QColor() does not, and that is why
+                                   production has the _qcolor() helper
+      * '37, 99, 235'            → triplet to interpolate inside rgb(...)
       * '0 1px 2px rgba(...)'    → box-shadow
     """
     valor = valor.strip()
@@ -51,7 +51,7 @@ def _color_valido(valor):
 
 @pytest.mark.parametrize("nombre", temas.NOMBRES)
 def test_variables_de_cada_tema_estan_completas(nombre):
-    """Cada token que consume el QSS debe existir y tener valor utilizable."""
+    """Every token the QSS consumes must exist and have a usable value."""
     variables = temas._qss_variables(nombre)
     assert variables, f"{nombre} no devuelve variables"
     for clave, valor in variables.items():
@@ -65,7 +65,7 @@ def test_variables_de_cada_tema_estan_completas(nombre):
 
 
 def test_los_nueve_temas_declaran_los_mismos_tokens():
-    """Un token que existe en un tema y en otro no = QSS a medio construir."""
+    """A token that exists in one theme but not another = half-built QSS."""
     referencia = set(temas._qss_variables(temas.NOMBRES[0]))
     assert referencia, "el primer tema no declara ningún token"
     for nombre in temas.NOMBRES[1:]:
@@ -78,7 +78,7 @@ def test_los_nueve_temas_declaran_los_mismos_tokens():
 
 @pytest.mark.parametrize("nombre", temas.NOMBRES)
 def test_qss_de_cada_tema_se_genera_sin_excepcion(app, nombre):
-    """_qss() consulta QFontDatabase, así que exige QApplication viva."""
+    """_qss() queries QFontDatabase, so it requires a live QApplication."""
     qss = temas._qss(temas._qss_variables(nombre))
     assert qss.strip(), f"{nombre} genera QSS vacío"
     assert "{" in qss and "}" in qss, f"{nombre} genera QSS mal formado"
@@ -93,8 +93,8 @@ def test_inicializar_temas_cubre_todos_los_nombres(app):
 
 
 def test_colores_tema_devuelve_los_tokens_que_pinta_la_gui(app):
-    """colores_tema() es la fuente para pintado manual; si le falta una clave,
-    el consumidor revienta con KeyError."""
+    """colores_tema() is the source for manual painting; if it is missing a key,
+    the consumer blows up with KeyError."""
     esperadas = {
         "bg_panel", "bg_sunken", "text_primary", "text_secondary",
         "text_tertiary", "text_inverse", "border", "accent", "accent_claro",
@@ -111,7 +111,7 @@ def test_colores_tema_devuelve_los_tokens_que_pinta_la_gui(app):
 
 
 def test_temas_oscuros_y_claros_no_son_el_mismo_color(app):
-    """Detecta un tema 'Claro' que se quedó con los tokens del oscuro."""
+    """Detects a 'Claro' theme that got stuck with the dark theme's tokens."""
     oscuro = temas.colores_tema("Oscuro")
     claro = temas.colores_tema("Claro")
     assert oscuro["bg_panel"] != claro["bg_panel"], (
@@ -123,7 +123,7 @@ def test_temas_oscuros_y_claros_no_son_el_mismo_color(app):
 
 
 def _selector(monkeypatch, catalogo=None, proveedores=None):
-    """Selector con el catálogo global controlado (sin tocar la red)."""
+    """Selector with the global catalog controlled (without touching the network)."""
     monkeypatch.setattr(
         selector_modelo.modelos,
         "nombres_proveedores",
@@ -145,15 +145,15 @@ def test_selector_devuelve_proveedor_modelo(app, monkeypatch):
 
 
 def test_selector_proveedor_sin_modelos_devuelve_solo_proveedor(app, monkeypatch):
-    """Sin modelos no hay 'prov/modelo' que devolver: se queda en el proveedor."""
+    """Without models there is no 'prov/model' to return: it stays on the provider."""
     s = _selector(monkeypatch, catalogo={"openai": []})
     s.setCurrentText("openai")
     assert s.currentText() == "openai"
 
 
 def test_selector_cambiar_de_proveedor_elige_su_primer_modelo(app, monkeypatch):
-    """Cambiar de proveedor repuebla el combo y deja uno seleccionado, para no
-    devolver un modelo que ya no pertenece al proveedor elegido."""
+    """Changing provider repopulates the combo and leaves one selected, so as not to
+    return a model that no longer belongs to the chosen provider."""
     s = _selector(
         monkeypatch,
         catalogo={
@@ -185,7 +185,7 @@ def test_selector_emite_al_cambiar(app, monkeypatch):
 
 
 def test_selector_ignora_etiquetas_sin_proveedor(app, monkeypatch):
-    """Un 'modelo' sin '/' no tiene proveedor: no puede generar un id válido."""
+    """A 'model' without '/' has no provider: it cannot generate a valid id."""
     s = _selector(monkeypatch)
     s.addItems(["sin-proveedor"])
     assert "sin-proveedor" not in [

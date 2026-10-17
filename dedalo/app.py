@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 from . import configuracion as cfg
 from . import consentimiento, loop_launch, modelos, net, plantillas, sensor
 from .gate import argv_gate
+from .i18n import IDIOMAS, NOMBRES_IDIOMA, idioma, set_idioma, t
 from .paneles import (
     AvisoTemperatura,
     LoopPill,
@@ -80,7 +81,7 @@ def _raiz_codigo():
 class Ventana(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Dédalo — panel de control")
+        self.setWindowTitle(t("Dédalo — control panel"))
         self.resize(cfg.ANCHO, cfg.ALTO)
         self.setMinimumSize(cfg.ANCHO_MIN, cfg.ALTO_MIN)
         # Restores the size and state (maximized/restored) of the last session
@@ -133,7 +134,7 @@ class Ventana(QMainWindow):
         # Webhook manager
         self.webhook = WebhookManager(self.webhooks_config)
         self.webhook.error.connect(lambda plataforma, msg: self.statusBar().showMessage(
-            f"Webhook {plataforma}: {msg}", 8000))
+            t("Webhook {plataforma}: {msg}", plataforma=plataforma, msg=msg), 8000))
 
         # Use persisted sidebar width (or default)
         self._ancho_sidebar = leer_sidebar_ancho()
@@ -224,7 +225,7 @@ class Ventana(QMainWindow):
         root = QVBoxLayout(central)
 
         barra = QHBoxLayout()
-        barra.addWidget(QLabel("Proyecto:"))
+        barra.addWidget(QLabel(t("Project:")))
         self.cmb = QComboBox()
         self.cmb.addItems(sorted(self.proyectos))
         # Reopen the last active project (instead of the first alphabetical)
@@ -233,20 +234,28 @@ class Ventana(QMainWindow):
             self.cmb.setCurrentText(prev)
         self.cmb.currentTextChanged.connect(self._cambiar_proyecto)
         barra.addWidget(self.cmb, 1)
-        b_agregar = QPushButton("Agregar…")
+        b_agregar = QPushButton(t("Add…"))
         b_agregar.clicked.connect(self._agregar_proyecto)
-        b_quitar = _BtnDanger("Quitar")
+        b_quitar = _BtnDanger(t("Remove"))
         b_quitar.clicked.connect(self._quitar_proyecto)
         barra.addWidget(b_agregar)
         barra.addWidget(b_quitar)
         barra.addStretch()
-        barra.addWidget(QLabel("Tema:"))
+        barra.addWidget(QLabel(t("Theme:")))
         self.cmb_tema = QComboBox()
         self.cmb_tema.addItems(NOMBRES)
         if self.tema in NOMBRES:
             self.cmb_tema.setCurrentText(self.tema)
         self.cmb_tema.currentTextChanged.connect(self._cambiar_tema)
         barra.addWidget(self.cmb_tema)
+        barra.addSpacing(12)
+        barra.addWidget(QLabel(t("Language:")))
+        self.cmb_idioma = QComboBox()
+        for cod in IDIOMAS:
+            self.cmb_idioma.addItem(NOMBRES_IDIOMA[cod], cod)
+        self.cmb_idioma.setCurrentIndex(IDIOMAS.index(idioma()))
+        self.cmb_idioma.currentIndexChanged.connect(self._cambiar_idioma)
+        barra.addWidget(self.cmb_idioma)
         root.addLayout(barra)
 
         # ===== BODY: sidebar + content =====
@@ -265,10 +274,11 @@ class Ventana(QMainWindow):
 
         self.pan_plan = PanelPlan()
         self.pan_plan.guardado.connect(
-            lambda ruta: self.estado.setText(f"plan.md guardado ({ruta})"))
+            lambda ruta: self.estado.setText(t("plan.md saved ({ruta})", ruta=ruta)))
         self.pan_lecciones = PanelLecciones()
         self.pan_lecciones.guardado.connect(
-            lambda ruta: self.estado.setText(f"lecciones.md guardado ({ruta})"))
+            lambda ruta: self.estado.setText(
+                t("lecciones.md saved ({ruta})", ruta=ruta)))
         self.pan_incidencias = PanelIncidencias()
         self.pan_ejec = PanelEjecucion()
         self.pan_ejec.iniciar.connect(self._iniciar_loop)
@@ -291,15 +301,15 @@ class Ventana(QMainWindow):
         self.pan_seg.guardar_ajustes.connect(self._guardar_seguridad)
 
         self._secciones = [
-            ("Plan", self.pan_plan),
-            ("🧠 Lecciones", self.pan_lecciones),
-            ("⚠ Incidencias", self.pan_incidencias),
-            ("Ejecución", self.pan_ejec),
-            ("Logs", self.pan_logs),
-            ("🗺 Mapa", self.pan_mapa),
-            ("Git", self.pan_git),
-            ("📊 Métricas", self.pan_metricas),
-            ("🛡 Seguridad", self.pan_seg),
+            (t("Plan"), self.pan_plan),
+            (t("🧠 Lessons"), self.pan_lecciones),
+            (t("⚠ Incidents"), self.pan_incidencias),
+            (t("Run"), self.pan_ejec),
+            (t("Logs"), self.pan_logs),
+            (t("🗺 Map"), self.pan_mapa),
+            (t("Git"), self.pan_git),
+            (t("📊 Metrics"), self.pan_metricas),
+            (t("🛡 Security"), self.pan_seg),
         ]
         for i, (nombre, panel) in enumerate(self._secciones):
             self.sidebar.addItem(nombre)
@@ -313,7 +323,7 @@ class Ventana(QMainWindow):
 
         # ===== STATUS BAR =====
         self.barra_estado = QStatusBar()
-        self.estado = QLabel("Sin proyecto")
+        self.estado = QLabel(t("No project"))
         self.barra_estado.addWidget(self.estado)
         self.pill_loop = LoopPill()
         self.barra_estado.addPermanentWidget(self.pill_loop)
@@ -355,19 +365,19 @@ class Ventana(QMainWindow):
         self._comprobar_temp()
 
     def _comprobar_temp(self):
-        t = sensor.leer_temperatura()
-        self.pan_seg.actualizar_temp(t, self.seguridad.get("umbral", 85))
+        temp = sensor.leer_temperatura()
+        self.pan_seg.actualizar_temp(temp, self.seguridad.get("umbral", 85))
         seg = self.seguridad
-        if not seg.get("activo") or t is None:
+        if not seg.get("activo") or temp is None:
             return
-        if t >= float(seg.get("umbral", 85)):
+        if temp >= float(seg.get("umbral", 85)):
             if not self._aviso_abierto or not self._aviso_abierto.isVisible():
-                self._abrir_aviso(t)
+                self._abrir_aviso(temp)
         elif self._aviso_abierto is not None:
             self._aviso_abierto._continuar()
 
-    def _abrir_aviso(self, t):
-        aviso = AvisoTemperatura(t, self.seguridad.get("segundos", 5), self)
+    def _abrir_aviso(self, temp):
+        aviso = AvisoTemperatura(temp, self.seguridad.get("segundos", 5), self)
         self._aviso_abierto = aviso
         aviso.finished.connect(self._aviso_terminado)
         aviso.show()
@@ -381,12 +391,12 @@ class Ventana(QMainWindow):
             self._apagar_aplicacion()
 
     def _apagar_aplicacion(self):
-        self.estado.setText("🔥 Apagado por sobrecalentamiento")
+        self.estado.setText(t("🔥 Shut down due to overheating"))
         if self.loop and self.loop.state() == QProcess.Running:
             self._detener_loop()
         self.timer.stop()
         self.timer_temp.stop()
-        self.estado.setText("🔥 Apagado por sobrecalentamiento. Hasta luego.")
+        self.estado.setText(t("🔥 Shut down due to overheating. See you later."))
         QTimer.singleShot(1200, QApplication.instance().quit)
 
     def _guardar_seguridad(self, datos):
@@ -402,7 +412,7 @@ class Ventana(QMainWindow):
         guardar(self.proyectos, self.tema, self.seguridad, self.webhooks_config)
         self._guardar_config_proyecto()
         self._iniciar_vigilancia()
-        self.estado.setText("Ajustes guardados")
+        self.estado.setText(t("Settings saved"))
 
     # ---------- Projects ----------
 
@@ -452,6 +462,31 @@ class Ventana(QMainWindow):
         self._guardar_config_proyecto()
         self._aplicar_tema(nombre)
 
+    def _cambiar_idioma(self, _indice):
+        """Persists the chosen language and offers to restart to apply it."""
+        cod = self.cmb_idioma.currentData()
+        if cod == idioma():
+            return
+        self._settings.setValue("idioma", cod)
+        resp = QMessageBox.question(
+            self, t("Language"),
+            t("The interface language will change on the next start. "
+              "Restart Dédalo now?"),
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if resp == QMessageBox.Yes:
+            self._reiniciar_aplicacion()
+        else:
+            self.estado.setText(
+                t("Language saved; restart to apply it"))
+
+    def _reiniciar_aplicacion(self):
+        """Relaunches the application and quits the current instance."""
+        if getattr(sys, "frozen", False):
+            QProcess.startDetached(sys.executable, [])
+        else:
+            QProcess.startDetached(sys.executable, ["-m", "dedalo"])
+        QApplication.instance().quit()
+
     def _proyecto_actual(self):
         nombre = self.cmb.currentText()
         if not nombre:
@@ -467,8 +502,8 @@ class Ventana(QMainWindow):
                 self.cmb.blockSignals(True)
                 self.cmb.setCurrentIndex(prev)
                 self.cmb.blockSignals(False)
-            QMessageBox.warning(self, "Dédalo en ejecución",
-                                "Detén el loop antes de cambiar de proyecto.")
+            QMessageBox.warning(self, t("Dédalo running"),
+                                t("Stop the loop before switching projects."))
             return
         # Persist the outgoing project's config before switching
         self._capturar_lanzamiento()
@@ -481,7 +516,7 @@ class Ventana(QMainWindow):
     def _cargar_proyecto(self):
         p = self._proyecto_actual()
         if not p:
-            self.estado.setText("Sin proyecto")
+            self.estado.setText(t("No project"))
             self.pan_plan.clear()
             self.pan_lecciones.cargar(None)
             self.pan_incidencias.cargar(None)
@@ -500,7 +535,7 @@ class Ventana(QMainWindow):
         self._aplicar_tema(self.tema)
         self.pan_seg.aplicar_config(self.seguridad, self.webhooks_config)
         self._iniciar_vigilancia()
-        self.estado.setText(f"Proyecto: {nombre} — {ruta}")
+        self.estado.setText(t("Project: {nombre} — {ruta}", nombre=nombre, ruta=ruta))
         self.pan_plan.cargar(os.path.join(ruta, "plan.md"))
         self.pan_lecciones.cargar(os.path.join(ruta, "lecciones.md"))
         self.pan_incidencias.cargar(os.path.join(ruta, "incidencias.jsonl"))
@@ -520,7 +555,8 @@ class Ventana(QMainWindow):
         creados = plantillas.instalar(ruta)
         if creados:
             self.pan_logs.panel_loop.appendPlainText(
-                f"[auto-provision] Plantillas instaladas: {', '.join(creados)}")
+                t("[auto-provision] Templates installed: {lista}",
+                  lista=", ".join(creados)))
             # If plan.md/lecciones.md were missing, reload them into the UI
             if "plan.md" in creados or "lecciones.md" in creados:
                 self.pan_plan.cargar(os.path.join(ruta, "plan.md"))
@@ -530,8 +566,8 @@ class Ventana(QMainWindow):
         if desactualizados:
             plantillas.actualizar(ruta)
             self.pan_logs.panel_loop.appendPlainText(
-                f"[auto-update] Plantillas actualizadas: "
-                f"{', '.join(desactualizados)}")
+                t("[auto-update] Templates updated: {lista}",
+                  lista=", ".join(desactualizados)))
 
         self.pan_ejec.b_gate.setEnabled(
             os.path.exists(os.path.join(ruta, "gate.sh")))
@@ -541,7 +577,7 @@ class Ventana(QMainWindow):
 
     def _agregar_proyecto(self):
         ruta = QFileDialog.getExistingDirectory(
-            self, "Selecciona la raíz del proyecto")
+            self, t("Select the project root"))
         if not ruta:
             return
         nombre = os.path.basename(ruta)
@@ -556,48 +592,49 @@ class Ventana(QMainWindow):
             detalles.append("· " + "\n  · ".join(creados))
         if git["repo"] == "creado":
             detalles.append(
-                f"git inicializado (rama master) con {git['archivos']} archivos")
+                t("git initialized (branch master) with {n} files",
+                  n=git["archivos"]))
         elif git["repo"] == "no-disponible":
             detalles.append(
-                "⚠ git no disponible: revisa que esté instalado y tu "
-                "identidad configurada (git config user.name/user.email)")
+                t("⚠ git not available: check that it is installed and your "
+                  "identity is configured (git config user.name/user.email)"))
         if detalles:
             QMessageBox.information(
-                self, "Proyecto listo",
-                "Se preparó el proyecto:\n\n  · "
-                + "\n  · ".join(detalles) +
-                "\n\nPulsa '▶ Iniciar loop' cuando quieras arrancar.")
+                self, t("Project ready"),
+                t("The project was prepared:\n\n  · {detalles}"
+                  "\n\nPress '▶ Start loop' whenever you want to start.",
+                  detalles="\n  · ".join(detalles)))
         else:
             QMessageBox.information(
-                self, "Proyecto", "Ya tenía todos los archivos de Dédalo.")
+                self, t("Project"), t("It already had all the Dédalo files."))
 
     def _quitar_proyecto(self):
         nombre = self.cmb.currentText()
         if not nombre or nombre not in self.proyectos:
             return
         if self.loop and self.loop.state() == QProcess.Running:
-            QMessageBox.warning(self, "Dédalo en ejecución",
-                                "Detén el loop antes de quitar un proyecto.")
+            QMessageBox.warning(self, t("Dédalo running"),
+                                t("Stop the loop before removing a project."))
             return
         info = self.proyectos.get(nombre) or {}
         ruta = info.get("ruta") or ""
         if ruta:
             resp = QMessageBox.question(
-                self, "Quitar proyecto",
-                "¿Eliminar el proyecto de la lista?\n\nTambién se borrarán sus "
-                "archivos de dedalo del disco:\n"
-                "  · dedalo.sh, gate.sh, mapear.sh\n"
-                "  · plan.md, lecciones.md y progreso.log\n\n"
-                "El resto del código del proyecto NO se toca.",
+                self, t("Remove project"),
+                t("Remove the project from the list?\n\nIts dedalo files will "
+                  "also be deleted from disk:\n"
+                  "  · dedalo.sh, gate.sh, mapear.sh\n"
+                  "  · plan.md, lecciones.md and progreso.log\n\n"
+                  "The rest of the project's code is NOT touched."),
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if resp != QMessageBox.Yes:
                 return
         else:
             # Project without a path (orphan config): just remove it from the list
             resp = QMessageBox.question(
-                self, "Quitar proyecto",
-                "Este proyecto no tiene una ruta válida asociada "
-                "(config huérfana).\n\n¿Eliminarlo de la lista?",
+                self, t("Remove project"),
+                t("This project has no valid path associated "
+                  "(orphan config).\n\nRemove it from the list?"),
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if resp != QMessageBox.Yes:
                 return
@@ -616,13 +653,13 @@ class Ventana(QMainWindow):
             self.cmb.blockSignals(False)
             if eliminados:
                 QMessageBox.information(
-                    self, "Proyecto eliminado",
-                    "Eliminado de la lista y borrados:\n  · "
-                    + "\n  · ".join(eliminados))
+                    self, t("Project removed"),
+                    t("Removed from the list and deleted:\n  · {lista}",
+                      lista="\n  · ".join(eliminados)))
             elif not ruta:
                 QMessageBox.information(
-                    self, "Proyecto eliminado",
-                    "Eliminado de la lista.")
+                    self, t("Project removed"),
+                    t("Removed from the list."))
 
     # ---------- Models ----------
 
@@ -651,7 +688,7 @@ class Ventana(QMainWindow):
         # invalidar_cache() also forgot the session probe: relaunch it.
         self.pan_ejec.refrescar_agentes()
         self._aplicar_sel_modelos()
-        self.estado.setText("Modelos refrescados")
+        self.estado.setText(t("Models refreshed"))
         self._guardar_sel_modelos()
 
     # ---------- Internet ----------
@@ -663,25 +700,26 @@ class Ventana(QMainWindow):
     # ---------- Loop ----------
 
     def _consentimiento_gate(self, ruta):
-        """Pide aprobación la primera vez que se ejecuta el gate de un repo.
+        """Asks for approval the first time a repo's gate is run.
 
-        El gate corre código del proyecto (gate_checks/*.sh|.py) sin sandbox:
-        un repo clonado puede traer comandos arbitrarios. Se lista lo que se
-        va a ejecutar y, si el usuario acepta, se recuerda por hash de
-        contenido (si los checks cambian, se vuelve a preguntar).
+        The gate runs project code (gate_checks/*.sh|.py) without a sandbox:
+        a cloned repo can bring arbitrary commands. It lists what is going to
+        be run and, if the user accepts, it is remembered by content hash (if
+        the checks change, it is asked again).
 
-        Devuelve True si se puede arrancar el loop.
+        Returns True if the loop can be started.
         """
         if consentimiento.concedido(ruta, os.environ):
             return True
         fichas = consentimiento.ficheros(ruta)
-        detalle = "\n".join(f"  • {f}" for f in fichas) or "  (ninguno)"
+        detalle = "\n".join(f"  • {f}" for f in fichas) or t("  (none)")
         resp = QMessageBox.warning(
-            self, "Ejecutar el gate del proyecto",
-            "El gate ejecutará código de este repositorio con tus permisos, "
-            "sin sandbox:\n\n"
-            f"{detalle}\n\n"
-            "Ejecútalo solo si confías en este proyecto. ¿Confiar y ejecutar?",
+            self, t("Run the project's gate"),
+            t("The gate will run code from this repository with your "
+              "permissions, without a sandbox:\n\n"
+              "{detalle}\n\n"
+              "Run it only if you trust this project. Trust and run?",
+              detalle=detalle),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if resp != QMessageBox.Yes:
             return False
@@ -700,10 +738,10 @@ class Ventana(QMainWindow):
             estado_net = net.hay_internet()
         if not estado_net:
             QMessageBox.warning(
-                self, "Sin internet",
-                "No hay conexión a internet.\n\nLos modelos IA de opencode "
-                "no pueden responder y el loop se detendrá al arrancar. "
-                "Conecta la red e inténtalo de nuevo.")
+                self, t("No internet"),
+                t("There is no internet connection.\n\nThe opencode AI models "
+                  "cannot respond and the loop will stop on start. "
+                  "Connect to the network and try again."))
             return
         ruta = p[1]
         if not self._consentimiento_gate(ruta):
@@ -719,12 +757,12 @@ class Ventana(QMainWindow):
         detectados = plan["detectados"]
         if not detectados:
             self.estado.setText(
-                "No se detectó ningún agente CLI con sesión (opencode, codex o claude)")
+                t("No CLI agent with a session was detected (opencode, codex or claude)"))
             panel = self.pan_logs.panel_loop
             panel.clear()
             panel.appendPlainText(
-                "> loop (motor python)  (sin agentes utilizables: instala o "
-                "inicia sesión en opencode, codex o claude)")
+                t("> loop (python engine)  (no usable agents: install or "
+                  "log into opencode, codex or claude)"))
             self.pan_ejec.b_iniciar.setEnabled(True)
             return
 
@@ -739,12 +777,12 @@ class Ventana(QMainWindow):
         panel.clear()
         panel.appendPlainText(
             f"> loop {' '.join(args_motor) or 'loop'}  "
-            f"(agente={agente_tarea}, modelo tarea={modelo_tarea or 'n/a'}, "
-            f"revisor={agente_revisor}, modelo revisor="
+            f"(agent={agente_tarea}, task model={modelo_tarea or 'n/a'}, "
+            f"reviewer={agente_revisor}, reviewer model="
             f"{modelo_revisor or 'n/a'}, "
             f"nav={'on' if nav_conf['activo'] else 'off'}, "
             f"dual={conf['dual']}, "
-            f"costo/iter={conf['costo_iter']} USD, iter={conf['iteraciones']})")
+            f"cost/iter={conf['costo_iter']} USD, iter={conf['iteraciones']})")
         self.loop = Proceso(panel, on_fin=self._loop_fin)
         self.loop.setWorkingDirectory(ruta)
         self.loop.setEnvironment(env)
@@ -821,7 +859,7 @@ class Ventana(QMainWindow):
         """UI slot: reflects in the log what the cleanup thread deleted."""
         if borradas:
             self.pan_logs.panel_loop.appendPlainText(
-                f"[dedalo] 🧹 Sesiones opencode eliminadas: {borradas}")
+                f"[dedalo] 🧹 opencode sessions deleted: {borradas}")
 
     def _programar_limpiar_sesiones(self, ruta_proyecto):
         """Launches session cleanup in the background.
@@ -900,7 +938,8 @@ class Ventana(QMainWindow):
 
     def _detener_loop(self):
         if self.loop and self.loop.state() == QProcess.Running:
-            self.pan_logs.panel_loop.appendPlainText("[manual] deteniendo el loop…")
+            self.pan_logs.panel_loop.appendPlainText(
+                "[manual] " + t("stopping the loop…"))
             self.loop.terminate()
             # No `waitForFinished(5000)`: it blocks the UI thread for five
             # seconds on the button the user just pressed. The timer does
@@ -912,7 +951,8 @@ class Ventana(QMainWindow):
         """Escalates to SIGKILL if the loop ignores the timer's SIGTERM."""
         if self.loop and self.loop.state() == QProcess.Running:
             self.pan_logs.panel_loop.appendPlainText(
-                "[manual] el loop no responde a SIGTERM; forzando con SIGKILL…")
+                "[manual] " + t("the loop is not responding to SIGTERM; "
+                                "forcing with SIGKILL…"))
             self.loop.kill()
 
     def _tail_log(self):
@@ -969,7 +1009,7 @@ class Ventana(QMainWindow):
         if "tokens/cuota agotados" in bajo or "cuota agotada" in bajo:
             self._webhook_enviar("tokens", {})
         elif "error crítico" in bajo or "abortado:" in bajo:
-            self._webhook_enviar("error", {"detalle": "Ver progreso.log"})
+            self._webhook_enviar("error", {"detalle": t("See progreso.log")})
         if "tarea bloqueada" in bajo:
             self._notificar_tarea_bloqueada(texto)
 
@@ -983,12 +1023,13 @@ class Ventana(QMainWindow):
     def _notificar_tarea_bloqueada(self, log_texto):
         # Extract the task name from the log
         m = re.search(r"tarea bloqueada[:\s]+([^\n]+)", log_texto, re.IGNORECASE)
-        tarea = m.group(1).strip() if m else "desconocida"
-        self.estado.setText(f"⚠ Tarea bloqueada: {tarea}")
+        tarea = m.group(1).strip() if m else t("unknown")
+        self.estado.setText(t("⚠ Blocked task: {tarea}", tarea=tarea))
         # Alert sound
         try:
             import subprocess
-            subprocess.run(["notify-send", "Dédalo", f"Tarea bloqueada: {tarea}"], timeout=2)
+            subprocess.run(["notify-send", "Dédalo",
+                            t("Blocked task: {tarea}", tarea=tarea)], timeout=2)
         except Exception:
             pass
         # Beep
@@ -1029,7 +1070,8 @@ class Ventana(QMainWindow):
                 pass
             self._revision_pendiente = True
             self.pan_ejec.panel_revision.mostrar_revision(ruta, tarea, archivo_diff, os.path.join(dir_revision, "decision"))
-            self.pan_logs.panel_loop.appendPlainText(f"\n[GUI] ⏸ Revisión manual requerida para: {tarea}")
+            self.pan_logs.panel_loop.appendPlainText(
+                t("\n[GUI] ⏸ Manual review required for: {tarea}", tarea=tarea))
 
         elif not os.path.exists(archivo_esperando) and self._revision_pendiente:
             # The review is no longer pending (it was resolved)
@@ -1038,12 +1080,13 @@ class Ventana(QMainWindow):
 
     def _revision_aprobada(self):
         self._revision_pendiente = False
-        self.estado.setText("✓ Diff aprobado, continuando loop…")
+        self.estado.setText(t("✓ Diff approved, continuing loop…"))
 
     def _revision_rechazada(self, motivo):
         self._revision_pendiente = False
-        self.estado.setText(f"✗ Diff rechazado: {motivo[:60]}…")
-        self.pan_logs.panel_loop.appendPlainText(f"[GUI] Rechazado: {motivo}")
+        self.estado.setText(t("✗ Diff rejected: {motivo}…", motivo=motivo[:60]))
+        self.pan_logs.panel_loop.appendPlainText(
+            t("[GUI] Rejected: {motivo}", motivo=motivo))
 
     # ---------- Gate ----------
 
@@ -1093,15 +1136,17 @@ class Ventana(QMainWindow):
 
         # Confirm
         resp = QMessageBox.question(
-            self, "Revertir commit",
-            f"¿Revertir el commit {sha[:8]}?\n\n"
-            f"Se hará: git revert --no-commit {sha} && git commit -m 'revert: ...'\n"
-            f"Esto creará un nuevo commit que deshace los cambios.",
+            self, t("Revert commit"),
+            t("Revert commit {sha}?\n\n"
+              "It will run: git revert --no-commit {sha_full} && "
+              "git commit -m 'revert: ...'\n"
+              "This creates a new commit that undoes the changes.",
+              sha=sha[:8], sha_full=sha),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if resp != QMessageBox.Yes:
             return
 
-        self.estado.setText(f"Revirtiendo commit {sha[:8]}...")
+        self.estado.setText(t("Reverting commit {sha}...", sha=sha[:8]))
         worker = Trabajo(lambda: self._git_revert(ruta, sha))
         worker.conectar(lambda ok: self._post_revert(ok, sha))
         worker.liberar(self, "_worker_revert")
@@ -1130,11 +1175,11 @@ class Ventana(QMainWindow):
             self._guardar_config_proyecto()
         self._settings.setValue("ventana/geometria", self.saveGeometry())
         # Stop timers
-        for t in (self.timer, self.timer_temp, self.timer_net,
-                  self.timer_revision, self.timer_metricas,
-                  self.timer_plan, self.timer_lecciones,
-                  self.timer_incidencias):
-            t.stop()
+        for temporizador in (self.timer, self.timer_temp, self.timer_net,
+                             self.timer_revision, self.timer_metricas,
+                             self.timer_plan, self.timer_lecciones,
+                             self.timer_incidencias):
+            temporizador.stop()
         # Terminate the loop process if running (SIGTERM and, if it does not die, SIGKILL)
         if self.loop and self.loop.state() == QProcess.Running:
             self.loop.terminate()
@@ -1145,7 +1190,7 @@ class Ventana(QMainWindow):
 
     def _post_revert(self, ok: bool, sha: str):
         if ok:
-            self.estado.setText(f"✓ Commit {sha[:8]} revertido")
+            self.estado.setText(t("✓ Commit {sha} reverted", sha=sha[:8]))
             p = self._proyecto_actual()
             if p:
                 self.pan_git.cargar(p[1])
@@ -1153,8 +1198,9 @@ class Ventana(QMainWindow):
                 self.pan_mapa.cargar(os.path.join(p[1], "mapeo.txt"))
                 self._tail_log()
         else:
-            self.estado.setText(f"✗ Error revertiendo {sha[:8]}")
-            QMessageBox.warning(self, "Error", f"No se pudo revertir el commit {sha[:8]}")
+            self.estado.setText(t("✗ Error reverting {sha}", sha=sha[:8]))
+            QMessageBox.warning(self, t("Error"),
+                                t("Could not revert commit {sha}", sha=sha[:8]))
 
     def _limpiar_git_framework(self):
         """Ensures .gitignore has the Dédalo block and stops tracking the framework."""
@@ -1163,13 +1209,13 @@ class Ventana(QMainWindow):
             return
         _, ruta = p
         resp = QMessageBox.question(
-            self, "Framework fuera de git",
-            "Se hará:\n"
-            "1) Añadir el bloque de Dédalo al .gitignore del proyecto\n"
-            "2) git rm --cached de dedalo.sh, gate.sh, gate_checks/, plan.md,\n"
-            "   lecciones.md, mapeo.txt, progreso.log, metrics.jsonl, etc.\n\n"
-            "Los archivos SIGUEN en disco (el dedalo los necesita); solo "
-            "dejan de estar en el repo git.\n¿Continuar?",
+            self, t("Framework out of git"),
+            t("It will run:\n"
+              "1) Add the Dédalo block to the project's .gitignore\n"
+              "2) git rm --cached of dedalo.sh, gate.sh, gate_checks/, plan.md,\n"
+              "   lecciones.md, mapeo.txt, progreso.log, metrics.jsonl, etc.\n\n"
+              "The files REMAIN on disk (dedalo needs them); they just stop "
+              "being in the git repo.\nContinue?"),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if resp != QMessageBox.Yes:
             return
@@ -1179,7 +1225,7 @@ class Ventana(QMainWindow):
             salidos = plantillas.quitar_framework_del_git(ruta)
             return (modificado, len(salidos))
 
-        self.estado.setText("Aplicando limpieza del framework en git...")
+        self.estado.setText(t("Applying framework cleanup in git..."))
         worker = Trabajo(trabajo)
         worker.conectar(self._post_limpiar_git_framework)
         worker.liberar(self, "_worker_limpiar")
@@ -1189,15 +1235,15 @@ class Ventana(QMainWindow):
     def _post_limpiar_git_framework(self, res):
         modificado, salidos = res
         if salidos or modificado:
-            self.estado.setText(f"✓ Gitignored actualizado y {salidos} archivos "
-                                "dejaron de trackearse (quedan sin commitear; "
-                                "haz commit en el repo del proyecto si quieres "
-                                "persistirlo)")
-            msg = (f"· .gitignore actualizado: {modificado}\n"
-                   f"· archivos fuera de seguimiento: {salidos}")
-            QMessageBox.information(self, "Framework fuera de git", msg)
+            self.estado.setText(
+                t("✓ .gitignore updated and {salidos} files stopped being "
+                  "tracked (left uncommitted; commit in the project's repo "
+                  "if you want to persist it)", salidos=salidos))
+            msg = (t("· .gitignore updated: {modificado}", modificado=modificado)
+                   + "\n" + t("· files out of tracking: {salidos}", salidos=salidos))
+            QMessageBox.information(self, t("Framework out of git"), msg)
         else:
-            self.estado.setText("Nada que limpiar (ya estaba limpio)")
+            self.estado.setText(t("Nothing to clean (it was already clean)"))
         p = self._proyecto_actual()
         if p:
             self.pan_git.cargar(p[1])
@@ -1210,20 +1256,21 @@ def _resolver_registro_corrupto(exc):
     """
     caja = QMessageBox()
     caja.setIcon(QMessageBox.Critical)
-    caja.setWindowTitle("Registro de proyectos dañado")
+    caja.setWindowTitle(t("Corrupted projects registry"))
     caja.setText(
-        f"No se pudo leer el registro de proyectos:\n{exc.ruta}"
+        t("Could not read the projects registry:\n{ruta}", ruta=exc.ruta)
     )
     caja.setInformativeText(
-        "Puede estar truncado o editado a mano. Se ha guardado una copia "
-        f"íntegra en:\n{exc.copia}\n\n"
-        "Si sales ahora, el archivo se queda donde está y podrás repararlo "
-        "o restaurarlo a mano. Si prefieres continuar, la lista de proyectos "
-        "empezará vacía (tus datos siguen en la copia)."
+        t("It may be truncated or hand-edited. A full copy has been saved "
+          "to:\n{copia}\n\n"
+          "If you quit now, the file stays where it is and you can repair it "
+          "or restore it by hand. If you prefer to continue, the project list "
+          "will start empty (your data is still in the copy).", copia=exc.copia)
     )
-    salir = caja.addButton("Salir y repararlo a mano", QMessageBox.RejectRole)
+    salir = caja.addButton(t("Quit and repair it by hand"),
+                           QMessageBox.RejectRole)
     seguir = caja.addButton(
-        "Empezar de cero (copia conservada)", QMessageBox.DestructiveRole
+        t("Start from scratch (copy preserved)"), QMessageBox.DestructiveRole
     )
     caja.setDefaultButton(salir)
     caja.exec()
@@ -1236,6 +1283,14 @@ def main():
     # (StartupWMClass=dedalo) groups the window and its icon in the dock well.
     app.setApplicationName("dedalo")
     app.setDesktopFileName("dedalo")
+
+    # Active UI language: DEDALO_IDIOMA (tests/overrides) wins over the
+    # persisted setting, which defaults to English.
+    entorno = os.environ.get("DEDALO_IDIOMA", "").strip()
+    if entorno:
+        set_idioma(entorno)
+    else:
+        set_idioma(QSettings("dedalo", "panel").value("idioma", "en"))
 
     # The project registry is the user's complete state (projects, theme,
     # webhooks, models). If its JSON is corrupted we must STOP here:

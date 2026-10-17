@@ -1,13 +1,13 @@
-"""Registro de proyectos, tema y protección térmica del panel de Dédalo.
+"""Project registry, theme and thermal protection for the Dédalo panel.
 
-Se guarda en ~/.config/dedalo/proyectos.json y es compartido por todos
-los proyectos quegestion es desde el panel.
+Stored in ~/.config/dedalo/proyectos.json and shared by all
+the projects managed from the panel.
 
-Integridad: el registro se escribe SIEMPRE de forma atómica (escribir en un
-fichero temporal y os.replace), de modo que un cierre abrupto a mitad de
-guardado no pueda truncarlo. Y si el JSON llegara a estar corrupto, main()
-FALLA ANTES de arrancar en vez de tragar el error y sobrescribirlo con un
-registro vacío (que era como se perdían todos los proyectos del usuario).
+Integrity: the registry is ALWAYS written atomically (writing to a
+temporary file and os.replace), so that an abrupt shutdown mid-save
+cannot truncate it. And if the JSON ever became corrupted, main()
+FAILS BEFORE starting up instead of swallowing the error and overwriting it with an
+empty registry (which is how all the user's projects were lost).
 """
 
 import json
@@ -18,11 +18,11 @@ from . import configuracion as cfg
 
 
 class RegistroCorrupto(Exception):
-    """El registro de proyectos no es JSON válido.
+    """The project registry is not valid JSON.
 
-    Lleva la ruta del fichero original y la de la copia .corrupto de
-    seguridad. El original NO se borra al detectarlo: sólo cuando el usuario
-    acepta empezar de cero (descartar_registro_corrupto).
+    Carries the path of the original file and that of the .corrupto
+    backup copy. The original is NOT deleted upon detection: only when the user
+    agrees to start from scratch (descartar_registro_corrupto).
     """
 
     def __init__(self, ruta, copia):
@@ -32,10 +32,10 @@ class RegistroCorrupto(Exception):
 
 
 def _copia_de_seguridad(corrupto):
-    """Copia el registro a <registro>.corrupto sin pisar la anterior.
+    """Copies the registry to <registro>.corrupto without overwriting the previous one.
 
-    Devuelve la ruta de la copia creada. Los sufijos son .corrupto,
-    .corrupto.2, .corrupto.3... para no perder ni la primera versión.
+    Returns the path of the created copy. The suffixes are .corrupto,
+    .corrupto.2, .corrupto.3... so that not even the first version is lost.
     """
     n = 1
     while True:
@@ -48,17 +48,17 @@ def _copia_de_seguridad(corrupto):
 
 
 def verificar_registro():
-    """Valida el registro ANTES de arrancar. Lanza RegistroCorrupto si no es
-    JSON válido, dejando antes una copia .corrupto de los datos.
+    """Validates the registry BEFORE starting up. Raises RegistroCorrupto if it is not
+    valid JSON, leaving a .corrupto copy of the data beforehand.
 
-    No modifica el original a propósito: si el usuario cierra la app y la
-    vuelve a abrir, el aviso se repite en vez de perder el registro en
-    silencio al primer guardado.
+    Does not modify the original on purpose: if the user closes the app and
+    opens it again, the warning repeats instead of silently losing the registry
+    on the first save.
     """
     if not os.path.exists(cfg.REGISTRO):
         return
-    # Un registro creado por una versión anterior puede quedar en 0664 y ahí
-    # viven los tokens de webhooks: se endurece al detectarlo.
+    # A registry created by an earlier version may end up as 0664 and that is where
+    # the webhook tokens live: permissions are hardened upon detection.
     try:
         os.chmod(cfg.REGISTRO, 0o600)
     except OSError:
@@ -71,7 +71,7 @@ def verificar_registro():
 
 
 def descartar_registro_corrupto():
-    """Borra el registro corrupto (sus datos quedan en la copia .corrupto)."""
+    """Deletes the corrupted registry (its data stays in the .corrupto copy)."""
     try:
         os.remove(cfg.REGISTRO)
     except FileNotFoundError:
@@ -79,17 +79,17 @@ def descartar_registro_corrupto():
 
 
 def _escribir(datos):
-    """Escribe el registro de forma atómica y privada.
+    """Writes the registry atomically and privately.
 
-    json.dump va primero al temporal y sólo después se os.replace() sobre el
-    destino: replace es atómico en el mismo sistema de ficheros, así que un
-    corte de luz o un kill a mitad de escritura deja el registro anterior
-    intacto en lugar de un JSON truncado e ilegible.
+    json.dump goes first to the temporary file and only afterwards does os.replace()
+    move it onto the destination: replace is atomic on the same filesystem, so a
+    power cut or a kill mid-write leaves the previous registry
+    intact instead of a truncated, unreadable JSON.
 
-    El temporal se crea con permisos 0o600 (sólo el usuario) ANTES de
-    escribir, y como replace mueve el inodo, el destino hereda esos
-    permisos: los tokens de webhooks que guarda el registro no acaban
-    legibles por el grupo ni por otros usuarios (antes salían en 0664).
+    The temporary file is created with 0o600 permissions (user only) BEFORE
+    writing, and since replace moves the inode, the destination inherits those
+    permissions: the webhook tokens the registry stores do not end up
+    readable by the group or by other users (they used to come out as 0664).
     """
     os.makedirs(cfg.CONFIG_DIR, exist_ok=True, mode=0o700)
     tmp = f"{cfg.REGISTRO}.{os.getpid()}.tmp"
@@ -99,12 +99,12 @@ def _escribir(datos):
             json.dump(datos, f, indent=2, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())
-        # Por si un umask laxo o un temporal heredado hayan aflojado el modo.
+        # In case a lax umask or an inherited temporary file has loosened the mode.
         os.chmod(tmp, 0o600)
         os.replace(tmp, cfg.REGISTRO)
     except BaseException:
-        # Incluye TypeError/ValueError de json.dump con datos no serializables:
-        # el temporal ya creado debe irse igual o se acumula basura en ~/.config.
+        # Includes TypeError/ValueError from json.dump with non-serializable data:
+        # the already-created temporary file must be removed anyway or garbage accumulates in ~/.config.
         try:
             os.remove(tmp)
         except OSError:
@@ -136,42 +136,42 @@ def leer_seguridad():
 
 
 def leer_modelos():
-    """Modelos seleccionados (tarea/revisor) guardados entre sesiones."""
+    """Selected models (task/reviewer) saved between sessions."""
     return _leer_archivo().get("modelos", {})
 
 
 def leer_webhooks():
-    """Configuración global de webhooks (Telegram, Discord, WhatsApp)."""
+    """Global webhook configuration (Telegram, Discord, WhatsApp)."""
     return _leer_archivo().get("webhooks", {})
 
 
 def leer_sidebar_ancho():
-    """Ancho persistido del sidebar (px)."""
+    """Persisted sidebar width (px)."""
     return _leer_archivo().get("sidebar_ancho", cfg.SIDEBAR_ANCHO)
 
 
 def guardar_sidebar_ancho(ancho: int):
-    """Guarda el ancho del sidebar."""
+    """Saves the sidebar width."""
     datos = _leer_archivo()
     datos["sidebar_ancho"] = ancho
     _escribir(datos)
 
 
 def leer_config_proyecto(nombre):
-    """Configuración guardada para un proyecto concreto (sin fusionar).
+    """Configuration saved for a specific project (without merging).
 
-    Los valores globales (tema/seguridad/webhooks/modelos) actúan como
-    base; lo que haya dentro de proyectos[nombre]["config"] gana a esa base.
+    The global values (tema/seguridad/webhooks/modelos) act as the
+    base; whatever is inside proyectos[nombre]["config"] wins over that base.
     """
     proy = cargar().get(nombre)
     return proy.get("config", {}) if proy else {}
 
 
 def guardar_config_proyecto(proyectos, nombre, config):
-    """Persiste la configuración específica del proyecto junto a su registro.
+    """Persists the project's specific configuration alongside its registry entry.
 
-    No re-añade el proyecto si ya no existe en el registro (p. ej. tras
-    "Quitar"): un nombre eliminado no debe reaparecer al guardar su config.
+    Does not re-add the project if it no longer exists in the registry (e.g. after
+    "Quitar"): a removed name must not reappear when saving its config.
     """
     if nombre not in proyectos:
         return

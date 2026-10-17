@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""E2E del motor Python completo (run() de dedalo.loop).
+"""E2E of the complete Python engine (run() from dedalo.loop).
 
-Espejo funcional de test_e2e_con_trabajo.py (el del motor bash): repo git con
-plan de 1 tarea, gate de fixture, agente falso que crea src/nuevo.py y red
-fakeada (monkeypatch de hay_internet, sin depender de la red real).
+Functional mirror of test_e2e_con_trabajo.py (the bash engine one): a git repo
+with a 1-task plan, a fixture gate, a fake agent that creates src/nuevo.py and
+a faked network (monkeypatch of hay_internet, without depending on the real
+network).
 
-El run se ejecuta en proceso (run(cfg)) para poder falsificar la red; el
-motor es el mismo que lanzaría la GUI como `python -m dedalo.loop`
-(el entry point main() sólo parsea argv y llama a run; se cubre en los tests
-de loop_args).
+The run executes in-process (run(cfg)) so the network can be faked; the
+engine is the same one the GUI would launch as `python -m dedalo.loop`
+(the main() entry point only parses argv and calls run; it is covered in the
+loop_args tests).
 """
 
 import json
@@ -38,7 +39,7 @@ def _git(*args, cwd):
 
 
 def _agente_falso(dir_bin):
-    """Agente falso: responde a `session` y a `run` (crea src/nuevo.py)."""
+    """Fake agent: responds to `session` and to `run` (creates src/nuevo.py)."""
     dir_bin.mkdir(parents=True, exist_ok=True)
     bin_ = dir_bin / "opencode"
     bin_.write_text(
@@ -58,7 +59,7 @@ def _agente_falso(dir_bin):
 
 
 def _escenario(tmp_path, gate_txt):
-    """Proyecto git master con plan de 1 tarea y el gate dado."""
+    """Git master project with a 1-task plan and the given gate."""
     proyecto = tmp_path / "proyecto"
     proyecto.mkdir()
     _git("init", "-q", "-b", "master", cwd=proyecto)
@@ -122,7 +123,7 @@ def test_iteracion_con_trabajo_completa_el_run(tmp_path):
     assert "DEDALO INICIADO" in log
     assert "DEDALO FINALIZADO" in log
 
-    # La tarea se completó de verdad: commit + plan marcado [x].
+    # The task truly completed: commit + plan marked [x].
     plan = (proyecto / "plan.md").read_text(encoding="utf-8")
     assert "- [x] t1" in plan, plan
     gitlog = subprocess.run(
@@ -131,18 +132,18 @@ def test_iteracion_con_trabajo_completa_el_run(tmp_path):
     assert any(linea.startswith("dedalo:") for linea in gitlog.stdout.splitlines()), \
         gitlog.stdout
 
-    # La rama de la tarea se fusionó en la rama del run y se borró.
+    # The task branch was merged into the run branch and deleted.
     ramas = subprocess.run(["git", "branch"], cwd=str(proyecto),
                            capture_output=True, text=True, check=True)
     assert "dedalo/tareas/" not in ramas.stdout, ramas.stdout
     assert any(linea.startswith("* dedalo/") for linea in ramas.stdout.splitlines()), \
         ramas.stdout
 
-    # El CRITERIO llegó al gate (env) y al agente no se le pasó --model vacío.
+    # The CRITERIO reached the gate (env) and no empty --model was passed to the agent.
     assert (proyecto / "criterio_env.txt").read_text(
         encoding="utf-8").strip() == "existe src/nuevo.py"
 
-    # metrics.jsonl con la métrica del agente (rc 0 y costo estimado).
+    # metrics.jsonl with the agent metric (rc 0 and estimated cost).
     metricas = (proyecto / "metrics.jsonl").read_text(encoding="utf-8")
     d = json.loads(metricas.splitlines()[0])
     assert d["agente"] == "opencode" and d["rc"] == 0
@@ -151,8 +152,8 @@ def test_iteracion_con_trabajo_completa_el_run(tmp_path):
 
 
 def test_tarea_que_no_pasa_el_gate_se_bloquea(tmp_path, capsys):
-    """El gate falla DESPUÉS de trabajar (baseline pasa): tras los intentos
-    la tarea queda marcada [B] sin commit, y el run termina con rc 0."""
+    """The gate fails AFTER working (baseline passes): after the attempts
+    the task is left marked [B] without a commit, and the run ends with rc 0."""
     gate = ("#!/usr/bin/env bash\n"
             "if [ -e src/nuevo.py ]; then exit 1; fi\n"
             "exit 0\n")
@@ -173,8 +174,8 @@ def test_tarea_que_no_pasa_el_gate_se_bloquea(tmp_path, capsys):
     assert not any(linea.startswith("dedalo:") for linea in gitlog.stdout.splitlines()), \
         "no debe haber commit de una tarea bloqueada"
 
-    # incidencias.jsonl registra cada gate_fail y el bloqueo final, y el
-    # bloqueo hereda el motivo real (gate_fail), no un texto genérico.
+    # incidencias.jsonl records each gate_fail and the final block, and the
+    # block inherits the real reason (gate_fail), not a generic text.
     inc = (proyecto / "incidencias.jsonl").read_text(encoding="utf-8")
     eventos = [json.loads(li) for li in inc.splitlines()]
     tipos = [e["tipo"] for e in eventos]
@@ -182,15 +183,15 @@ def test_tarea_que_no_pasa_el_gate_se_bloquea(tmp_path, capsys):
     assert eventos[-1]["tipo"] == "bloqueada"
     assert "gate_fail" in eventos[-1]["motivo"], eventos[-1]
 
-    # El resumen final (stdout) lista la tarea [B] con su motivo.
+    # The final summary (stdout) lists the [B] task with its reason.
     salida = capsys.readouterr().out
     assert "TAREAS SIN COMPLETAR" in salida
     assert "- [B] t1" in salida
 
 
 def test_gate_sin_consentimiento_aborta_con_3(tmp_path, monkeypatch):
-    """Sin consentimiento (no interactivo) el gate de un repo desconocido no
-    se ejecuta: el run aborta con rc 3 antes del baseline."""
+    """Without consent (non-interactive) the gate of an unknown repo is not
+    run: the run aborts with rc 3 before the baseline."""
     import dedalo.consentimiento as consentimiento
     monkeypatch.setattr(consentimiento, "CONFIG_DIR",
                         str(tmp_path / "cfg_aislado"))
@@ -209,7 +210,7 @@ def test_gate_sin_consentimiento_aborta_con_3(tmp_path, monkeypatch):
 
 
 def test_sin_agente_aborta_con_2(tmp_path):
-    """Agente explícito cuyo binario no existe → exit 2 sin tocar el loop."""
+    """Explicit agent whose binary does not exist → exit 2 without touching the loop."""
     proyecto = tmp_path / "proyecto"
     proyecto.mkdir()
     env = _entorno(tmp_path / "bin")
@@ -226,7 +227,7 @@ def test_sin_agente_aborta_con_2(tmp_path):
 
 
 def test_integracion_en_rama_de_trabajo(tmp_path):
-    """Con --trabajo distinta, el trabajo se integra al final en esa rama."""
+    """With a different --trabajo, the work is integrated at the end into that branch."""
     gate = "#!/usr/bin/env bash\nexit 0\n"
     proyecto = _escenario(tmp_path, gate)
     bin_falso = _agente_falso(tmp_path / "bin")
@@ -246,7 +247,7 @@ def test_integracion_en_rama_de_trabajo(tmp_path):
 
 
 def test_contexto_del_proyecto_llega_al_prompt_del_agente(tmp_path):
-    """CONTEXTO.md se inyecta en el prompt del agente (contexto permanente)."""
+    """CONTEXTO.md is injected into the agent's prompt (permanent context)."""
     gate = "#!/usr/bin/env bash\nexit 0\n"
     proyecto = _escenario(tmp_path, gate)
     (proyecto / "CONTEXTO.md").write_text(

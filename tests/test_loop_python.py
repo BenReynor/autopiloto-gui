@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Tests de dedalo.loop: helpers puros del motor (proxima_tarea,
+"""Tests for dedalo.loop: pure engine helpers (proxima_tarea,
 criterio_tarea, rama_run_nombre, Config, backup/gate_intacto/restaurar_gate,
-_run_gate y _esperar_revision_manual).
+_run_gate and _esperar_revision_manual).
 
-Sin Qt: el motor python no depende de PySide.
+Without Qt: the python engine does not depend on PySide.
 """
 
 import io
@@ -91,7 +91,7 @@ def test_criterio_vacio_ignora_otras_tareas_previas(tmp_path):
     assert criterio_tarea(str(plan)) == "ok"
 
 
-# ------------------------------------------------------------------- ramas
+# ------------------------------------------------------------------ branches
 
 
 def test_rama_run_nombre_formato():
@@ -154,7 +154,7 @@ def test_backup_gate_intacto_y_restaurar(tmp_path):
 
 
 def test_run_gate_pasa_env_y_devuelve_0(tmp_path):
-    """_run_gate corre gate.py; el CRITERIO llega al check por entorno."""
+    """_run_gate runs gate.py; the CRITERIO reaches the check through the environment."""
     proyecto = tmp_path / "p"
     checks = proyecto / "gate_checks"
     checks.mkdir(parents=True)
@@ -188,7 +188,7 @@ def test_run_gate_rc_distinto_de_cero(tmp_path):
         os.unlink(ruta)
 
 
-# ----------------------------------------------------- revisión manual
+# ----------------------------------------------------- manual review
 
 
 def test_manual_desactivada_devuelve_0(tmp_path):
@@ -227,7 +227,7 @@ def test_manual_rechazada_rellena_motivo(tmp_path):
 
 
 def test_manual_aprobacion_de_agente_ignorada_por_defecto(tmp_path, monkeypatch):
-    """Un APPROVE con origen=mcp no zanja la revisión si no hay opt-in."""
+    """An APPROVE with origen=mcp does not settle the review if there is no opt-in."""
     dir_rev = tmp_path / ".dedalo_review"
     dir_rev.mkdir(exist_ok=True)
     (dir_rev / "decision").write_text("APPROVE\n# origen=mcp\n", encoding="utf-8")
@@ -245,7 +245,7 @@ def test_manual_aprobacion_de_agente_ignorada_por_defecto(tmp_path, monkeypatch)
 
 
 def test_manual_aprobacion_de_agente_permitida_con_opt_in(tmp_path, monkeypatch):
-    """Con REVISION_APRUEBA_AGENTE=1 el APPROVE de origen=mcp se acepta."""
+    """With REVISION_APRUEBA_AGENTE=1 the APPROVE from origen=mcp is accepted."""
     dir_rev = tmp_path / ".dedalo_review"
     dir_rev.mkdir(exist_ok=True)
     (dir_rev / "decision").write_text("APPROVE\n# origen=mcp\n", encoding="utf-8")
@@ -259,7 +259,7 @@ def test_manual_aprobacion_de_agente_permitida_con_opt_in(tmp_path, monkeypatch)
 
 
 def test_manual_aprobacion_gui_siempre_valida(tmp_path):
-    """La GUI (origen=gui) aprueba como una persona, sin opt-in."""
+    """The GUI (origen=gui) approves like a person, without opt-in."""
     dir_rev = tmp_path / ".dedalo_review"
     dir_rev.mkdir(exist_ok=True)
     (dir_rev / "decision").write_text("APPROVE\n# origen=gui\n", encoding="utf-8")
@@ -272,7 +272,7 @@ def test_manual_aprobacion_gui_siempre_valida(tmp_path):
 
 
 def test_manual_rechazo_de_agente_no_se_bloquea(tmp_path):
-    """Un REJECT de agente se respeta (no es auto-aprobación)."""
+    """An agent REJECT is respected (it is not self-approval)."""
     dir_rev = tmp_path / ".dedalo_review"
     dir_rev.mkdir(exist_ok=True)
     (dir_rev / "decision").write_text("REJECT\nmejora tests\n# origen=mcp\n",
@@ -309,22 +309,22 @@ def test_manual_sin_internet_aborta_con_4(tmp_path, monkeypatch):
 
 
 def test_proteger_salidas_reconfigura_consola_no_utf8(monkeypatch):
-    """Windows con consola heredada: el encoding es cp1252 y el primer ✗
-    del motor reventaba con UnicodeEncodeError (regresión vista en el
-    smoke del binario de Windows). Debe pasar el stream a utf-8/replace."""
+    """Windows with a legacy console: the encoding is cp1252 and the first ✗
+    from the engine blew up with UnicodeEncodeError (regression seen in the
+    Windows binary smoke test). It must set the stream to utf-8/replace."""
     import dedalo.loop as loop_m
     buf = io.BytesIO()
     flujo = io.TextIOWrapper(buf, encoding="cp1252")
     monkeypatch.setattr(sys, "stdout", flujo)
     loop_m._proteger_salidas()
-    print("[dedalo] ✗✗ agente no disponible")  # no debe reventar
+    print("[dedalo] ✗✗ agente no disponible")  # must not blow up
     flujo.flush()
     assert "✗✗" in buf.getvalue().decode("utf-8")
     flujo.close()
 
 
 def test_proteger_salidas_sustituye_stream_none_por_devnull(monkeypatch):
-    """Binario --windowed: stdout/stderr None y el primer print reventaría."""
+    """--windowed binary: stdout/stderr are None and the first print would blow up."""
     import dedalo.loop as loop_m
     monkeypatch.setattr(sys, "stdout", None)
     loop_m._proteger_salidas()

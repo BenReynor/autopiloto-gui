@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Tests de la lógica de log/revisión de app.Ventana.
+"""Tests for app.Ventana's log/review logic.
 
-Usa `Ventana.__new__` con colaboradores falsos para no construir la ventana
-completa. Cubre: detección edge-triggered (sin webhooks duplicados), resumen
-por run, log truncado y ocultado del panel de revisión.
+Uses `Ventana.__new__` with fake collaborators to avoid building the full
+window. Covers: edge-triggered detection (no duplicate webhooks), summary
+per run, truncated log, and hiding of the review panel.
 """
 
 import os
@@ -84,17 +84,17 @@ def test_tail_log_no_duplica_webhooks(app, tmp_path):
     v = _ventana_min(ruta)
     v._log_tam = v._log_marca = v._tam_log(ruta)
 
-    # Nuevo contenido con un evento → dispara UNA vez
+    # New content with an event → fires ONCE
     log.write_text(log.read_text() + "tokens/cuota agotados\n", encoding="utf-8")
     v._tail_log()
     assert v.webhooks == ["tokens"]
 
-    # Refresco sin cambios → no relee ni reenvía
+    # Refresh with no changes → neither rereads nor resends
     v._tail_log()
     assert v.webhooks == ["tokens"]
 
-    # Nuevo contenido NO relacionado: el evento viejo (aún en la ventana de
-    # tail) NO debe reenviarse; solo se procesa el delta.
+    # New UNRELATED content: the old event (still within the tail
+    # window) must NOT be resent; only the delta is processed.
     log.write_text(log.read_text() + "tarea bloqueada: demo.py\n", encoding="utf-8")
     v._tail_log()
     assert v.webhooks == ["tokens"]
@@ -105,7 +105,7 @@ def test_tail_log_truncado_no_crashea(app, tmp_path):
     ruta = str(tmp_path)
     (tmp_path / "progreso.log").write_text("x\n", encoding="utf-8")
     v = _ventana_min(ruta)
-    v._log_marca = 999999  # marca por delante (log rotado/truncado)
+    v._log_marca = 999999  # mark ahead of the end (rotated/truncated log)
     v._tail_log()
     assert v._log_marca == os.path.getsize(os.path.join(ruta, "progreso.log"))
 

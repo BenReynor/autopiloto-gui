@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
 
 from . import configuracion as cfg
 from . import modelos, plan
+from .i18n import t
 from .modelos import PROVEEDORES_CATALOGO
 from .paneles_webhooks import PanelWebhooks
 from .proceso import PanelTarea, Trabajo
@@ -156,8 +157,8 @@ def _sincronizar_modelo(selector, cmb_cli):
     selector.setEnabled(es_opencode)
     if not es_opencode:
         selector.setToolTip(
-            f"{actual} no acepta --model aquí: se usa el modelo "
-            "configurado en su propia cuenta")
+            t("{actual} does not accept --model here: the model configured "
+              "in its own account is used", actual=actual))
 
 
 def fase_actual(log_ruta: str) -> str:
@@ -347,7 +348,7 @@ class PipelineLoop(QWidget):
 
 
 class LoopPill(QLabel):
-    """Loop status pill: '● 3/40 · fase: Gate'.
+    """Loop status pill: '● 3/40 · phase: Gate'.
 
     With cfg.MOTION the pill "breathes" (amber opacity, QPropertyAnimation).
     """
@@ -356,7 +357,7 @@ class LoopPill(QLabel):
         super().__init__(parent)
         self.setObjectName("pill_loop")
         self.setProperty("running", False)
-        self.setText("Loop detenido")
+        self.setText(t("Loop stopped"))
         self._efecto = QGraphicsOpacityEffect(self)
         self._efecto.setOpacity(1.0)
         self.setGraphicsEffect(self._efecto)
@@ -386,10 +387,10 @@ class LoopPill(QLabel):
         self._set_running(corriendo)
         if corriendo:
             itxt = f"{iter_actual}/{total}" if total else str(iter_actual)
-            ftext = f" · fase: {fase}" if fase else ""
+            ftext = t(" · phase: {fase}", fase=fase) if fase else ""
             self.setText(f"● {itxt}{ftext}")
         else:
-            self.setText("Loop detenido")
+            self.setText(t("Loop stopped"))
 
 
 class AvisoTemperatura(QDialog):
@@ -400,7 +401,7 @@ class AvisoTemperatura(QDialog):
 
     def __init__(self, temp, segundos, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("⚠ PC demasiado caliente")
+        self.setWindowTitle(t("⚠ PC too hot"))
         self.setModal(True)
         self._segundos = max(1, int(segundos))
         self._restante = self._segundos
@@ -410,19 +411,21 @@ class AvisoTemperatura(QDialog):
         v.setSpacing(16)
         v.setContentsMargins(24, 24, 24, 24)
 
-        self.lbl_temp = QLabel(f"⚠ Temperatura crítica: <b>{temp} °C</b>")
+        self.lbl_temp = QLabel(
+            t("⚠ Critical temperature: <b>{temp} °C</b>", temp=temp))
         self.lbl_temp.setWordWrap(True)
         v.addWidget(self.lbl_temp)
 
         self.lbl_conteo = QLabel(
-            f"La aplicación se apagará en <b>{self._restante}</b> s.")
+            t("The application will shut down in <b>{restante}</b> s.",
+              restante=self._restante))
         v.addWidget(self.lbl_conteo)
 
         h = QHBoxLayout()
         h.setSpacing(12)
-        b_continuar = _BtnPrimary("Continuar")
+        b_continuar = _BtnPrimary(t("Continue"))
         b_continuar.clicked.connect(self._continuar)
-        b_apagar = _BtnDanger("Apagar ahora")
+        b_apagar = _BtnDanger(t("Shut down now"))
         b_apagar.clicked.connect(self._apagar_ahora)
         h.addWidget(b_continuar)
         h.addWidget(b_apagar)
@@ -440,7 +443,8 @@ class AvisoTemperatura(QDialog):
             self.accept()
         else:
             self.lbl_conteo.setText(
-                f"La aplicación se apagará en <b>{self._restante}</b> s.")
+                t("The application will shut down in <b>{restante}</b> s.",
+                  restante=self._restante))
 
     def _continuar(self):
         self.timer.stop()
@@ -470,9 +474,9 @@ class KanbanWidget(QWidget):
         h.setSpacing(8)
         h.setContentsMargins(0, 0, 0, 0)
 
-        self.col_pend = self._crear_columna("Pendientes", "#3b82f6")
-        self.col_hecha = self._crear_columna("Hechas", "#22c55e")
-        self.col_bloq = self._crear_columna("Bloqueadas", "#ef4444")
+        self.col_pend = self._crear_columna(t("Pending"), "#3b82f6")
+        self.col_hecha = self._crear_columna(t("Done"), "#22c55e")
+        self.col_bloq = self._crear_columna(t("Blocked"), "#ef4444")
 
         h.addWidget(self.col_pend, 1)
         h.addWidget(self.col_hecha, 1)
@@ -565,14 +569,14 @@ class KanbanWidget(QWidget):
         if not self._plan:
             return
         pend = hecha = bloq = 0
-        for t in self._plan.tareas:
-            item = QListWidgetItem(t["texto"])
-            item.setToolTip(f"Línea {t['linea']}")
+        for tarea in self._plan.tareas:
+            item = QListWidgetItem(tarea["texto"])
+            item.setToolTip(t("Line {linea}", linea=tarea["linea"]))
             # Visual states
-            if t["estado"] == "pendiente":
+            if tarea["estado"] == "pendiente":
                 self.col_pend.lista.addItem(item)
                 pend += 1
-            elif t["estado"] == "hecha":
+            elif tarea["estado"] == "hecha":
                 # Visual strikethrough
                 font = item.font()
                 font.setStrikeOut(True)
@@ -580,7 +584,7 @@ class KanbanWidget(QWidget):
                 item.setForeground(Qt.gray)
                 self.col_hecha.lista.addItem(item)
                 hecha += 1
-            elif t["estado"] == "bloqueada":
+            elif tarea["estado"] == "bloqueada":
                 # Red + bold
                 font = item.font()
                 font.setBold(True)
@@ -635,9 +639,9 @@ class PanelPlan(QWidget):
 
         h = QHBoxLayout()
         h.setSpacing(8)
-        b_recargar = _BtnGhost("Recargar")
+        b_recargar = _BtnGhost(t("Reload"))
         b_recargar.clicked.connect(lambda: self.cargar())
-        b_guardar = _BtnPrimary("Guardar plan.md")
+        b_guardar = _BtnPrimary(t("Save plan.md"))
         b_guardar.clicked.connect(self.guardar)
         h.addStretch()
         h.addWidget(b_recargar)
@@ -665,8 +669,9 @@ class PanelPlan(QWidget):
             self.clear()
             return
         if not self._plan.existe():
-            self.editor.setPlainText("# PLAN\n\n- [ ] tu primera tarea — criterio: ...\n")
-            self.lbl_conteo.setText("plan.md no existe aún")
+            self.editor.setPlainText(t(
+                "# PLAN\n\n- [ ] your first task — criterion: ...\n"))
+            self.lbl_conteo.setText(t("plan.md does not exist yet"))
             self.kanban.clear()
             self._modificado = False
             self._huella_guardada = None
@@ -722,8 +727,9 @@ class PanelPlan(QWidget):
         self._modificado = True
         pend, hecho, bloqueada = self._plan.conteo()
         self.lbl_conteo.setText(
-            f"Pendientes: {pend}   ·   Hechas: {hecho}   ·   "
-            f"Bloqueadas: {bloqueada}")
+            t("Pending: {pend}   ·   Done: {hecho}   ·   "
+              "Blocked: {bloqueada}",
+              pend=pend, hecho=hecho, bloqueada=bloqueada))
         self.kanban._actualizar()
 
 
@@ -747,7 +753,7 @@ class PanelLecciones(QWidget):
         v.setContentsMargins(0, 0, 0, 0)
 
         h = QHBoxLayout()
-        lbl = QLabel("🧠 Memoria del proyecto")
+        lbl = QLabel(t("🧠 Project memory"))
         _fuente_ui(lbl)
         lbl.setStyleSheet("font-weight: 600; font-size: 13px;")
         h.addWidget(lbl)
@@ -755,8 +761,8 @@ class PanelLecciones(QWidget):
         h.addWidget(self.lbl_estado)
         h.addStretch()
         self.lbl_apunte = _LabelMuted(
-            "Se inyecta al agente antes de cada tarea; añade una entrada automática "
-            "al bloquear una tarea.")
+            t("Injected into the agent before every task; it adds an entry "
+              "automatically when a task gets blocked."))
         h.addWidget(self.lbl_apunte)
         v.addLayout(h)
 
@@ -767,11 +773,11 @@ class PanelLecciones(QWidget):
 
         h = QHBoxLayout()
         h.setSpacing(8)
-        b_nueva = _BtnPrimary("＋ Nueva lección")
+        b_nueva = _BtnPrimary(t("＋ New lesson"))
         b_nueva.clicked.connect(self._nueva_leccion)
-        b_recargar = _BtnGhost("Recargar")
+        b_recargar = _BtnGhost(t("Reload"))
         b_recargar.clicked.connect(lambda: self.cargar())
-        b_guardar = _BtnGhost("Guardar lecciones.md")
+        b_guardar = _BtnGhost(t("Save lecciones.md"))
         b_guardar.clicked.connect(self.guardar)
         h.addWidget(b_nueva)
         h.addStretch()
@@ -786,12 +792,12 @@ class PanelLecciones(QWidget):
     def _nueva_leccion(self):
         """Appends a lesson template to the end of the editor and focuses it."""
         from datetime import datetime
-        bloque = (
-            f"\n## {datetime.now().strftime('%Y-%m-%d %H:%M')} — Título breve de la lección\n"
-            "- Síntoma: qué falló.\n"
-            "- Causa: por qué falló.\n"
-            "- Prevención: qué hacer para no repetirlo.\n"
-        )
+        bloque = t(
+            "\n## {fecha} — Brief lesson title\n"
+            "- Symptom: what failed.\n"
+            "- Cause: why it failed.\n"
+            "- Prevention: what to do to avoid repeating it.\n",
+            fecha=datetime.now().strftime("%Y-%m-%d %H:%M"))
         texto = self.editor.toPlainText()
         if texto and not texto.endswith("\n"):
             bloque = "\n" + bloque
@@ -810,8 +816,9 @@ class PanelLecciones(QWidget):
             self.lbl_estado.setText("")
             return
         if not os.path.isfile(self._ruta):
-            self.editor.setPlainText("# Lecciones aprendidas — memoria del proyecto\n\n")
-            self.lbl_estado.setText("lecciones.md no existe aún")
+            self.editor.setPlainText(
+                t("# Lessons learned — project memory\n\n"))
+            self.lbl_estado.setText(t("lecciones.md does not exist yet"))
             self._modificado = False
             self._huella_guardada = None
             return
@@ -840,7 +847,7 @@ class PanelLecciones(QWidget):
             self.editor.setPlainText(f.read())
         self._modificado = False
         self._huella_guardada = huella
-        self.lbl_estado.setText(f"🔄 recargado ({self._ruta})")
+        self.lbl_estado.setText(t("🔄 reloaded ({ruta})", ruta=self._ruta))
 
     def guardar(self):
         if not self._ruta:
@@ -849,7 +856,8 @@ class PanelLecciones(QWidget):
             f.write(self.editor.toPlainText())
         self._modificado = False
         self._huella_guardada = self._huella()
-        self.lbl_estado.setText(f"lecciones.md guardado ({self._ruta})")
+        self.lbl_estado.setText(
+            t("lecciones.md saved ({ruta})", ruta=self._ruta))
         self.guardado.emit(self._ruta)
 
 
@@ -870,7 +878,7 @@ class PanelIncidencias(QWidget):
         v.setContentsMargins(0, 0, 0, 0)
 
         h = QHBoxLayout()
-        lbl = QLabel("⚠ Incidencias del loop")
+        lbl = QLabel(t("⚠ Loop incidents"))
         _fuente_ui(lbl)
         lbl.setStyleSheet("font-weight: 600; font-size: 13px;")
         h.addWidget(lbl)
@@ -878,13 +886,13 @@ class PanelIncidencias(QWidget):
         h.addWidget(self.lbl_estado)
         h.addStretch()
         self.lbl_apunte = _LabelMuted(
-            "Fallos, abortos y tareas bloqueadas con su motivo real.")
+            t("Failures, aborts and blocked tasks with their real reason."))
         h.addWidget(self.lbl_apunte)
         v.addLayout(h)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(
-            ["Hora", "Iteración", "Tarea", "Tipo", "Motivo"])
+            [t("Time"), t("Iteration"), t("Task"), t("Type"), t("Reason")])
         self.tree.setColumnWidth(0, 130)
         self.tree.setColumnWidth(1, 70)
         self.tree.setColumnWidth(2, 220)
@@ -897,7 +905,7 @@ class PanelIncidencias(QWidget):
 
         h = QHBoxLayout()
         h.setSpacing(8)
-        b_recargar = _BtnGhost("Recargar")
+        b_recargar = _BtnGhost(t("Reload"))
         b_recargar.clicked.connect(lambda: self.cargar())
         h.addStretch()
         h.addWidget(b_recargar)
@@ -908,7 +916,7 @@ class PanelIncidencias(QWidget):
             self._ruta = ruta or None
         self.tree.clear()
         if not self._ruta or not os.path.isfile(self._ruta):
-            self.lbl_estado.setText("incidencias.jsonl no existe aún")
+            self.lbl_estado.setText(t("incidencias.jsonl does not exist yet"))
             self._huella_guardada = None
             return
         try:
@@ -934,7 +942,8 @@ class PanelIncidencias(QWidget):
             ]))
             n += 1
         self._huella_guardada = self._huella()
-        self.lbl_estado.setText(f"{n} incidencia(s) · {self._ruta}")
+        self.lbl_estado.setText(
+            t("{n} incident(s) · {ruta}", n=n, ruta=self._ruta))
 
     def _huella(self):
         if not self._ruta:
@@ -964,7 +973,7 @@ class PanelMapa(QWidget):
         v.setSpacing(8)
         v.setContentsMargins(0, 0, 0, 0)
 
-        self.lbl_estado = _LabelMuted("Sin proyecto")
+        self.lbl_estado = _LabelMuted(t("No project"))
         v.addWidget(self.lbl_estado)
 
         self.editor = QPlainTextEdit()
@@ -974,9 +983,9 @@ class PanelMapa(QWidget):
 
         h = QHBoxLayout()
         h.setSpacing(8)
-        b_recargar = _BtnGhost("Recargar")
+        b_recargar = _BtnGhost(t("Reload"))
         b_recargar.clicked.connect(lambda: self.cargar())
-        b_regenerar = _BtnPrimary("🔄 Regenerar mapeo")
+        b_regenerar = _BtnPrimary(t("🔄 Regenerate map"))
         b_regenerar.clicked.connect(self._regenerar)
         h.addStretch()
         h.addWidget(b_recargar)
@@ -987,8 +996,9 @@ class PanelMapa(QWidget):
         if ruta is not None:
             self._ruta = ruta or None
         if not self._ruta or not os.path.isfile(self._ruta):
-            self.editor.setPlainText("(mapeo.txt no existe — pulsa Regenerar)")
-            self.lbl_estado.setText("mapeo.txt no encontrado")
+            self.editor.setPlainText(
+                t("(mapeo.txt does not exist — press Regenerate)"))
+            self.lbl_estado.setText(t("mapeo.txt not found"))
             return
         with open(self._ruta, encoding="utf-8", errors="replace") as f:
             self.editor.setPlainText(f.read())
@@ -1001,14 +1011,16 @@ class PanelMapa(QWidget):
         dir_proy = os.path.dirname(self._ruta)
         mapear_sh = os.path.join(dir_proy, "mapear.sh")
         if not os.path.isfile(mapear_sh):
-            self.lbl_estado.setText("mapear.sh no encontrado en el proyecto")
+            self.lbl_estado.setText(t("mapear.sh not found in the project"))
             return
         try:
             subprocess.run(["bash", mapear_sh], cwd=dir_proy, check=True, capture_output=True)
             self.cargar()
-            self.lbl_estado.setText(f"mapeo.txt regenerado ({self._ruta})")
+            self.lbl_estado.setText(
+                t("mapeo.txt regenerated ({ruta})", ruta=self._ruta))
         except subprocess.CalledProcessError as e:
-            self.lbl_estado.setText(f"Error: {e.stderr.decode()[:120]}")
+            self.lbl_estado.setText(
+                t("Error: {msg}", msg=e.stderr.decode()[:120]))
 
 
 class PanelRevision(QWidget):
@@ -1030,7 +1042,7 @@ class PanelRevision(QWidget):
         # Header
         h = QHBoxLayout()
         h.setSpacing(8)
-        self.lbl_titulo = QLabel("⏸ Revisión pendiente")
+        self.lbl_titulo = QLabel(t("⏸ Pending review"))
         _fuente_ui(self.lbl_titulo)
         self.lbl_titulo.setStyleSheet("font-weight: 600; font-size: 13px;")
         h.addWidget(self.lbl_titulo)
@@ -1048,9 +1060,9 @@ class PanelRevision(QWidget):
         # Buttons
         h = QHBoxLayout()
         h.setSpacing(8)
-        self.b_aprobar = _BtnPrimary("✓ Aprobar y commitear")
+        self.b_aprobar = _BtnPrimary(t("✓ Approve and commit"))
         self.b_aprobar.clicked.connect(self._emitir_aprobado)
-        self.b_rechazar = _BtnDanger("✗ Rechazar y reintentar")
+        self.b_rechazar = _BtnDanger(t("✗ Reject and retry"))
         self.b_rechazar.clicked.connect(self._pedir_motivo_rechazo)
         h.addWidget(self.b_aprobar)
         h.addWidget(self.b_rechazar)
@@ -1062,12 +1074,12 @@ class PanelRevision(QWidget):
         self._ruta_proyecto = ruta_proyecto
         self._archivo_diff = archivo_diff
         self._archivo_senal = archivo_senal
-        self.lbl_tarea.setText(f"Tarea: {tarea}")
+        self.lbl_tarea.setText(t("Task: {tarea}", tarea=tarea))
         try:
             with open(archivo_diff, encoding="utf-8") as f:
                 self.txt_diff.setPlainText(f.read())
         except OSError:
-            self.txt_diff.setPlainText("(no se pudo leer el diff)")
+            self.txt_diff.setPlainText(t("(could not read the diff)"))
         self.setVisible(True)
 
     def ocultar(self):
@@ -1083,8 +1095,9 @@ class PanelRevision(QWidget):
 
     def _pedir_motivo_rechazo(self):
         motivo, ok = QInputDialog.getMultiLineText(
-            self, "Motivo del rechazo",
-            "Explica qué debe corregir el agente (se inyectará en el siguiente intento):")
+            self, t("Rejection reason"),
+            t("Explain what the agent must fix (it will be injected into "
+              "the next attempt):"))
         if ok and motivo.strip():
             if self._archivo_senal:
                 _escribir_privado(
@@ -1129,7 +1142,7 @@ class PanelEjecucion(QWidget):
         v.addWidget(self.pipeline)
 
         # ===== ZONE 1: LAUNCH OPTIONS =====
-        grupo = QGroupBox("Opciones de lanzamiento")
+        grupo = QGroupBox(t("Launch options"))
         g = QGridLayout(grupo)
         g.setSpacing(8)
         g.setHorizontalSpacing(12)
@@ -1156,10 +1169,12 @@ class PanelEjecucion(QWidget):
             cmb_cli.blockSignals(True)
             cmb_cli.clear()
             if operativo:
-                cmb_cli.addItem(f"auto → {operativo[0]}", "auto")
+                cmb_cli.addItem(
+                    t("auto → {agente}", agente=operativo[0]), "auto")
                 for a in detectados:
                     sin_sesion = modelos.sesion_agente(a) is False
-                    etiqueta = f"{a} (sin login)" if sin_sesion else a
+                    etiqueta = (t("{agente} (no login)", agente=a)
+                                if sin_sesion else a)
                     cmb_cli.addItem(etiqueta, a)
                     idx = cmb_cli.count() - 1
                     if sin_sesion:
@@ -1167,15 +1182,17 @@ class PanelEjecucion(QWidget):
                         # usable, but that agent cannot be chosen.
                         cmb_cli.model().item(idx).setEnabled(False)
                         cmb_cli.setItemData(
-                            idx, f"{a}: instalado pero sin sesión iniciada",
+                            idx, t("{agente}: installed but no session started",
+                                   agente=a),
                             Qt.ToolTipRole)
                 cmb_cli.setCurrentIndex(0)
             else:
-                cmb_cli.addItem("auto (sin agentes con sesión)", "auto")
-            cmb_cli.setToolTip(
-                "Instalados: " + (", ".join(detectados) or "ninguno")
-                + "\nCon sesión: " + (", ".join(operativo) or "ninguno")
-                + "\nModelos: sólo para opencode")
+                cmb_cli.addItem(t("auto (no agents with session)"), "auto")
+            cmb_cli.setToolTip(t(
+                "Installed: {inst}\nWith session: {ses}\n"
+                "Models: only for opencode",
+                inst=((", ".join(detectados)) or t("none")),
+                ses=((", ".join(operativo)) or t("none"))))
             cmb_cli.blockSignals(False)
             # Respect the selection if it still exists after filling.
             if previo and previo != "auto":
@@ -1207,32 +1224,33 @@ class PanelEjecucion(QWidget):
             self._llenar_agente = _llenar_combo_agente
             return w, cmb_cli
 
-        add_field(0, "Hasta (HH:MM, vacío = sin límite):",
+        add_field(0, t("Until (HH:MM, empty = no limit):"),
                   self._crear_lineedit(cfg.LAUNCH_DEFECTO["hasta"], "22:00"))
         self.txt_hasta = g.itemAtPosition(0, 1).widget()
 
-        add_field(1, "Máx iteraciones:",
+        add_field(1, t("Max iterations:"),
                   self._crear_lineedit(str(cfg.LAUNCH_DEFECTO["iteraciones"])))
         self.txt_iter = g.itemAtPosition(1, 1).widget()
 
         self.cmb_padre = QComboBox()
         self.cmb_padre.setEditable(True)
         self.cmb_padre.setInsertPolicy(QComboBox.NoInsert)
-        self.cmb_padre.setPlaceholderText(cfg.LAUNCH_DEFECTO["padre"] or "rama base")
-        add_field(2, "Padre (rama base):", self.cmb_padre)
+        self.cmb_padre.setPlaceholderText(
+            cfg.LAUNCH_DEFECTO["padre"] or t("base branch"))
+        add_field(2, t("Parent (base branch):"), self.cmb_padre)
         self.cmb_padre.setCurrentText(cfg.LAUNCH_DEFECTO["padre"])
         self.cmb_padre.currentTextChanged.connect(self.modelos_modificados)
 
         w_agente, self.cmb_agente_cli = contenedor_agente(
             SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
-        add_field(3, "Agente + Modelo (tarea):", w_agente)
+        add_field(3, t("Agent + Model (task):"), w_agente)
         self.cmb_agente = g.itemAtPosition(3, 1).widget().layout().itemAt(1).widget()
         self.cmb_agente.currentTextChanged.connect(self.modelos_modificados)
         self.cmb_agente_cli.currentTextChanged.connect(self.modelos_modificados)
 
         w_revisor, self.cmb_revisor_cli = contenedor_agente(
             SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
-        add_field(4, "Agente + Modelo (revisor):", w_revisor)
+        add_field(4, t("Agent + Model (reviewer):"), w_revisor)
         self.cmb_revisor = g.itemAtPosition(4, 1).widget().layout().itemAt(1).widget()
         self.cmb_revisor.currentTextChanged.connect(self.modelos_modificados)
         self.cmb_revisor_cli.currentTextChanged.connect(self.modelos_modificados)
@@ -1243,23 +1261,23 @@ class PanelEjecucion(QWidget):
         self.cmb_trabajo.setEditable(True)
         self.cmb_trabajo.setInsertPolicy(QComboBox.NoInsert)
         self.cmb_trabajo.setPlaceholderText(
-            cfg.LAUNCH_DEFECTO["padre"] or "rama del trabajo")
-        add_field(5, "Proyecto a trabajar (rama):", self.cmb_trabajo)
+            cfg.LAUNCH_DEFECTO["padre"] or t("work branch"))
+        add_field(5, t("Project to work on (branch):"), self.cmb_trabajo)
         self.cmb_trabajo.setCurrentText(cfg.LAUNCH_DEFECTO["trabajo"])
         self.cmb_trabajo.currentTextChanged.connect(self.modelos_modificados)
 
         # Navigator
         self.chk_nav = QCheckBox(
-            "🔍 Navigator automático (busca contexto antes de cada tarea)")
+            t("🔍 Automatic Navigator (finds context before each task)"))
         self.chk_nav.setChecked(cfg.NAVEGADOR_DEFECTO)
         g.addWidget(self.chk_nav, 6, 0, 1, 2)
 
-        add_field(7, "Modelo (navegador):",
+        add_field(7, t("Model (navigator):"),
                   SelectorModelo(proveedores=PROVEEDORES_CATALOGO))
         self.cmb_nav = g.itemAtPosition(7, 1).widget()
         self.cmb_nav.currentTextChanged.connect(self.modelos_modificados)
 
-        b_modelos = _BtnGhost("↻ Refrescar modelos")
+        b_modelos = _BtnGhost(t("↻ Refresh models"))
         b_modelos.clicked.connect(self.refrescar_modelos)
         g.addWidget(b_modelos, 8, 0, 1, 2)
 
@@ -1269,30 +1287,30 @@ class PanelEjecucion(QWidget):
         self.lbl_modelos = _LabelMuted("")
         g.addWidget(self.lbl_modelos, 10, 0, 1, 2)
 
-        self.chk_dual = QCheckBox(
-            "Gate dual: el revisor exige VERDICT: PASS antes del commit")
+        self.chk_dual = QCheckBox(t(
+            "Dual gate: the reviewer requires VERDICT: PASS before commit"))
         self.chk_dual.setChecked(cfg.LAUNCH_DEFECTO["dual"])
         g.addWidget(self.chk_dual, 11, 0, 1, 2)
 
-        self.chk_voz = QCheckBox(
-            "Alertas de voz al bloquear/terminar (notify-send/spd-say)")
+        self.chk_voz = QCheckBox(t(
+            "Voice alerts on block/finish (notify-send/spd-say)"))
         self.chk_voz.setChecked(cfg.LAUNCH_DEFECTO["voz"])
         g.addWidget(self.chk_voz, 12, 0, 1, 2)
 
-        add_field(13, "Presupuesto máx (USD, 0 = sin límite):",
+        add_field(13, t("Max budget (USD, 0 = no limit):"),
                   self._crear_lineedit(str(cfg.LAUNCH_DEFECTO["costo_max"])))
         self.txt_costo_max = g.itemAtPosition(13, 1).widget()
 
-        add_field(14, "Costo estimado por tarea (USD):",
+        add_field(14, t("Estimated cost per task (USD):"),
                   self._crear_lineedit(str(cfg.LAUNCH_DEFECTO["costo_iter"])))
         self.txt_costo_iter = g.itemAtPosition(14, 1).widget()
 
-        self.chk_push = QCheckBox("--push al final")
+        self.chk_push = QCheckBox(t("--push at the end"))
         self.chk_push.setChecked(cfg.LAUNCH_DEFECTO["push"])
         g.addWidget(self.chk_push, 15, 0, 1, 2)
 
-        self.chk_revision_manual = QCheckBox(
-            "Revisar diff manualmente antes de cada commit (pausa el loop)")
+        self.chk_revision_manual = QCheckBox(t(
+            "Review diff manually before each commit (pauses the loop)"))
         self.chk_revision_manual.setChecked(False)
         g.addWidget(self.chk_revision_manual, 16, 0, 1, 2)
 
@@ -1301,12 +1319,12 @@ class PanelEjecucion(QWidget):
         # ===== CONTROL BUTTONS =====
         h_ctrl = QHBoxLayout()
         h_ctrl.setSpacing(8)
-        self.b_iniciar = _BtnPrimary("▶ Iniciar loop")
+        self.b_iniciar = _BtnPrimary(t("▶ Start loop"))
         self.b_iniciar.clicked.connect(self.iniciar)
-        self.b_detener = _BtnDanger("■ Detener")
+        self.b_detener = _BtnDanger(t("■ Stop"))
         self.b_detener.clicked.connect(self.detener)
         self.b_detener.setEnabled(False)
-        self.b_gate = _BtnGhost("Ejecutar gate")
+        self.b_gate = _BtnGhost(t("Run gate"))
         self.b_gate.clicked.connect(self.gate)
         h_ctrl.addWidget(self.b_iniciar)
         h_ctrl.addWidget(self.b_detener)
@@ -1413,15 +1431,14 @@ class PanelEjecucion(QWidget):
 
     def nota_net(self, ok):
         if ok is None:
-            self.lbl_net.setText("Internet: ?")
+            self.lbl_net.setText(t("Internet: ?"))
             self.lbl_net.setProperty("status", "info")
         elif ok:
-            self.lbl_net.setText("🟢 Internet: OK")
+            self.lbl_net.setText(t("🟢 Internet: OK"))
             self.lbl_net.setProperty("status", "success")
         else:
-            self.lbl_net.setText(
-                "🔴 Internet: SIN CONEXIÓN — los modelos IA no responderán; "
-                "el loop no arrancará")
+            self.lbl_net.setText(t(
+                "🔴 Internet: NO CONNECTION — AI models won't respond"))
             self.lbl_net.setProperty("status", "error")
         self.lbl_net.style().unpolish(self.lbl_net)
         self.lbl_net.style().polish(self.lbl_net)
@@ -1504,11 +1521,12 @@ class PanelGit(QWidget):
         self.lbl_rama = QLabel("")
         _fuente_ui(self.lbl_rama)
         self.lbl_rama.setStyleSheet("font-weight: 500;")
-        b_limpiar = _BtnGhost("🧹 Framework fuera de git")
+        b_limpiar = _BtnGhost(t("🧹 Framework out of git"))
         b_limpiar.clicked.connect(self.limpiar_git.emit)
-        b_limpiar.setToolTip("Añade el bloque de Dédalo al .gitignore del proyecto y "
-                             "deja de trackear los archivos del framework (siguen en disco)")
-        b_ref = _BtnGhost("Refrescar")
+        b_limpiar.setToolTip(t(
+            "Adds Dédalo's block to the project's .gitignore and stops "
+            "tracking the framework files (they stay on disk)"))
+        b_ref = _BtnGhost(t("Refresh"))
         b_ref.clicked.connect(lambda: self.cargar())
         h.addWidget(self.lbl_rama)
         h.addStretch()
@@ -1518,7 +1536,8 @@ class PanelGit(QWidget):
 
         # TreeWidget for commits with a Revert button
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["SHA", "Mensaje", "Autor", "Fecha", "Acción"])
+        self.tree.setHeaderLabels(
+            [t("SHA"), t("Message"), t("Author"), t("Date"), t("Action")])
         self.tree.setColumnWidth(0, 80)
         self.tree.setColumnWidth(1, 350)
         self.tree.setColumnWidth(2, 120)
@@ -1559,7 +1578,8 @@ class PanelGit(QWidget):
             self.lbl_rama.setText("")
             return
         rama, status, log = datos
-        self.lbl_rama.setText(f"Rama: {rama}" if rama else "Rama: —")
+        self.lbl_rama.setText(
+            t("Branch: {rama}", rama=rama) if rama else t("Branch: —"))
 
         # Clear the tree
         self.tree.clear()
@@ -1578,10 +1598,10 @@ class PanelGit(QWidget):
                 self.tree.addTopLevelItem(item)
 
                 # Revert button (compact, follows the active theme)
-                btn = _BtnSmallGhost("↩ Revertir")
+                btn = _BtnSmallGhost(t("↩ Revert"))
                 btn.setProperty("sha", sha)
                 btn.clicked.connect(lambda _, s=sha: self.revertir_commit.emit(s))
-                btn.setToolTip("Crea un nuevo commit que deshace este cambio")
+                btn.setToolTip(t("Undoes the change (creates a new commit)"))
                 self.tree.setItemWidget(item, 4, btn)
 
         # Status in the tooltip of the first item or the label
@@ -1599,9 +1619,9 @@ class PanelGit(QWidget):
             return
         w = Trabajo(self._consulta_git)
         w.conectar(self._git_listo)
-        w.liberar(self, "worker")
-        w.start()
+        w.liberar(self, "_worker")
         self._worker = w
+        w.start()
 
 
 class PanelSeguridad(QWidget):
@@ -1625,20 +1645,20 @@ class PanelSeguridad(QWidget):
         vt.setSpacing(12)
         vt.setContentsMargins(0, 0, 0, 0)
 
-        grupo = QGroupBox("Temperatura y protección")
+        grupo = QGroupBox(t("Temperature and protection"))
         g = QGridLayout(grupo)
         g.setSpacing(8)
         g.setHorizontalSpacing(12)
         g.setVerticalSpacing(8)
         g.setContentsMargins(12, 12, 12, 12)
 
-        self.chk_activo = QCheckBox(
-            "Verificar la temperatura y apagar la app si se sobrecalienta")
+        self.chk_activo = QCheckBox(t(
+            "Check the temperature and shut down the app if it overheats"))
         self.chk_activo.setChecked(bool(seguridad.get("activo")))
         g.addWidget(self.chk_activo, 0, 0, 1, 2)
 
-        self.chk_ver = QCheckBox(
-            "Mostrar la temperatura en este panel (actualiza cada segundo)")
+        self.chk_ver = QCheckBox(t(
+            "Show the temperature in this panel (updates every second)"))
         self.chk_ver.setChecked(bool(seguridad.get("ver")))
         g.addWidget(self.chk_ver, 1, 0, 1, 2)
 
@@ -1651,18 +1671,19 @@ class PanelSeguridad(QWidget):
             g.addWidget(le, row, 1)
             return le
 
-        self.txt_umbral = add_num_field(2, "Umbral de peligro (°C):",
+        self.txt_umbral = add_num_field(2, t("Danger threshold (°C):"),
                                         seguridad.get("umbral", 85))
-        self.txt_segundos = add_num_field(3, "Segundos de aviso antes de apagar:",
-                                          seguridad.get("segundos", 5))
+        self.txt_segundos = add_num_field(
+            3, t("Warning seconds before shutdown:"),
+            seguridad.get("segundos", 5))
 
-        b_guardar = _BtnPrimary("Guardar ajustes")
+        b_guardar = _BtnPrimary(t("Save settings"))
         b_guardar.clicked.connect(self._emitir_ajustes)
         g.addWidget(b_guardar, 4, 0, 1, 2)
 
         vt.addWidget(grupo)
 
-        self.lbl_titulo_temp = _LabelMuted("Temperatura actual:")
+        self.lbl_titulo_temp = _LabelMuted(t("Current temperature:"))
         self.lbl_temp = QLabel("—")
         self.lbl_estado_temp = _LabelMuted("")
 
@@ -1671,12 +1692,12 @@ class PanelSeguridad(QWidget):
         vt.addWidget(self.lbl_estado_temp)
         vt.addStretch()
 
-        self.tabs.addTab(tab_temp, "🌡 Temperatura")
+        self.tabs.addTab(tab_temp, t("🌡 Temperature"))
 
         # --- Notifications tab (Webhooks) ---
         self.panel_webhooks = PanelWebhooks(webhooks_config)
         self.panel_webhooks.guardado.connect(self._webhooks_guardado)
-        self.tabs.addTab(self.panel_webhooks, "🔔 Notificaciones")
+        self.tabs.addTab(self.panel_webhooks, t("🔔 Notifications"))
 
     def _webhooks_guardado(self, config: dict):
         """Re-emits the full signal with security + webhooks"""
@@ -1716,23 +1737,24 @@ class PanelSeguridad(QWidget):
         self.lbl_temp.setVisible(ver)
         self.lbl_estado_temp.setVisible(ver)
 
-    def actualizar_temp(self, t, umbral):
-        if t is None:
-            self.lbl_temp.setText("desconocida")
+    def actualizar_temp(self, temp, umbral):
+        if temp is None:
+            self.lbl_temp.setText(t("unknown"))
             self.lbl_temp.setStyleSheet("font-size: 28px; font-weight: 600; color: palette(text);")
-            self.lbl_estado_temp.setText("No hay sensor de temperatura disponible.")
+            self.lbl_estado_temp.setText(
+                t("No temperature sensor is available."))
             return
-        if t >= umbral:
+        if temp >= umbral:
             color = "#ef4444"
-            estado = "⚠ SOBRECALENTAMIENTO: se abrirá el aviso de apagado."
-        elif t >= umbral - 10:
+            estado = t("⚠ OVERHEATING: the shutdown warning will open.")
+        elif temp >= umbral - 10:
             color = "#f59e0b"
-            estado = "Temperatura alta: vigila."
+            estado = t("High temperature: keep an eye on it.")
         else:
             color = "#22c55e"
-            estado = "Temperatura normal."
+            estado = t("Normal temperature.")
         self.lbl_temp.setStyleSheet(f"font-size: 28px; font-weight: 600; color: {color};")
-        self.lbl_temp.setText(f"{t:.1f} °C")
+        self.lbl_temp.setText(f"{temp:.1f} °C")
         self.lbl_estado_temp.setText(estado)
 
 
@@ -1756,7 +1778,7 @@ class PanelLogs(QWidget):
 
         # ---- LOOP (top) ----
         self.loop_container = self._crear_panel_log(
-            "Salida del loop (progreso en vivo)",
+            t("Loop output (live progress)"),
             "loop"
         )
         self.panel_loop = self.loop_container.log_widget
@@ -1764,7 +1786,7 @@ class PanelLogs(QWidget):
 
         # ---- GATE (bottom) ----
         self.gate_container = self._crear_panel_log(
-            "Salida del gate",
+            t("Gate output"),
             "gate"
         )
         self.panel_gate = self.gate_container.log_widget
@@ -1797,20 +1819,21 @@ class PanelLogs(QWidget):
         header.addWidget(lbl)
         header.addStretch()
 
-        b_limpiar = _BtnGhost("🗑 Limpiar")
-        b_limpiar.setToolTip("Limpiar salida")
+        b_limpiar = _BtnGhost(t("🗑 Clear"))
+        b_limpiar.setToolTip(t("Clear output"))
         b_limpiar.clicked.connect(lambda: container.log_widget.clear())
         header.addWidget(b_limpiar)
 
-        b_copiar = _BtnGhost("📋 Copiar")
-        b_copiar.setToolTip("Copiar todo al portapapeles")
+        b_copiar = _BtnGhost(t("📋 Copy"))
+        b_copiar.setToolTip(t("Copy everything to clipboard"))
         b_copiar.clicked.connect(lambda: (container.log_widget.selectAll(), container.log_widget.copy()))
         header.addWidget(b_copiar)
 
         b_maximizar = _BtnGhost("⛶")
-        b_maximizar.setToolTip("Colapsar/expandir panel")
+        b_maximizar.setToolTip(t("Collapse/expand panel"))
         b_maximizar.setFixedWidth(28)
-        b_maximizar.clicked.connect(lambda checked=False, t=tipo: self._toggle_maximizar(t))
+        b_maximizar.clicked.connect(
+            lambda checked=False, _tipo=tipo: self._toggle_maximizar(_tipo))
         header.addWidget(b_maximizar)
 
         layout.addLayout(header)

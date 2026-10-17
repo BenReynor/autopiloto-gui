@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Tests para loop_proceso.py - control de subprocesos del loop nativo.
+"""Tests for loop_proceso.py - subprocess control of the native loop.
 
-Los tests de timeout asumen POSIX (start_new_session + killpg). En Windows
-el motor nativo es aún futuro; los helpers no crashean al importar, pero
-estos escenarios se saltan.
+The timeout tests assume POSIX (start_new_session + killpg). On Windows the
+native engine is still in the future; the helpers do not crash on import, but
+these scenarios are skipped.
 """
 
 import json
@@ -49,13 +49,13 @@ def test_timeout_devuelve_124():
     elapsed = __import__("time").monotonic() - t0
     assert timed_out is True
     assert rc == RC_TIMEOUT
-    assert elapsed < 8  # TERM mata before el grace de 5s
+    assert elapsed < 8  # TERM kills before the 5s grace
 
 
 def test_timeout_mata_tambien_al_hijo_colgado():
-    # El hijo directo deja un nieto esperando en el mismo grupo: si sólo
-    # matáramos al primero, el nieto quedaría huérfano (bug que _matar_hijo
-    # resuelve con pgrep; aquí killpg cubre el grupo entero).
+    # The direct child leaves a grandchild waiting in the same group: if we
+    # only killed the first one, the grandchild would be left orphaned (bug that
+    # _matar_hijo solves with pgrep; here killpg covers the whole group).
     t0 = __import__("time").monotonic()
     rc, (out, _err), timed_out = run_con_timeout(
         ["sh", "-c", "sleep 60 & echo $!; wait"],
@@ -77,11 +77,12 @@ def test_timeout_mata_tambien_al_hijo_colgado():
 
 
 def _stub_opencode(dir_bin, sesiones, log_ruta):
-    """Crea un fake `opencode` que responde a `session list/delete`.
+    """Creates a fake `opencode` that responds to `session list/delete`.
 
-    El JSON de `session list` viaja por la variable de entorno SESIONES_JSON
-    (el stub hereda el entorno del test), y cada `session delete <id>` se
-    apunta en `log_ruta` para poder comprobar qué se borró.
+    The JSON of `session list` travels through the SESIONES_JSON environment
+    variable (the stub inherits the test's environment), and each
+    `session delete <id>` is recorded in `log_ruta` to be able to check what
+    was deleted.
     """
     os.environ["SESIONES_JSON"] = json.dumps([
         {"id": k, "directory": dir_, "created": c}

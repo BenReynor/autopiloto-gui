@@ -3,7 +3,7 @@
 navigator and reviewer agents; auth/token detection; metrics to
 metrics.jsonl; reviewer selection. No PySide dependencies.
 
-The `cfg` object is the Configuración defined in loop.py (reads the
+The `cfg` object is the Configuration defined in loop.py (reads the
 environment like the script). Here only attributes are read, without importing
 loop.py (no cycles).
 """

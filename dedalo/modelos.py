@@ -1,12 +1,12 @@
-"""Consulta de los modelos disponibles de opencode.
+"""Query of the models available in opencode.
 
-La lista cambia con cada versión de opencode, así que se consulta en vivo con
-`opencode models`. Los resultados se cachean durante la sesión: la UI no debe
-lanzar subprocesos repetidos al construir los selectores. El botón de la app
-invoca `invalidar_cache()` antes de refrescar.
+The list changes with every opencode version, so it is queried live with
+`opencode models`. The results are cached during the session: the UI must not
+launch repeated subprocesses while building the selectors. The app's button
+calls `invalidar_cache()` before refreshing.
 
-Para proveedores sin credenciales (openai, anthropic, ...) se usa el catálogo
-de models.dev (la misma fuente que usa opencode), cacheado en disco.
+For providers without credentials (openai, anthropic, ...) the models.dev
+catalog is used (the same source opencode uses), cached on disk.
 """
 
 import json
@@ -31,12 +31,12 @@ RUTAS_OPENCODE = [
 
 
 def _binario_en(ruta_base):
-    """`ruta_base` si existe, probando los sufijos de ejecutable de Windows.
+    """`ruta_base` if it exists, trying the Windows executable suffixes.
 
-    En Windows los CLIs suelen ser opencode.exe/opencode.cmd (PATHEXT), el
-    `~/.agente/bin/agente` sin extensión no existe y os.access(X_OK) no
-    significa nada. shutil.which ya resuelve PATHEXT para lo que está en el
-    PATH; esto cubre los fallbacks con ruta absoluta.
+    On Windows CLIs are usually opencode.exe/opencode.cmd (PATHEXT), the
+    extensionless `~/.agente/bin/agente` does not exist and os.access(X_OK)
+    means nothing. shutil.which already resolves PATHEXT for what is on the
+    PATH; this covers the absolute-path fallbacks.
     """
     sufijos = ("", ".exe", ".cmd", ".bat") if os.name == "nt" else ("",)
     for sufijo in sufijos:
@@ -84,7 +84,7 @@ def _consultar_modelos():
 
 
 def lista_modelos(forzar=False):
-    """Devuelve la lista de modelos provider/model que soporta opencode."""
+    """Returns the list of provider/model models that opencode supports."""
     global _modelos
     if _modelos is None or forzar:
         _modelos = _consultar_modelos() or []
@@ -96,7 +96,7 @@ def _ruta_catalogo():
 
 
 def leer_catalogo():
-    """Catálogo models.dev cacheado en disco (descarga si falta o es viejo)."""
+    """models.dev catalog cached on disk (downloads it if missing or stale)."""
     ruta = _ruta_catalogo()
     if (os.path.exists(ruta)
             and time.time() - os.path.getmtime(ruta) < CATALOGO_HORAS * 3600):
@@ -137,7 +137,7 @@ def _consultar_proveedores():
 
 
 def nombres_proveedores(forzar=False):
-    """Empresas disponibles: las de opencode más las del catálogo models.dev."""
+    """Available companies: those from opencode plus those from the models.dev catalog."""
     global _proveedores
     if _proveedores is None or forzar:
         _proveedores = _consultar_proveedores()
@@ -164,7 +164,7 @@ def _consultar_proveedor(proveedor):
 
 
 def lista_modelos_proveedor(proveedor, forzar=False):
-    """Modelos de un proveedor: `opencode models <prov>` y si falla, models.dev."""
+    """Models of a provider: `opencode models <prov>` and, if that fails, models.dev."""
     proveedor = (proveedor or "").strip()
     if not proveedor:
         return []
@@ -176,10 +176,10 @@ def lista_modelos_proveedor(proveedor, forzar=False):
 
 
 def ruta_binario(nombre):
-    """Ruta absoluta del CLI de un agente, o "" si no está instalado.
+    """Absolute path of an agent's CLI, or "" if it is not installed.
 
-    Busca en el PATH y, como los CLIs de agentes suelen instalarse en
-    ~/.<agente>/bin sin tocar el PATH del shell, prueba ese fallback.
+    Looks in the PATH and, since agent CLIs are usually installed in
+    ~/.<agente>/bin without touching the shell PATH, tries that fallback.
     """
     ruta = shutil.which(nombre)
     if ruta:
@@ -192,37 +192,37 @@ def ruta_binario(nombre):
 
 
 def agentes_instalados(preferidos=None):
-    """Agentes CLI disponibles en esta máquina, en orden de preferencia.
+    """CLI agents available on this machine, in order of preference.
 
-    `preferidos` = orden a respetar (por defecto, AGENTES_PREFERIDOS). Devuelve
-    sólo los que existen de verdad, para que la GUI no ofrezca un agente que
-    no se pueda ejecutar.
+    `preferidos` = order to respect (by default, AGENTES_PREFERIDOS). Returns
+    only those that actually exist, so the GUI does not offer an agent that
+    cannot be run.
     """
     orden = preferidos or cfg.AGENTES_PREFERIDOS
     return [a for a in orden if a in cfg.AGENTES_DISPONIBLES and ruta_binario(a)]
 
 
 def agentes_operativos(preferidos=None):
-    """Agentes instalados con los que se puede trabajar de verdad.
+    """Installed agents that can actually be worked with.
 
-    Deja fuera los que tienen el binario instalado pero ninguna sesión: elegir
-    uno abortaría el loop en la primera iteración. Los de sesión desconocida
-    se conservan (no se descarta un agente sólo por no haberlo podido probar).
+    Leaves out those that have the binary installed but no session: choosing
+    one would abort the loop on the first iteration. Those with an unknown session
+    are kept (an agent is not discarded just for not having been tested).
     """
     return [a for a in agentes_instalados(preferidos)
             if sesion_agente(a) is not False]
 
 
 def agente_por_defecto():
-    """Agente a usar cuando el usuario deja el selector en 'auto'."""
+    """Agent to use when the user leaves the selector on 'auto'."""
     operativos = agentes_operativos()
     return operativos[0] if operativos else ""
 
 
-# ---------- Sesión de los CLIs ----------
+# ---------- CLI session ----------
 
-# Mismos indicios que detecta dedalo.sh al leer la salida del agente: si el
-# CLI se queja de credenciales, no hay sesión con la que trabajar.
+# Same signs that dedalo.sh detects when reading the agent output: if the
+# CLI complains about credentials, there is no session to work with.
 PATRONES_SIN_SESION = (
     r"not logged in", r"please run /login", r"not authenticated",
     r"unauthorized", r"\b401\b", r"authentication_error",
@@ -231,9 +231,9 @@ PATRONES_SIN_SESION = (
     r"run .?codex login",
 )
 
-# Sonda de sesión por agente. opencode se consulta sin inferencia (listar
-# credenciales); codex y claude no exponen un estado de sesión fiable, así que
-# se les manda un prompt mínimo: si no hay sesión fallan antes de inferir.
+# Session probe per agent. opencode is queried without inference (listing
+# credentials); codex and claude do not expose a reliable session state, so
+# they are sent a minimal prompt: if there is no session they fail before inferring.
 SONDA_SESION = {
     "opencode": (["auth", "list"], 8),
     "codex": (["exec", "--skip-git-repo-check", "ping"], 20),
@@ -244,11 +244,11 @@ _sesiones = {}
 
 
 def sesion_agente(nombre):
-    """True/False si el agente tiene sesión; None si no se puede saber.
+    """True/False if the agent has a session; None if it cannot be known.
 
-    False = instalado pero sin login (no se debe ofrecer para trabajar).
-    None = desconocido: se ofrece igual, porque descartarlo sería peor.
-    El resultado se cachea durante la sesión (invalidar_cache() lo borra).
+    False = installed but not logged in (it should not be offered for work).
+    None = unknown: it is offered anyway, because discarding it would be worse.
+    The result is cached during the session (invalidar_cache() clears it).
     """
     if nombre in _sesiones:
         return _sesiones[nombre]
@@ -265,8 +265,8 @@ def sesion_agente(nombre):
     if re.search("|".join(PATRONES_SIN_SESION), salida, re.I):
         _sesiones[nombre] = False
     elif nombre == "opencode":
-        # `opencode auth list` responde 0 siempre. Sólo hay sesión si lista
-        # alguna credencial o variable de entorno; si no, es desconocido.
+        # `opencode auth list` always returns 0. There is a session only if it lists
+        # some credential or environment variable; if not, it is unknown.
         _sesiones[nombre] = None
     elif r.returncode == 0 or salida.strip():
         _sesiones[nombre] = True
@@ -274,7 +274,7 @@ def sesion_agente(nombre):
 
 
 def estado_agentes(preferidos=None):
-    """Ficha de cada agente: instalado, ruta y estado de sesión."""
+    """Record for each agent: installed, path and session state."""
     return [{
         "nombre": a,
         "ruta": ruta_binario(a),
@@ -285,7 +285,7 @@ def estado_agentes(preferidos=None):
 
 
 def invalidar_cache():
-    """Olvida los resultados caché; la siguiente consulta vuelve a la red."""
+    """Forgets the cached results; the next query goes back to the network."""
     global _modelos, _proveedores
     _modelos = None
     _proveedores = None
@@ -294,7 +294,7 @@ def invalidar_cache():
 
 
 def sugerido(modelos):
-    """Elije un modelo por defecto: el sugerido si existe, si no el primero."""
+    """Picks a default model: the suggested one if present, otherwise the first."""
     if not modelos:
         return cfg.MODELO_SUGERIDO
     if cfg.MODELO_SUGERIDO in modelos:

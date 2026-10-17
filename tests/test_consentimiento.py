@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests del consentimiento de primer uso del gate (consentimiento.py)."""
+"""Tests for first-use consent of the gate (consentimiento.py)."""
 
 import os
 import sys
@@ -13,7 +13,7 @@ from dedalo import consentimiento  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def config_dir_aislado(tmp_path, monkeypatch):
-    """Nunca tocar el ~/.config real del usuario durante los tests."""
+    """Never touch the user's real ~/.config during tests."""
     monkeypatch.setattr(consentimiento, "CONFIG_DIR", str(tmp_path / "cfg"))
 
 
@@ -54,7 +54,7 @@ def test_concedido_por_entorno_persiste_la_confianza(tmp_path):
     proyecto = _proyecto_con_checks(tmp_path)
     assert consentimiento.concedido(
         proyecto, {consentimiento.CONSENT_ENV: "1"}) is True
-    # quedó persistida: sin entorno, el mismo manifiesto ya está aprobado
+    # it was persisted: without the env var, the same manifest is already approved
     assert consentimiento.concedido(proyecto, {}) is True
 
 

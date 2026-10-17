@@ -71,7 +71,7 @@ out of the user's repo.
 
 ```bash
 python -m dedalo                      # GUI
-python -m dedalo.gate --proyecto RUTA  # solo el gate (exit 0 verde / ≠0 rojo)
+python -m dedalo.gate --proyecto RUTA  # gate only (exit 0 green / ≠0 red)
 python -m dedalo.mcp_server            # servidor MCP (stdio)
 ```
 

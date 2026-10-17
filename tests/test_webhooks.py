@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests para webhooks.py - formateo, envío y concurrencia"""
+"""Tests for webhooks.py - formatting, sending and concurrency"""
 
 import os
 import sys
@@ -12,20 +12,20 @@ from dedalo.webhooks import WebhookManager
 
 
 def test_envios_simultaneos_no_se_pisan(app, monkeypatch):
-    """Varios eventos a la vez deben usar hilos independientes y todos completarse.
+    """Several events at once must use independent threads and all complete.
 
-    Regresión del bug: `enviar()` guardaba el QThread en un único atributo
-    `self._worker`, así que un segundo envío reasignaba el atributo y el primer
-    hilo quedaba sin referencia de Python. Al crearse con `parent=None`, el
-    recolector podía destruirlo en caliente y abortar la aplicación con
+    Regression of the bug: `enviar()` stored the QThread in a single attribute
+    `self._worker`, so a second send reassigned the attribute and the first
+    thread was left without a Python reference. Being created with `parent=None`, the
+    collector could destroy it while hot and abort the application with
     "QThread: Destroyed while thread is still running".
 
-    El `Barrier` (3 hilos + el principal) fuerza el solape real: los tres deben
-    llegar a urlopen antes de que el test siga. Con la implementación antigua
-    sólo habría un hilo, la barrera expiraría y el test fallaría.
-    `liberar` mantiene los hilos vivos mientras se comprueba el invariante:
-    sin él, los envíos terminan tan pronto como se abre la barrera y el assert
-    de pendientes depende de la velocidad de la máquina (flaky).
+    The `Barrier` (3 threads + the main one) forces the real overlap: the three must
+    reach urlopen before the test continues. With the old implementation
+    there would be only one thread, the barrier would expire and the test would fail.
+    `liberar` keeps the threads alive while the invariant is checked:
+    without it, the sends finish as soon as the barrier opens and the assert
+    on pending depends on the machine's speed (flaky).
     """
     enviados = []
     barrera = threading.Barrier(4, timeout=15)
@@ -61,12 +61,12 @@ def test_envios_simultaneos_no_se_pisan(app, monkeypatch):
                       "coste": 1.25, "duracion_min": 4.0})
     wm.enviar("tokens", {"proyecto": "p1"})
 
-    # Los tres hilos han entrado en urlopen (barrera compartida con el
-    # principal): todos están realmente corriendo, sin depender de tiempos.
+    # The three threads have entered urlopen (barrier shared with the
+    # main one): they are all really running, without depending on timing.
     barrera.wait()
 
-    # Los tres hilos están referenciados y vivos a la vez: el invariante que
-    # el atributo compartido incumplía.
+    # The three threads are referenced and alive at the same time: the invariant that
+    # the shared attribute violated.
     assert len(wm._workers) == 3
     assert wm._pendientes() == 3
 
@@ -81,12 +81,12 @@ def test_envios_simultaneos_no_se_pisan(app, monkeypatch):
     assert any("Tokens" in c for c in cuerpos)
     assert len(enviados) == 3
 
-    # Sin fuga de referencias: el set queda vacío al terminar.
+    # No reference leak: the set is empty on finish.
     assert wm._workers == set()
 
 
 def test_envio_unico_deja_referencia_y_la_libera(app, monkeypatch):
-    """Un envío aislado se referencia mientras corre y se descarta al acabar."""
+    """An isolated send is referenced while it runs and discarded on finish."""
     class _Respuesta:
         status = 200
 
@@ -112,7 +112,7 @@ def test_envio_unico_deja_referencia_y_la_libera(app, monkeypatch):
 
 
 def test_evento_no_habilitado_no_lanza_hilo():
-    """Sin evento habilitado ni credenciales, `enviar` no crea ningún trabajo."""
+    """Without an enabled event or credentials, `enviar` does not create any job."""
     wm = WebhookManager({"eventos": {"inicio": True}})
     wm.enviar("inicio", {"proyecto": "p1", "modelo_tarea": "m", "modelo_revisor": "m"})
     wm.enviar("fin", {"proyecto": "p1"})
@@ -121,7 +121,7 @@ def test_evento_no_habilitado_no_lanza_hilo():
 
 
 def _esperar(app, condicion, timeout=20.0):
-    """Bombea el bucle de eventos hasta que `condicion` sea cierta."""
+    """Pumps the event loop until `condicion` is true."""
     limite = time.time() + timeout
     while time.time() < limite:
         app.processEvents()
@@ -133,7 +133,7 @@ def _esperar(app, condicion, timeout=20.0):
 
 
 def test_formateo_plantillas():
-    """Test formateo de mensajes para cada evento"""
+    """Test message formatting for each event"""
     config = {
         "telegram_token": "test_token",
         "telegram_chat_id": "12345",
@@ -142,7 +142,7 @@ def test_formateo_plantillas():
     }
     wm = WebhookManager(config)
 
-    # Test evento inicio
+    # Test inicio event
     datos = {"proyecto": "mi-proyecto", "modelo_tarea": "openai/gpt-4o", "modelo_revisor": "anthropic/claude"}
     msg = wm._formatear("inicio", datos)
     assert "mi-proyecto" in msg
@@ -150,13 +150,13 @@ def test_formateo_plantillas():
     assert "anthropic/claude" in msg
     assert "Loop iniciado" in msg
 
-    # Test evento bloqueada
+    # Test bloqueada event
     datos = {"proyecto": "test", "tarea": "login fail"}
     msg = wm._formatear("bloqueada", datos)
     assert "Tarea bloqueada" in msg
     assert "login fail" in msg
 
-    # Test evento fin
+    # Test fin event
     datos = {"proyecto": "test", "hechas": 5, "total": 8, "coste": 3.50, "duracion_min": 12.5}
     msg = wm._formatear("fin", datos)
     assert "5/8" in msg or "5" in msg and "8" in msg
@@ -167,8 +167,8 @@ def test_formateo_plantillas():
 
 
 def test_eventos_activos():
-    """Test lógica de eventos habilitados"""
-    # Config con telegram activado
+    """Test enabled-events logic"""
+    # Config with telegram enabled
     config = {
         "telegram_token": "token",
         "telegram_chat_id": "123",
@@ -177,18 +177,18 @@ def test_eventos_activos():
     wm = WebhookManager(config)
     assert wm.esta_activo("inicio")
     assert not wm.esta_activo("bloqueada")
-    assert not wm.esta_activo("fin")  # no configurado = False
+    assert not wm.esta_activo("fin")  # not configured = False
 
-    # Config sin credenciales
+    # Config without credentials
     config2 = {"eventos": {"inicio": True}}
     wm2 = WebhookManager(config2)
-    assert not wm2.esta_activo("inicio")  # sin credenciales
+    assert not wm2.esta_activo("inicio")  # without credentials
 
     print("✅ test_eventos_activos PASSED")
 
 
 def test_whatsapp_config():
-    """Test validación config WhatsApp"""
+    """Test WhatsApp config validation"""
     config = {
         "whatsapp_api_url": "https://graph.facebook.com/v18.0/123",
         "whatsapp_token": "token",
@@ -199,28 +199,28 @@ def test_whatsapp_config():
     wm = WebhookManager(config)
     assert wm.esta_activo("inicio")
 
-    # Faltan phone_id o to
+    # Missing phone_id or to
     config2 = {
         "whatsapp_api_url": "https://graph.facebook.com/v18.0/123",
         "whatsapp_token": "token",
         "eventos": {"inicio": True}
     }
     wm2 = WebhookManager(config2)
-    # Tiene api_url y token → esta_activo es True; la validación real de
-    # phone_id/to ocurre en _enviar_whatsapp
+    # It has api_url and token → esta_activo is True; the real validation of
+    # phone_id/to happens in _enviar_whatsapp
     assert wm2.esta_activo("inicio")
 
     print("✅ test_whatsapp_config PASSED")
 
 
 def test_probar_configurada():
-    """Test que probar() solo envía cuando la plataforma tiene claves mínimas.
+    """Test that probar() only sends when the platform has the minimum keys.
 
-    Regresión del bug: probar() comprobaba self.config.get(plataforma) con
-    "telegram"/"discord"/"whatsapp", pero las claves reales son
-    telegram_token, discord_webhook_url, whatsapp_api_url... → siempre False.
+    Regression of the bug: probar() checked self.config.get(plataforma) with
+    "telegram"/"discord"/"whatsapp", but the real keys are
+    telegram_token, discord_webhook_url, whatsapp_api_url... → always False.
     """
-    # Sin credenciales: no debe enviar (ni siquiera iniciar el envío)
+    # Without credentials: it must not send (not even start the send)
     wm_vacio = WebhookManager({})
     assert not wm_vacio._configurada("telegram")
     assert not wm_vacio._configurada("discord")
@@ -230,21 +230,21 @@ def test_probar_configurada():
     assert not wm_vacio.probar("discord")
     assert not wm_vacio.probar("whatsapp")
 
-    # Telegram requiere token + chat_id
+    # Telegram requires token + chat_id
     wm_tg = WebhookManager({"telegram_token": "tok", "telegram_chat_id": "123"})
     assert wm_tg._configurada("telegram")
-    assert wm_tg.probar("telegram")  # devuelve True (inicia envío async)
+    assert wm_tg.probar("telegram")  # returns True (starts async send)
 
     wm_tg2 = WebhookManager({"telegram_token": "tok"})
     assert not wm_tg2._configurada("telegram")
     assert not wm_tg2.probar("telegram")
 
-    # Discord solo necesita URL
+    # Discord only needs a URL
     wm_dc = WebhookManager({"discord_webhook_url": "https://discord.com/api/webhooks/x"})
     assert wm_dc._configurada("discord")
     assert wm_dc.probar("discord")
 
-    # WhatsApp requiere api_url + token (phone_id/to se validan en _enviar_whatsapp)
+    # WhatsApp requires api_url + token (phone_id/to are validated in _enviar_whatsapp)
     wm_wa = WebhookManager({
         "whatsapp_api_url": "https://graph.facebook.com/v18.0/123",
         "whatsapp_token": "tok",

@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""E2E del run completo de dedalo.sh con un agente falso que SÍ trabaja.
+"""E2E of the full dedalo.sh run with a fake agent that DOES work.
 
-Regresión del bug más grave del script (línea ~1140): `local iter_sin_trabajo=0`
-estaba en el top-level del fichero (dentro del while de reintentos, fuera de
-cualquier función). En bash `local` fuera de función deja la variable SIN
-CREAR, y la línea siguiente (`iteracion_sin_trabajo && iter_sin_trabajo=1`)
-sólo la asigna si NO hay trabajo… así que cualquier iteración en la que el
-agente producía cambios llegaba a la comprobación siguiente con `set -u` y
-abortaba con `iter_sin_trabajo: unbound variable` → exit 1: sin commit, sin
-marcar [x], sin resumen. Ningún test existente lo pillaba:
+Regression of the script's most serious bug (line ~1140): `local iter_sin_trabajo=0`
+was at the file's top level (inside the retry while, outside
+any function). In bash `local` outside a function leaves the variable NOT
+CREATED, and the next line (`iteracion_sin_trabajo && iter_sin_trabajo=1`)
+only assigns it if there is NO work… so any iteration in which the
+agent produced changes reached the next check with `set -u` and
+aborted with `iter_sin_trabajo: unbound variable` → exit 1: no commit, no
+marking [x], no summary. No existing test caught it:
 
-  · test_dedalo_senales.py sólo usa agentes que se bloquean o que no
-    cambian nada (ahí la rama de la variable SÍ se asigna).
-  · test_agentes.py extrae funciones sueltas y su arnés usa la forma
-    corregida (`iter_sin_trabajo=0` sin `local`), reforzando el error.
+  · test_dedalo_senales.py only uses agents that hang or that do not
+    change anything (there the variable's branch DOES assign it).
+  · test_agentes.py extracts loose functions and its harness uses the
+    fixed form (`iter_sin_trabajo=0` without `local`), reinforcing the error.
 
-También cubre el segundo bug de argumentos: `shift 2` sin comprobar `$#`
-dejaba `--hasta/--padre/--trabajo` como ÚLTIMO argumento en un bucle
-infinito de CPU al 100 %.
+It also covers the second arguments bug: `shift 2` without checking `$#`
+left `--hasta/--padre/--trabajo` as the LAST argument in an
+infinite loop at 100% CPU.
 """
 
 import os
@@ -45,11 +45,11 @@ def _git(*args, cwd):
 
 
 def _agente_falso(dir_bin, con_trabajo: bool):
-    """Agente falso rápido: responde a `session` y sale con 0 al instante.
+    """Fast fake agent: it responds to `session` and exits 0 instantly.
 
-    Si `con_trabajo`, crea un fichero nuevo (el camino que rompía el bug);
-    si no, no toca el árbol (el camino que SÍ funcionaba y que enmascaraba
-    la regresión).
+    If `con_trabajo`, it creates a new file (the path that broke the bug);
+    if not, it does not touch the tree (the path that DID work and that masked
+    the regression).
     """
     dir_bin.mkdir(parents=True, exist_ok=True)
     cuerpo = ("mkdir -p src && echo \"print('nuevo')\" > src/nuevo.py\n"
@@ -71,28 +71,28 @@ def _agente_falso(dir_bin, con_trabajo: bool):
 
 
 def _stub_red(dir_bin, nombre):
-    """ping/curl falsos para que `hay_internet` no dependa de la red real."""
+    """Fake ping/curl so `hay_internet` does not depend on the real network."""
     stub = dir_bin / nombre
     stub.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     stub.chmod(0o755)
 
 
 def _escenario(tmp_path, con_trabajo: bool):
-    """Proyecto git con el framework copiado, un plan de 1 tarea y agente."""
+    """Git project with the framework copied, a 1-task plan and an agent."""
     proyecto = tmp_path / "proyecto"
     proyecto.mkdir()
     _git("init", "-q", "-b", "master", cwd=proyecto)
-    # Identidad a nivel de repo: los commits DEL LOOP (no los del fixture)
-    # van sin `-c`, y sin ella `git commit` fallaría y el test no podría
-    # distinguir el bug de un fallo de identidad.
+    # Repo-level identity: the LOOP's commits (not the fixture's)
+    # go without `-c`, and without it `git commit` would fail and the test could not
+    # distinguish the bug from an identity failure.
     _git("config", "user.email", "t@t", cwd=proyecto)
     _git("config", "user.name", "T", cwd=proyecto)
     (proyecto / "plan.md").write_text(
         "# PLAN\n\n- [ ] t1: crear modulo nuevo\n"
         "      criterio: existe src/nuevo.py\n", encoding="utf-8")
-    # El .gitignore es parte de la instalación real (plantillas.asegurar_gitignore):
-    # excluye gate_checks/ y el resto del framework. Sin él, `ruff check .` del
-    # gate lintearía los .py del port y el baseline abortaría.
+    # The .gitignore is part of the real installation (plantillas.asegurar_gitignore):
+    # it excludes gate_checks/ and the rest of the framework. Without it, the gate's
+    # `ruff check .` would lint the port's .py files and the baseline would abort.
     for nombre in ("dedalo.sh", "gate.sh", "mapear.sh", "lecciones.md",
                    ".gitignore"):
         origen = PLANTILLAS / nombre
@@ -134,7 +134,7 @@ def _correr(proyecto, env):
 
 
 def test_iteracion_con_trabajo_completa_el_run(tmp_path):
-    """REGRESIÓN 1134: con trabajo real el run debe terminar y commitear."""
+    """REGRESSION 1134: with real work the run must finish and commit."""
     proyecto, dir_bin = _escenario(tmp_path, con_trabajo=True)
 
     proc = _correr(proyecto, _entorno(dir_bin))
@@ -142,16 +142,16 @@ def test_iteracion_con_trabajo_completa_el_run(tmp_path):
     log = log_path.read_text(errors="replace") if log_path.exists() else ""
     combinado = proc.stdout + proc.stderr + log
 
-    # El síntoma exacto del bug: `local` fuera de función + `set -u`.
+    # The exact symptom of the bug: `local` outside a function + `set -u`.
     assert "unbound variable" not in combinado, combinado[-3000:]
     assert "sólo se puede usar dentro de una función" not in combinado, \
         combinado[-3000:]
 
-    # El run debe terminar normalmente (con el bug salía 1 a media tarea).
+    # The run must finish normally (with the bug it exited 1 mid-task).
     assert proc.returncode == 0, f"rc={proc.returncode}\n{combinado[-3000:]}"
     assert "DEDALO FINALIZADO" in log
 
-    # La tarea se completó de verdad: commit + plan marcado.
+    # The task was really completed: commit + plan marked.
     assert "- [x] t1" in (proyecto / "plan.md").read_text(encoding="utf-8"), \
         f"t1 sin marcar:\n{combinado[-3000:]}"
     loggit = subprocess.run(
@@ -162,9 +162,9 @@ def test_iteracion_con_trabajo_completa_el_run(tmp_path):
 
 
 def test_iteracion_sin_trabajo_no_crashea(tmp_path):
-    """El otro camino del 1134 (agente que no cambia nada) tampoco debe
-    abortar: ahí la variable SÍ se asignaba, pero el test lo fija para que
-    ninguna de las dos ramas vuelva a romper."""
+    """The other path of 1134 (agent that changes nothing) must not
+    abort either: there the variable WAS assigned, but the test pins it so that
+    neither of the two branches breaks again."""
     proyecto, dir_bin = _escenario(tmp_path, con_trabajo=False)
 
     proc = _correr(proyecto, _entorno(dir_bin))
@@ -179,9 +179,9 @@ def test_iteracion_sin_trabajo_no_crashea(tmp_path):
 
 @pytest.mark.parametrize("opcion", ["--hasta", "--padre", "--trabajo"])
 def test_opcion_sin_valor_no_deja_cuelgar(opcion):
-    """REGRESIÓN: `shift 2` sin comprobar `$#` giraba para siempre si la
-    opción venía como ÚLTIMO argumento (CPU al 100 %, se mataba con
-    timeout). Ahora falla rápido con EX_USAGE (64)."""
+    """REGRESSION: `shift 2` without checking `$#` spun forever if the
+    option came as the LAST argument (100% CPU, it was killed with
+    timeout). Now it fails fast with EX_USAGE (64)."""
     proc = subprocess.run(
         ["bash", str(PLANTILLAS / "dedalo.sh"), opcion],
         capture_output=True, text=True, timeout=10)

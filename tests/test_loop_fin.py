@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Tests de `_loop_fin` / `_detener_loop`: la parada del loop no puede congelar la UI.
+"""Tests for `_loop_fin` / `_detener_loop`: stopping the loop must not freeze the UI.
 
-Regresión del bug: `_loop_fin()` llamaba a `_limpiar_sesiones_proyecto()` de forma
-síncrona ANTES de re-habilitar los botones. Ese método hace un `subprocess.run` con
-`timeout=120` para `opencode session list` y otro por cada `session delete`, así que
-con 10 sesiones eran hasta 22 minutos de ventana congelada justo después de pulsar
-Detener, con los botones deshabilitados durante todo ese tiempo.
+Regression of the bug: `_loop_fin()` called `_limpiar_sesiones_proyecto()`
+synchronously BEFORE re-enabling the buttons. That method runs `subprocess.run`
+with `timeout=120` for `opencode session list` and one more per `session delete`,
+so with 10 sessions that was up to 22 minutes of frozen window right after pressing
+Stop, with the buttons disabled the whole time.
 
-Aquí se ejercitan los métodos reales contra un stub (patrón de
-`test_gui_botones.py::test_git_revert_no_rompe_ui`): no se instancia `Ventana`
-completa, que es demasiado pesada para la suite, pero sí se ejecutan los cuerpos de
-los métodos que importan.
+The real methods are exercised here against a stub (same pattern as
+`test_gui_botones.py::test_git_revert_no_rompe_ui`): the full `Ventana` is not
+instantiated, as it is too heavy for the suite, but the bodies of the methods
+that matter are actually executed.
 """
 
 import json
@@ -33,18 +33,18 @@ PROYECTO = "/tmp/dedalo-test-proyecto"
 
 
 def _stub(orden=None, limpieza_real=False):
-    """Ventana falsa: registra en `orden` el orden de las operaciones clave.
+    """Fake window: records the order of the key operations in `orden`.
 
-    `limpieza_real=True` enlaza los métodos de limpieza authenticos al stub, para
-    que la prueba recorra el `Trabajo` de verdad en vez de un mock.
+    `limpieza_real=True` binds the authentic cleanup methods to the stub, so the
+    test exercises the real `Trabajo` instead of a mock.
     """
     stub = MagicMock()
     stub._proyecto_actual.return_value = ("demo", PROYECTO)
-    # _inicio_loop_ts a 0 => se salta el bloque del webhook de fin, que leería disco
+    # _inicio_loop_ts at 0 => skips the finish-webhook block, which would read disk
     stub._inicio_loop_ts = 0
     stub._log_inicio = 0
-    # El atributo existe en la Ventana real desde __init__; si el stub lo deja
-    # ausente, MagicMock lo fabricaría como mock y el guard isRunning() miente.
+    # The attribute exists on the real Ventana since __init__; if the stub leaves
+    # it absent, MagicMock would fabricate it as a mock and the isRunning() guard lies.
     stub._worker_sesiones_limpieza = None
     if orden is not None:
         stub.pan_ejec.b_iniciar.setEnabled.side_effect = (
@@ -64,7 +64,7 @@ def _stub(orden=None, limpieza_real=False):
 
 
 def test_loop_fin_habilita_ui_antes_de_limpiar_sesiones():
-    """Los botones y el panel se re-habilitan ANTES de lanzar la limpieza."""
+    """The buttons and the panel are re-enabled BEFORE launching the cleanup."""
     orden = []
     stub = _stub(orden)
 
@@ -76,7 +76,7 @@ def test_loop_fin_habilita_ui_antes_de_limpiar_sesiones():
     i_iniciar = orden.index("b_iniciar")
     i_limpiar = orden.index("limpiar_sesiones")
 
-    # El invariante del bug: la limpieza iba antes de habilitar la UI.
+    # The invariant of the bug: the cleanup used to run before enabling the UI.
     assert i_limpiar > i_iniciar, (
         f"la limpieza se lanzó antes de re-habilitar la UI: {orden}")
     assert orden.index("b_detener") < i_limpiar
@@ -84,10 +84,10 @@ def test_loop_fin_habilita_ui_antes_de_limpiar_sesiones():
 
 
 def test_loop_fin_no_bloquea_con_sesiones_lentas(app, monkeypatch):
-    """Con `opencode` lento, `_loop_fin` debe volver de inmediato.
+    """With a slow `opencode`, `_loop_fin` must return immediately.
 
-    Antes del arreglo la llamada a `subprocess.run` con `timeout=120` se
-    ejecutaba en el hilo de la UI, así que este test tardaba los 2 s simulados.
+    Before the fix, the `subprocess.run` call with `timeout=120` ran on the UI
+    thread, so this test took the simulated 2 s.
     """
     llamadas = []
 
@@ -105,13 +105,13 @@ def test_loop_fin_no_bloquea_con_sesiones_lentas(app, monkeypatch):
     Ventana._loop_fin(stub)
     elapsed = time.time() - t0
 
-    # La UI se repinta ya; la limpieza sigue en vuelo.
+    # The UI repaints now; the cleanup is still in flight.
     assert elapsed < 1.0, f"_loop_fin tardó {elapsed:.2f}s (no debe bloquear)"
     stub.pan_ejec.b_iniciar.setEnabled.assert_called_once_with(True)
     stub.pan_ejec.b_detener.setEnabled.assert_called_once_with(False)
     stub.cmb.setEnabled.assert_called_once_with(True)
 
-    # Se programó en un Trabajo de verdad y sigue corriendo.
+    # It was scheduled on a real Trabajo and is still running.
     worker = stub._worker_sesiones_limpieza
     assert isinstance(worker, Trabajo)
     assert not llamadas, "la limpieza no debe ejecutarse en el hilo de la UI"
@@ -123,11 +123,11 @@ def test_loop_fin_no_bloquea_con_sesiones_lentas(app, monkeypatch):
     not os.path.exists("/bin/sh"),
     reason="el proceso de prueba vive en /bin/sh (no existe en Windows)")
 def test_detener_loop_no_bloquea_esperando(app):
-    """`_detener_loop` devuelve al instante y escala a SIGKILL con un timer."""
+    """`_detener_loop` returns instantly and escalates to SIGKILL with a timer."""
     proc = QProcess()
     proc.start("/bin/sh", ["-c", "sleep 30"])
     assert proc.waitForStarted(3000), "no se pudo lanzar el proceso de prueba"
-    # Dar tiempo a que el proceso quede en Running
+    # Give the process time to reach Running
     for _ in range(50):
         app.processEvents()
         if proc.state() == QProcess.Running:
@@ -142,15 +142,15 @@ def test_detener_loop_no_bloquea_esperando(app):
     Ventana._detener_loop(stub)
     elapsed = time.time() - t0
 
-    # El bug: waitForFinished(5000) bloqueaba el hilo de la UI 5 s.
+    # The bug: waitForFinished(5000) blocked the UI thread for 5 s.
     assert elapsed < 1.0, f"_detener_loop tardó {elapsed:.2f}s (no debe bloquear)"
-    # SIGTERM enviado: el sleep sin trap muere casi al instante.
+    # SIGTERM sent: the sleep without a trap dies almost instantly.
     assert proc.waitForFinished(4000), "SIGTERM no detuvo el proceso"
     proc.waitForFinished(1000)
 
 
 def test_detener_loop_ignora_proceso_ya_parado():
-    """Si el proceso no está corriendo, no hace nada."""
+    """If the process is not running, it does nothing."""
     stub = MagicMock()
     proc = QProcess()  # NotRunning
     stub.loop = proc

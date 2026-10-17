@@ -71,6 +71,6 @@ def generar() -> None:
 if __name__ == "__main__":
     try:
         generar()
-    except Exception as exc:  # noqa: BLE001 — mensaje claro y exit != 0
+    except Exception as exc:  # noqa: BLE001 — clear message and exit != 0
         print(f"make_iconos: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc

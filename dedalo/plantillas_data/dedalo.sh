@@ -1,83 +1,83 @@
 #!/usr/bin/env bash
-# dedalo.sh — Bucle autónomo para agentes IA, con git por ramas.
+# dedalo.sh — Autonomous loop for AI agents, with git by branches.
 #
-# ⚠️ DEPRECADO (uso manual / referencia). El bucle que lanza la GUI hoy es el
-# motor nativo: dedalo/loop.py (python -m dedalo.loop), idéntico en
-# log, observabilidad y comportamiento, y nativo (no necesita bash para
-# arrancar; el gate, gate.sh/gate_checks, sí sigue siendo bash en ambos).
-# Este script se mantiene en la plantilla porque muchos tests lo ejecutan como
-# verificación cruzada y para quien prefiera correr el loop a mano en un
-# terminal POSIX. Los fixes de comportamiento van a loop.py; NO edites este
-# script como fuente de verdad salvo para paridad.
+# ⚠️ DEPRECATED (manual use / reference). The loop that the GUI launches today is the
+# native engine: dedalo/loop.py (python -m dedalo.loop), identical in
+# log, observability and behavior, and native (it doesn't need bash to
+# start; the gate, gate.sh/gate_checks, is still bash in both).
+# This script is kept in the template because many tests run it as
+# cross-check and for whoever prefers to run the loop by hand in a
+# POSIX terminal. Behavior fixes go to loop.py; do NOT edit this
+# script as source of truth except for parity.
 #
-# Workflow de ramas (por tarea):
-#   dedalo/<fecha>                          <- rama base del run (hija de RAMA_BASE)
-#   └── dedalo/tareas/<fecha>/t<N>          <- una rama por tarea (git no
-#                                                  permite ramas bajo el nombre
-#                                                  dedalo/<fecha>, que ya
-#                                                  existe como ref, así que se
-#                                                  agrupan en dedalo/tareas/)
-#        · gate OK + revisor PASS -> merge (--ff-only) a la base y se borra
-#        · gate KO o revisor FAIL -> reintento; si agota, se borra sin tocar la base
-#   master nunca recibe commits del loop.
+# Branch workflow (per task):
+#   dedalo/<fecha>                          <- run base branch (child of RAMA_BASE)
+#   └── dedalo/tareas/<fecha>/t<N>          <- one branch per task (git does not
+#                                                  allow branches under the name
+#                                                  dedalo/<fecha>, which already
+#                                                  exists as a ref, so they are
+#                                                  grouped under dedalo/tareas/)
+#        · gate OK + reviewer PASS -> merge (--ff-only) to the base and it is deleted
+#        · gate KO or reviewer FAIL -> retry; if exhausted, it is deleted without touching the base
+#   master never receives commits from the loop.
 #
-# Por cada tarea de plan.md:
-#   1. Crea la rama de la tarea y ejecuta el agente configurado (AGENTE_TAREA).
-#   2. Verifica con gate.sh (checks en gate_checks/*.sh).
-#   3. GATE DUAL: si pasó el gate, un segundo agente (AGENTE_REVISOR) revisa el
-#      diff en frío y exige "VERDICT: PASS" antes de commitear.
-#   4. Si pasa todo: commitea SOLO lo de esa tarea, fusiona y marca [x].
-#   5. Si falla: renitenta y, al agotar, borra la rama y marca [B].
+# For each task in plan.md:
+#   1. Creates the task branch and runs the configured agent (AGENTE_TAREA).
+#   2. Verifies with gate.sh (checks in gate_checks/*.sh).
+#   3. DUAL GATE: if the gate passed, a second agent (AGENTE_REVISOR) reviews the
+#      diff cold and requires "VERDICT: PASS" before committing.
+#   4. If everything passes: commits ONLY that task's changes, merges and marks [x].
+#   5. If it fails: retries and, when exhausted, deletes the branch and marks [B].
 #
-# Uso:
+# Usage:
 #   ./dedalo.sh [plan] [--hasta HH:MM] [--push] [--padre <rama>]
 #   MAX_ITER=60 ./dedalo.sh plan.md
 #
-# Variables de entorno (opcional):
-#   AGENTE_TAREA      agente que implementa (opencode|codex|claude). def: auto
-#   AGENTES_PREFERIDOS orden de preferencia para auto y revisor. def: "opencode codex claude"
-#   CLI_OPENCODE      binario de opencode (def: opencode)
-#   CLI_CODEX         binario de codex (def: codex)
-#   CLI_CLAUDE        binario de claude (def: claude)
-#   MODELO_TAREA      modelo provider/model para la tarea (sólo opencode). def: vacío
-#   AGENTE_REVISOR    agente revisor del diff; vacío = auto (prefiere uno distinto).
-#   MODELO_REVISOR    modelo provider/model para el revisor del diff (sólo opencode).
-#   MODELO_JUEZ       modelo barato del juez de criterio (98_criterio.sh, opencode).
+# Environment variables (optional):
+#   AGENTE_TAREA      agent that implements (opencode|codex|claude). def: auto
+#   AGENTES_PREFERIDOS preference order for auto and reviewer. def: "opencode codex claude"
+#   CLI_OPENCODE      opencode binary (def: opencode)
+#   CLI_CODEX         codex binary (def: codex)
+#   CLI_CLAUDE        claude binary (def: claude)
+#   MODELO_TAREA      provider/model model for the task (opencode only). def: empty
+#   AGENTE_REVISOR    diff reviewer agent; empty = auto (prefers a different one).
+#   MODELO_REVISOR    provider/model model for the diff reviewer (opencode only).
+#   MODELO_JUEZ       cheap model for the criteria judge (98_criterio.sh, opencode).
 #                     def: opencode/nemotron-3.5-lightning-free
-#   OPENCODE_AGENT_JUEZ agente de opencode para el juez (def: build)
-#   CRITERIO          se extrae del plan.md (línea "criterio:" bajo la tarea) y
-#                     se exporta al gate para verse en los checks.
-#   NAVEGADOR         "1" activa navegador automático antes de cada tarea.
-#   MODELO_NAVEGADOR  modelo provider/model para el navegador (sólo opencode).
-#   OPENCODE_AGENT_TAREA agente de opencode para la tarea (def: build)
-#   OPENCODE_AGENT_NAV   agente de opencode para navegador (def: navigate)
-#   CODEX_FLAGS       flags extra para codex exec ("" por defecto)
-#   CLAUDE_FLAGS      flags extra para claude -p ("" por defecto)
-#   REVISION_DUAL     "1" activa el gate dual (def), "0" lo apaga.
-#   REVISION_MANUAL   "1" pausa antes de commit y espera aprobación GUI, "0" automático.
-#   TIMEOUT_REVISION_MANUAL  segundos máximos esperando la aprobación manual antes
-#                     de marcar la tarea [B] y seguir (0 = esperar indefinidamente). def: 1800.
-#   REVISION_APRUEBA_AGENTE  "1" permite que un APPROVE emitido por un agente (origen=mcp)
-#                     zanje la revisión manual; "0" (def) lo ignora y espera a una persona.
-#   MAX_COSTO         presupuesto en USD (0 = sin límite). Costo estimado por iteración.
-#   COSTO_POR_ITER    costo estimado USD por tarea+revisión (def 0.50).
-#   VOZ               "1" activa alertas al bloquearte/terminar (notify-send, spd-say).
+#   OPENCODE_AGENT_JUEZ opencode agent for the judge (def: build)
+#   CRITERIO          extracted from plan.md (line "criterio:" under the task) and
+#                     exported to the gate so it shows in the checks.
+#   NAVEGADOR         "1" enables the automatic navigator before each task.
+#   MODELO_NAVEGADOR  provider/model model for the navigator (opencode only).
+#   OPENCODE_AGENT_TAREA opencode agent for the task (def: build)
+#   OPENCODE_AGENT_NAV   opencode agent for the navigator (def: navigate)
+#   CODEX_FLAGS       extra flags for codex exec ("" by default)
+#   CLAUDE_FLAGS      extra flags for claude -p ("" by default)
+#   REVISION_DUAL     "1" enables the dual gate (def), "0" turns it off.
+#   REVISION_MANUAL   "1" pauses before commit and waits for GUI approval, "0" automatic.
+#   TIMEOUT_REVISION_MANUAL  maximum seconds waiting for manual approval before
+#                     marking the task [B] and continuing (0 = wait indefinitely). def: 1800.
+#   REVISION_APRUEBA_AGENTE  "1" allows an APPROVE issued by an agent (origen=mcp)
+#                     to settle the manual review; "0" (def) ignores it and waits for a person.
+#   MAX_COSTO         budget in USD (0 = no limit). Estimated cost per iteration.
+#   COSTO_POR_ITER    estimated USD cost per task+review (def 0.50).
+#   VOZ               "1" enables alerts when you get blocked/finish (notify-send, spd-say).
 #
-# Memoria del proyecto (lecciones.md):
-#   · Se inyecta al agente antes de cada tarea para no repetir errores pasados
-#     (corrección única de errores).
-#   · Cuando una tarea queda bloqueada se añade una lección automática.
+# Project memory (lecciones.md):
+#   · It is injected into the agent before each task so it doesn't repeat past errors
+#     (single-error correction).
+#   · When a task gets blocked an automatic lesson is added.
 #
-# Portátil: deduce su raíz de su propia ubicación; copia gate.sh, mapear.sh y
-# dedalo.sh a la raíz de cualquier proyecto.
+# Portable: it infers its root from its own location; copies gate.sh, mapear.sh and
+# dedalo.sh to the root of any project.
 set -uo pipefail
 
-# Este script escribe JSON (metrics.jsonl) y hace aritmética con decimales, así
-# que NO debe depender del locale del usuario: con es_ES, bash y awk imprimen
-# "0,500000" y "printf" rechaza "0.500000" ("número no válido"), lo que dejaba
-# metrics.jsonl como JSON inválido y el tope de coste sin contar.
-# LC_ALL=C no cambia ningún formato que usemos (fechas numéricas) y hace
-# comparables los `sort` de listas de ficheros.
+# This script writes JSON (metrics.jsonl) and does decimal arithmetic, so
+# it must NOT depend on the user's locale: with es_ES, bash and awk print
+# "0,500000" and "printf" rejects "0.500000" ("invalid number"), which left
+# metrics.jsonl as invalid JSON and the cost cap uncounted.
+# LC_ALL=C does not change any format we use (numeric dates) and makes
+# the `sort` of file lists comparable.
 export LC_ALL=C
 
 PROYECTO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -113,24 +113,24 @@ HASTA=""
 CONTROL="plan\.md|lecciones\.md|progreso\.log|gate\.sh|dedalo\.sh|mapear\.sh|mapeo\.txt|endpoints\.txt|metrics\.jsonl|incidencias\.jsonl|gate_checks(/.*)?|\.dedalo_review(/.*)?"
 
 # ---------------------------------------------------------------------------
-# Utilidades POSIX (funcionan igual en GNU/Linux y en BSD/macOS)
+# POSIX utilities (work the same on GNU/Linux and BSD/macOS)
 # ---------------------------------------------------------------------------
 
-# awk con locale C para formatear decimales. Necesario aunque el script ya
-# exporte LC_ALL=C: si el script se sourcea desde otro proceso con su propio
-# LC_ALL, la precedencia se invierte. OJO: `export LC_NUMERIC=C` NO sirve,
-# porque LC_ALL tiene prioridad sobre LC_NUMERIC en los procesos hijos.
+# awk with locale C to format decimals. Necessary even if the script already
+# exports LC_ALL=C: if the script is sourced from another process with its own
+# LC_ALL, the precedence is inverted. NOTE: `export LC_NUMERIC=C` does NOT work,
+# because LC_ALL takes priority over LC_NUMERIC in child processes.
 num() { LC_ALL=C awk "$@"; }
 
-# Epoch en milisegundos. GNU `date +%s%3N` da nanosegundos. En BSD/macOS:
-# - suele devolver solo segundos o puede devolver "17915175853N" (literal N)
-# - detectar y degradar a perl (Time::HiRes) o a segundos con sufijo ceros.
+# Epoch in milliseconds. GNU `date +%s%3N` gives nanoseconds. On BSD/macOS:
+# - it usually returns only seconds or may return "17915175853N" (literal N)
+# - detect and degrade to perl (Time::HiRes) or to seconds with a zero suffix.
 ahora_ms() {
     local ns
     ns="$(date +%s%3N 2>/dev/null || true)"
     case "$ns" in
         ''|*%N*|*N)
-            # comprueba si es puramente dígitos (GNU %3N)
+            # checks whether it is purely digits (GNU %3N)
             if [[ "$ns" =~ ^[0-9]+$ ]]; then
                 printf '%s\n' "$ns"
                 return 0
@@ -153,8 +153,8 @@ ahora_ms() {
     printf '%s000\n' "$(date +%s)"
 }
 
-# `ping -W` significa SEGUNDOS en GNU y MILISEGUNDOS en BSD: se decide una vez
-# según el SO para no dejar un ping colgado 2000 s en Linux.
+# `ping -W` means SECONDS on GNU and MILLISECONDS on BSD: it is decided once
+# according to the OS to avoid leaving a ping hung for 2000 s on Linux.
 PING_FLAGS="-c1 -W2"
 case "$(uname -s 2>/dev/null || echo unknown)" in
     Darwin) PING_FLAGS="-c1 -W2000" ;;
@@ -168,9 +168,9 @@ un_ping() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        # `shift 2` sin comprobar $#: si --hasta/--padre/--trabajo iba como
-        # ÚLTIMO argumento, shift no avanzaba y el while giraba para siempre
-        # (verificado: CPU al 100%, rc 124 con timeout). 64 = EX_USAGE.
+        # `shift 2` without checking $#: if --hasta/--padre/--trabajo came as
+        # the LAST argument, shift did not advance and the while looped forever
+        # (verified: 100% CPU, rc 124 with timeout). 64 = EX_USAGE.
         --hasta) [[ $# -ge 2 ]] || { echo "dedalo.sh: falta valor tras $1" >&2; exit 64; }
                  HASTA="$2"; shift 2 ;;
         --push) PUSH="1"; shift ;;
@@ -188,7 +188,7 @@ FECHA="$(date +%Y-%m-%d)"
 RAMA_RUN="dedalo/$FECHA"
 RAMA_TRABAJO="${RAMA_TRABAJO:-}"
 
-# Marca de inicio del run (epoch ms) para la limpieza de sesiones de opencode.
+# Run start mark (epoch ms) for cleaning opencode sessions.
 INICIO_MS="$(ahora_ms)"
 SESIONES_LIMPIADAS=0
 
@@ -199,7 +199,7 @@ hay_internet() {
     local i
     for i in 1 2 3; do
         un_ping && return 0
-        # Si no hay binario `ping` (o está capado por permisos), probar HTTP.
+        # If there is no `ping` binary (or it is restricted by permissions), try HTTP.
         if ! command -v ping >/dev/null 2>&1; then
             command -v curl >/dev/null 2>&1 \
                 && curl -s -m 3 https://1.1.1.1 >/dev/null 2>&1 && return 0
@@ -216,7 +216,7 @@ alerta() {
     printf '\a' 2>/dev/null || true
 }
 
-# Verifica si la salida indica agotamiento de tokens/cuota del proveedor IA.
+# Checks whether the output indicates token/quota exhaustion of the AI provider.
 tokens_agotados() {
     local archivo="$1"
     grep -qiE \
@@ -235,66 +235,66 @@ tokens_agotados() {
         "$archivo" >/dev/null 2>&1
 }
 
-# Detecta si la salida del agente indica falta de autenticación REAL.
-# Estrategia anti-falsos positivos:
-#   1. Examina stderr COMPLETO (donde los CLIs escriben errores reales).
-#   2. Examina solo las ÚLTIMAS 40 líneas de stdout (narrativa del agente
-#      suele ser larga; los errores reales de CLI aparecen al final).
-#   3. Patrones de ALTA CONFIANZA, anclados:
+# Detects whether the agent's output indicates a REAL lack of authentication.
+# Anti-false-positive strategy:
+#   1. Examines the COMPLETE stderr (where CLIs write real errors).
+#   2. Examines only the LAST 40 lines of stdout (agent narrative
+#      is usually long; real CLI errors appear at the end).
+#   3. HIGH-CONFIDENCE, anchored patterns:
 #        - "Please run .* login", "run .* auth login"
 #        - "Authentication Error", "authentication_error"
 #        - "invalid_api_key", "missing_api_key"
-#        - "401 Unauthorized" / "HTTP 401" (NO "401" solo)
-#   4. NO casan: "401" suelto, "unauthorized" suelto, "OPENAI_API_KEY" en
-#      narrativa, menciones en logs antiguos, etc.
-#   5. CORROBORACIÓN: aborta SOLO si hay sospecha Y la iteración no produjo
-#      ningún cambio (sin trabajo = fallo real; con trabajo = falso positivo).
-# Uso: sin_autenticacion <stderr_file> <stdout_file> <iteracion_sin_trabajo>
-#   iteracion_sin_trabajo: OBLIGATORIO. 1 = la iteración no cambió nada
-#   (ver iteracion_sin_trabajo), 0 = la iteración produjo trabajo real.
-#   Sin corroboración (0) NUNCA se aborta: el patrón se considera narrativa.
+#        - "401 Unauthorized" / "HTTP 401" (NOT "401" alone)
+#   4. They do NOT match: bare "401", bare "unauthorized", "OPENAI_API_KEY" in
+#      narrative, mentions in old logs, etc.
+#   5. CORROBORATION: aborts ONLY if there is suspicion AND the iteration produced
+#      no change (no work = real failure; with work = false positive).
+# Usage: sin_autenticacion <stderr_file> <stdout_file> <iteracion_sin_trabajo>
+#   iteracion_sin_trabajo: MANDATORY. 1 = the iteration changed nothing
+#   (see iteracion_sin_trabajo), 0 = the iteration produced real work.
+#   Without corroboration (0) it NEVER aborts: the pattern is considered narrative.
 sin_autenticacion() {
     local stderr_file="$1" stdout_file="$2" corroborar="$3"
-    # Patrones de ALTA CONFIANZA (anclados, no sueltos):
-    # - "Please run .../login" o "Please run ... login"
+    # HIGH-CONFIDENCE patterns (anchored, not loose):
+    # - "Please run .../login" or "Please run ... login"
     # - "run ... auth login"
     # - "Authentication Error", "authentication_error"
-    # - "invalid.?api.?key", "missing.?api.?key" (con o sin guiones/espacios)
-    # - "401 Unauthorized", "HTTP 401" (NO "401" solo)
+    # - "invalid.?api.?key", "missing.?api.?key" (with or without dashes/spaces)
+    # - "401 Unauthorized", "HTTP 401" (NOT "401" alone)
     # - "Please set your api key"
     local patron='(Please run .*/login|Please run .* login|run .* auth login|Authentication Error|authentication_error|invalid[ _.-]?api[ _.-]?key|missing[ _.-]?api[ _.-]?key|401 Unauthorized|HTTP 401|Please set your api key)'
     local detectado=0
-    # 1. stderr completo
+    # 1. complete stderr
     if [ -f "$stderr_file" ] && grep -qiE "$patron" "$stderr_file"; then
         detectado=1
     fi
-    # 2. últimas 40 líneas de stdout
+    # 2. last 40 lines of stdout
     if [ $detectado -eq 0 ] && [ -f "$stdout_file" ] && tail -40 "$stdout_file" | grep -qiE "$patron"; then
         detectado=1
     fi
-    # CORROBORACIÓN: solo aborta si hay patrón Y corroborar=1 (iteración sin
-    # trabajo). Con corroborar=0 (iteración con trabajo) el patrón solo es
-    # narrativa del agente → falso positivo → no aborta.
+    # CORROBORATION: only aborts if there is a pattern AND corroborar=1 (iteration with no
+    # work). With corroborar=0 (iteration with work) the pattern is only the agent's
+    # narrative → false positive → does not abort.
     [ "$detectado" = "1" ] && [ "$corroborar" = "1" ]
 }
 
-# Detecta el primer agente disponible (opencode -> codex -> claude).
-# El orden y los binarios son configurables:
-#   AGENTES_PREFERIDOS="codex opencode"  (orden de preferencia)
-#   CLI_OPENCODE/CLI_CODEX/CLI_CLAUDE      (binario de cada agente)
+# Detects the first available agent (opencode -> codex -> claude).
+# The order and the binaries are configurable:
+#   AGENTES_PREFERIDOS="codex opencode"  (preference order)
+#   CLI_OPENCODE/CLI_CODEX/CLI_CLAUDE      (binary for each agent)
 detectar_agente() {
     local i
     for i in ${AGENTES_PREFERIDOS:-opencode codex claude}; do
         [ "$i" = "auto" ] && continue
-        # agente_ok, NO cli_agente: este último sólo devuelve el nombre y
-        # siempre sale con rc=0, así que "detectaba" el primero de la lista
-        # aunque no estuviera instalado (y luego el agente_ok final abortaba).
+        # agente_ok, NOT cli_agente: the latter only returns the name and
+        # always exits with rc=0, so it "detected" the first in the list
+        # even if it was not installed (and then the final agente_ok aborted).
         agente_ok "$i" && { echo "$i"; return 0; }
     done
     echo ""
 }
 
-# Devuelve el binario de un agente (o vacío si no está instalado).
+# Returns an agent's binary (or empty if it is not installed).
 cli_agente() {
     local agente="$1"
     case "$agente" in
@@ -311,34 +311,34 @@ agente_ok() {
     [ -n "$bin" ] && command -v "$bin" >/dev/null 2>&1
 }
 
-# PID del proceso que se está esperando ahora mismo (el agente, el gate...).
-# Lo necesitan los traps para matarlo: si no, el SIGTERM de la GUI sólo llega al
-# shell y el opencode de abajo sigue gastando tokens hasta TIMEOUT_POR_TAREA.
+# PID of the process being waited on right now (the agent, the gate...).
+# The traps need it to kill it: otherwise, the GUI's SIGTERM only reaches the
+# shell and the opencode below keeps burning tokens until TIMEOUT_POR_TAREA.
 AGENTE_PID=""
 
-# Fichero con ese mismo PID. El gate se ejecuta como lado izquierdo de un pipe
-# (`ejecutar_esperando bash "$GATE" | tee ...`), y eso corre en un subshell donde
-# AGENTE_PID no se propaga al padre. Con el fichero, _matar_hijo lo encuentra
-# igual en los dos casos.
+# File with that same PID. The gate runs as the left side of a pipe
+# (`ejecutar_esperando bash "$GATE" | tee ...`), and that runs in a subshell where
+# AGENTE_PID does not propagate to the parent. With the file, _matar_hijo finds it
+# in both cases.
 #
-# Se calcula aquí, en el nivel superior, y no bajo demanda dentro de una función:
-# una asignación hecha dentro de `$(...)` se pierde en el subshell, y entonces el
-# padre no sabría ni el nombre del fichero para borrarlo al salir. `$$` es el pid
-# del script original también dentro de los subshells, así que todos coinciden.
+# It is computed here, at the top level, and not on demand inside a function:
+# an assignment made inside `$(...)` is lost in the subshell, and then the
+# parent would not even know the file name to delete it on exit. `$$` is the original
+# script's pid also inside subshells, so they all coincide.
 PID_HIJO="${TMPDIR:-/tmp}/dedalo_hijo.$$.pid"
 
-# Mata el proceso que se está esperando y a sus nietos.
+# Kills the process being waited on and its grandchildren.
 #
-# El hijo directo es `timeout`, y el agente cuelga de él. Por eso se matan
-# también los hijos: si sólo matamos a `timeout`, el agente queda huérfano
-# siguiendo con el socket y el token. Se da un margen para el apagado limpio y
-# luego SIGKILL a quien siga vivo.
+# The direct child is `timeout`, and the agent hangs from it. That is why the
+# children are killed too: if we only kill `timeout`, the agent is orphaned
+# continuing with the socket and the token. A margin is given for clean shutdown
+# and then SIGKILL to whoever is still alive.
 _matar_hijo() {
     local pid="$AGENTE_PID" kids="" i
     if [ -z "$pid" ] && [ -r "$PID_HIJO" ]; then
         pid="$(cat "$PID_HIJO" 2>/dev/null || true)"
     fi
-    # Sin un pid numérico no hay nada que matar (evita `kill` con basura).
+    # Without a numeric pid there is nothing to kill (avoids `kill` with garbage).
     case "$pid" in ''|*[!0-9]*) return 0 ;; esac
     if command -v pgrep >/dev/null 2>&1; then
         kids="$(pgrep -P "$pid" 2>/dev/null || true)"
@@ -358,20 +358,20 @@ _matar_hijo() {
     return 0
 }
 
-# `timeout` con portabilidad: GNU timeout > gtimeout (coreutils de Homebrew)
-# > respaldo en bash puro. macOS no trae `timeout` (BSD), y sin esto TODO
-# lanzamiento de agente saldría con rc=127 allí.
+# `timeout` with portability: GNU timeout > gtimeout (Homebrew coreutils)
+# > pure-bash fallback. macOS does not ship `timeout` (BSD), and without this EVERY
+# agent launch would exit with rc=127 there.
 #
-# El respaldo lanza el comando en segundo plano y lo mata pasados los
-# segundos, devolviendo 124 como hace GNU timeout (el script detecta ese
-# código para avisar de la tarea colgada).
+# The fallback launches the command in the background and kills it after the
+# seconds have passed, returning 124 as GNU timeout does (the script detects that
+# code to warn about the hung task).
 #
-# OJO con el `exec` de la rama GNU: ejecutar_esperando() llama a esto como
-# `"$@" &`, así que el subshell queda REEMPLAZADO por timeout y el árbol de
-# procesos es idéntico al de antes (AGENTE_PID apunta a timeout, no a un
-# wrapper intermedio que escondería al agente de _matar_hijo). Por eso sólo
-# se hace exec cuando estamos en subshell ($BASHPID != $$): una llamada en
-# primer plano no debe reemplazar al script.
+# CAREFUL with the `exec` of the GNU branch: ejecutar_esperando() calls this as
+# `"$@" &`, so the subshell gets REPLACED by timeout and the process
+# tree is identical to before (AGENTE_PID points to timeout, not to an
+# intermediate wrapper that would hide the agent from _matar_hijo). That is why
+# exec is only done when we are in a subshell ($BASHPID != $$): a foreground
+# call must not replace the script.
 _timeout() {
     local segs="$1" pid i=0 j
     shift
@@ -408,12 +408,12 @@ _timeout() {
     fi
 }
 
-# Marca la primera tarea pendiente del plan.md con la marca dada ([x] o [B]).
+# Marks the first pending task in plan.md with the given mark ([x] or [B]).
 #
-# `sed -i "0,/patrón/"` es una extensión GNU: en macOS (BSD sed) ni compila,
-# y el marcado de tareas caería en silencio. awk + cat hace lo mismo con
-# POSIX, y `cat > fichero` (en vez de mv del temporal) conserva el inode y
-# los permisos del plan.md del usuario.
+# `sed -i "0,/pattern/"` is a GNU extension: on macOS (BSD sed) it does not even compile,
+# and task marking would silently fail. awk + cat does the same with
+# POSIX, and `cat > file` (instead of mv of the temp) preserves the inode and
+# the permissions of the user's plan.md.
 marcar_plan() {
     local marca="$1" tmp
     tmp="$(mktemp)" || return 1
@@ -424,13 +424,13 @@ marcar_plan() {
     rm -f "$tmp"
 }
 
-# Ejecuta un comando en segundo plano y espera a que termine.
+# Runs a command in the background and waits for it to finish.
 #
-# Es el punto clave del bug: con el hijo en PRIMER PLANO, bash aplaza el trap
-# hasta que el hijo acaba (así lo hace un shell no interactivo), de modo que el
-# handler del SIGTERM no se ejecutaba hasta minutos después, cuando opencode ya
-# había terminado. En segundo plano `wait` sí se interrumpe por la señal, así
-# que el trap corre al instante y puede cerrar todo el árbol de procesos.
+# It is the key point of the bug: with the child in the FOREGROUND, bash defers the trap
+# until the child finishes (that is how a non-interactive shell does it), so the
+# SIGTERM handler did not run until minutes later, when opencode had already
+# finished. In the background `wait` is interrupted by the signal, so
+# the trap runs instantly and can close the whole process tree.
 ejecutar_esperando() {
     local rc
     "$@" &
@@ -443,15 +443,15 @@ ejecutar_esperando() {
     return "$rc"
 }
 
-# Para el loop ante SIGTERM/SIGINT: mata lo que esté corriendo, limpia las
-# sesiones una sola vez y sale con el código convencional (128+señal).
+# Stops the loop on SIGTERM/SIGINT: kills whatever is running, cleans the
+# sessions once and exits with the conventional code (128+signal).
 #
-# Antes: `trap limpiar_sesiones EXIT TERM INT`. Dos fallos en una línea:
-#   1. Un trap no detiene el script. Bash ejecuta el handler y sigue con el
-#      bucle, así que la GUI tenía que recurrir a SIGKILL a los 5 s.
-#   2. Con EXIT y TERM/INT juntas, la limpieza se ejecutaba DOS veces por una
-#      sola señal (una en el trap de la señal y otra al salir).
-# `trap - ... EXIT` evita que el handler se reentre y que la limpieza se duplique.
+# Before: `trap limpiar_sesiones EXIT TERM INT`. Two failures in one line:
+#   1. A trap does not stop the script. Bash runs the handler and continues with the
+#      loop, so the GUI had to resort to SIGKILL after 5 s.
+#   2. With EXIT and TERM/INT together, the cleanup ran TWICE for a
+#      single signal (one in the signal trap and another on exit).
+# `trap - ... EXIT` prevents the handler from re-entering and the cleanup from duplicating.
 _terminar() {
     trap - TERM INT EXIT
     _matar_hijo
@@ -459,7 +459,7 @@ _terminar() {
     exit "${1:-143}"
 }
 
-# Cierre common a las dos salidas: fin de bucle, break, error o señal.
+# Common close for both exits: loop end, break, error or signal.
 _cerrar() {
     trap - EXIT
     limpiar_sesiones
@@ -467,19 +467,19 @@ _cerrar() {
     return 0
 }
 
-# Limpia las sesiones de opencode que este run haya creado en el proyecto.
-# Criterio: directory == PROYECTO y time_created >= INICIO_MS del run.
-# Se ejecuta al salir (loop completo, break, error o detención manual).
+# Cleans the opencode sessions that this run has created in the project.
+# Criterion: directory == PROYECTO and time_created >= the run's INICIO_MS.
+# It runs on exit (full loop, break, error or manual stop).
 limpiar_sesiones() {
     local bin ids id n=0
     bin="$(cli_agente opencode)"
     [ -n "$bin" ] || return 0
     command -v "$bin" >/dev/null 2>&1 || return 0
     command -v jq >/dev/null 2>&1 || return 0
-    # `_timeout` (portable) porque esta función está en el camino de parada: si
-    # la CLI se queda colgada, el script no podría ni limpiar ni salir, y
-    # "Detener" desde la GUI dejaría de responder. Perder la limpieza es mejor
-    # que no salir.
+    # `_timeout` (portable) because this function is on the shutdown path: if
+    # the CLI hangs, the script could neither clean nor exit, and
+    # "Stop" from the GUI would stop responding. Losing the cleanup is better
+    # than not exiting.
     ids="$(_timeout 20 "$bin" session list --format json 2>/dev/null | jq -r \
         --arg dir "$PROYECTO" --argjson desde "$INICIO_MS" \
         '.[] | select(.directory == $dir and .created >= $desde) | .id')"
@@ -493,22 +493,22 @@ limpiar_sesiones() {
     [ "$n" -gt 0 ] && echo "[dedalo] 🧹 Sesiones opencode eliminadas: $n" | tee -a "$LOG"
     return 0
 }
-# El código va dentro de la cadena porque `trap` no admite argumentos: el
-# handler se ejecuta tal cual, así que _terminar recibe 143/130 como $1.
+# The code goes inside the string because `trap` does not accept arguments: the
+# handler runs as is, so _terminar receives 143/130 as $1.
 trap '_terminar 143' TERM
 trap '_terminar 130' INT
 trap _cerrar EXIT
 
-# Ejecuta una tarea con cualquier agente. Devuelve su exit code.
-#   $1 = agente (opencode|codex|claude)
-#   $2 = archivo salida
-#   $3 = modelo (sólo opencode; vacío = usa config)
+# Runs a task with any agent. Returns its exit code.
+#   $1 = agent (opencode|codex|claude)
+#   $2 = output file
+#   $3 = model (opencode only; empty = uses config)
 #   "$@" = prompt (string)
 run_agente() {
     local agente="$1" salida="$2" modelo="${3:-}" bin
     shift 3
-    # "auto" aquí solo llega si alguien invoca run_agente directamente: se
-    # resuelve como el agente de tarea ya detectado (o el primero disponible).
+    # "auto" only arrives here if someone invokes run_agente directly: it is
+    # resolved as the already-detected task agent (or the first available one).
     if [ -z "$agente" ] || [ "$agente" = "auto" ]; then
         agente="${AGENTE_TAREA:-}"
         [ -z "$agente" ] || [ "$agente" = "auto" ] && agente="$(detectar_agente)"
@@ -532,9 +532,9 @@ run_agente() {
             rc=$?
             ;;
         codex)
-            # OJO: los flags van en un array. "${CODEX_FLAGS:-}" entrecomillado
-            # añadiría un argumento VACÍO al final y el CLI lo tomaría como el
-            # prompt, dejando el prompt real como segundo posicional.
+            # CAREFUL: the flags go in an array. Quoted "${CODEX_FLAGS:-}"
+            # would add an EMPTY argument at the end and the CLI would take it as the
+            # prompt, leaving the real prompt as the second positional.
             local -a flags=()
             [ -n "${CODEX_FLAGS:-}" ] && read -r -a flags <<< "$CODEX_FLAGS"
             ejecutar_esperando _timeout "$TIMEOUT_POR_TAREA" "$bin" exec --skip-git-repo-check \
@@ -596,7 +596,7 @@ _registrar_metrica() {
         >> "$metric_file"
 }
 
-# Navegador de contexto previo a la tarea (agnóstico de agente).
+# Context navigator prior to the task (agent-agnostic).
 run_navegador() {
     local salida="$1" modelo="$2" tarea="$3" agente="${4:-$AGENTE_TAREA}" bin extra
     local prompt="Tarea: ${tarea}
@@ -642,41 +642,41 @@ elegir_revisor() {
     local preferido="${AGENTE_REVISOR:-}"
     local tarea="${AGENTE_TAREA:-}"
     local a
-    # Elección explícita (la GUI envía el agente detectado al resolver "auto"):
-    # gana aunque sea el mismo que implementa, porque es lo que pidió el
-    # usuario; no lo sustituimos por otro.
+    # Explicit choice (the GUI sends the detected agent when resolving "auto"):
+    # it wins even if it is the same one that implements, because that is what the
+    # user asked for; we do not replace it with another.
     if [ -n "$preferido" ] && [ "$preferido" != "auto" ]; then
         agente_ok "$preferido" && { echo "$preferido"; return 0; }
     fi
-    # "auto" o vacío = ojos frescos: otro agente distinto al de tarea.
+    # "auto" or empty = fresh eyes: an agent different from the task one.
     for a in ${AGENTES_PREFERIDOS:-codex claude opencode}; do
         [ -z "$a" ] && continue
         [ "$a" = "auto" ] && continue
         agente_ok "$a" || continue
         [ "$a" != "$tarea" ] && { echo "$a"; return 0; }
     done
-    # Sólo hay un agente disponible: que revise el mismo que implementó, o el
-    # gate se quedaría sin revisión.
+    # Only one agent is available: let the same one that implemented review, or the
+    # gate would be left without review.
     agente_ok "$tarea" && { echo "$tarea"; return 0; }
     echo ""
 }
 
 diff_revision() {
-    # Diff de la iteración para el revisor, excluyendo los archivos CONTROL
-    # del framework (plan.md, progreso.log, mapeo.txt…): son trazabilidad del
-    # propio dedalo, no "cambios ajenos" a la tarea.
-    # Los archivos nuevos se marcan intent-to-add (git add -N) para que
-    # `git diff` los incluya; si no, el revisor sólo veía archivos tracked.
+    # Diff of the iteration for the reviewer, excluding the framework's CONTROL
+    # files (plan.md, progreso.log, mapeo.txt…): they are traceability of
+    # dedalo itself, not "changes unrelated" to the task.
+    # New files are marked intent-to-add (git add -N) so that
+    # `git diff` includes them; otherwise, the reviewer only saw tracked files.
     local -a archivos=()
     local linea
     git -C "$PROYECTO" add -N -A 2>/dev/null
-    # OJO: las rutas van como pathspec SEPARADOS. Pasar la lista multilínea
-    # como un único argumento entrecomillado ("$ARCHIVOS_DIFF") la convierte en
-    # un pathspec literal con saltos de línea, que no casa con ningún fichero:
-    # con dos o más ficheros modificados el revisor recibía un diff VACÍO y
-    # aprobaba sin haber visto nada. Ver tests/test_revisor_diff.py.
-    # Y OJO: `read -a` parte por espacios SÓLO la línea que lee, así que con
-    # `<<<` sobre una lista multilínea se quedaría con el primer fichero.
+    # CAREFUL: the paths go as SEPARATE pathspecs. Passing the multiline list
+    # as a single quoted argument ("$ARCHIVOS_DIFF") turns it into
+    # a literal pathspec with line breaks, which matches no file:
+    # with two or more modified files the reviewer received an EMPTY diff and
+    # approved without having seen anything. See tests/test_revisor_diff.py.
+    # AND CAREFUL: `read -a` splits by spaces ONLY the line it reads, so with
+    # `<<<` over a multiline list it would keep only the first file.
     while IFS= read -r linea; do
         [ -n "$linea" ] || continue
         archivos+=("$linea")
@@ -704,13 +704,13 @@ Evalúa SOLO: (1) la tarea satisface su criterio, (2) no rompe nada obvio del pr
 (3) sin secretos, (4) sin scope creep (cambios ajenos a la tarea).
 Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERDICT: PASS o VERDICT: FAIL"
     run_agente "$rev" "$rev_out" "$MODELO_REVISOR" "$PROMPT_REV"
-    # Ya no volcamos la salida del revisor en progreso.log: contaminaba
-    # la detección de auth con palabras sueltas ("unauthorized", "401", etc.)
-    # que el revisor podía mencionar al evaluar el diff.
+    # We no longer dump the reviewer's output into progreso.log: it contaminated
+    # the auth detection with loose words ("unauthorized", "401", etc.)
+    # that the reviewer could mention when evaluating the diff.
 
-    # El revisor sin sesión: si no hay VERDICT en la salida, es que no
-    # pudo revisar (posible falta de auth). Si HAY veredicto, el revisor
-    # funcionó y cualquier mención de auth es falso positivo (narrativa).
+    # The reviewer without a session: if there is no VERDICT in the output, it means it
+    # could not review (possible lack of auth). If there IS a verdict, the reviewer
+    # worked and any mention of auth is a false positive (narrative).
     local rev_sin_veredicto=0
     grep -q "VERDICT:" "$rev_out" || rev_sin_veredicto=1
     if sin_autenticacion "${rev_out}.err" "$rev_out" "$rev_sin_veredicto"; then
@@ -720,7 +720,7 @@ Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERD
         exit 7
     fi
 
-    # Comprobar agotamiento de tokens/cuota en la salida del revisor
+    # Check token/quota exhaustion in the reviewer's output
     if tokens_agotados "$rev_out"; then
         echo "[dedalo] ✗ Tokens/cuota agotados del proveedor IA (revisor) — deteniendo loop" | tee -a "$LOG"
         logx "ABORTADO: tokens/cuota agotados (revisor)"
@@ -739,34 +739,34 @@ Responde con 2 o 3 líneas de razones y, EN LA ÚLTIMA LÍNEA, exactamente: VERD
     local veredicto_linea
     veredicto_linea="$(grep -iE "VERDICT:" "$rev_out" | tail -1)"
     echo "$veredicto_linea"
-    # Extraer feedback (todo lo que está antes del VERDICT)
+    # Extract feedback (everything before the VERDICT)
     REVISOR_FEEDBACK="$(sed -n '1,/VERDICT:/p' "$rev_out" | sed '$d' | sed '/^[[:space:]]*$/d' | paste -sd ' ' -)"
     rm -f "$rev_out" "${rev_out}.err"
     return 1
 }
 
 snapshot() {
-    # Excluye compilados/caches (pág. .gitignore) para que nunca entren en el
-    # diff ni se commiteen aunque el proyecto no tenga .gitignore.
-    # core.quotepath=false evita que git status --porcelain entrecomille
-    # caracteres NO-ASCII (acentos, ñ) en los nombres.
-    # OJO: los ESPACIOS sí se entrecomillan en porcelain v1 aunque el flag esté
-    # puesto ("mi modulo.py"); revertir() los normaliza quitando las comillas.
+    # Excludes compiled/caches (see .gitignore) so they never enter the
+    # diff or get committed even if the project has no .gitignore.
+    # core.quotepath=false prevents git status --porcelain from quoting
+    # NON-ASCII characters (accents, ñ) in the names.
+    # CAREFUL: SPACES do get quoted in porcelain v1 even if the flag is
+    # set ("mi modulo.py"); revertir() normalizes them by removing the quotes.
     git -C "$PROYECTO" -c core.quotepath=false status --porcelain \
         | sed 's/^...//' \
         | grep -vE '(^|/)(__pycache__|\.pytest_cache|\.mypy_cache|node_modules|\.venv|venv)/|\.pyc$|\.pyo$' \
         | sort > "$1"
 }
 
-# ¿La iteración actual no produjo trabajo real?
-# Compara los snapshots BEFORE (antes del agente) y AFTER (después).
-# Los archivos CONTROL (plan.md, progreso.log, metrics.jsonl, gate...) se
-# excluyen en AMBOS lados: el propio loop los escribe en cada iteración, así que
-# sin filtrarlos NUNCA se detectaría ausencia de trabajo y la comprobación de
-# autenticación abortaría siempre ante cualquier patrón (falso positivo).
-# La comparación es SIMÉTRICA: altas (comm -13) y bajas (comm -23). Un archivo
-# que desaparece del status del agente también es trabajo (lo borró).
-# Devuelve 0 (true) si NO hubo trabajo, 1 (false) si hubo cambios.
+# Did the current iteration not produce real work?
+# Compares the BEFORE (before the agent) and AFTER snapshots.
+# The CONTROL files (plan.md, progreso.log, metrics.jsonl, gate...) are
+# excluded on BOTH sides: the loop itself writes them on every iteration, so
+# without filtering them the absence of work would NEVER be detected and the
+# authentication check would always abort on any pattern (false positive).
+# The comparison is SYMMETRIC: additions (comm -13) and removals (comm -23). A file
+# that disappears from the agent's status is also work (it deleted it).
+# Returns 0 (true) if there was NO work, 1 (false) if there were changes.
 iteracion_sin_trabajo() {
     local antes despues nuevos borrados
     antes="$(grep -vE "^($CONTROL)$" "$BEFORE" | sort -u)"
@@ -795,24 +795,24 @@ revertir() {
             file="${file#\"}"; file="${file%\"}"
             case "$status" in
                 "??")
-                    # Nuevo archivo creado por el agente (untracked): borrarlo
+                    # New file created by the agent (untracked): delete it
                     rm -rf "$PROYECTO/$file" 2>/dev/null
                     ;;
                 " D"|"D "|"D")
-                    # Archivo borrado por el agente: restaurar desde HEAD
+                    # File deleted by the agent: restore from HEAD
                     git -C "$PROYECTO" checkout -- "$file" 2>/dev/null
                     ;;
                 *)
-                    # Cualquier otra modificación en worktree (M, T, etc.): restaurar
+                    # Any other worktree modification (M, T, etc.): restore
                     git -C "$PROYECTO" checkout -- "$file" 2>/dev/null
                     ;;
             esac
         done
 }
 
-# --- Integridad del gate: el agente no debe poder alterar gate.sh/gate_checks ---
-# Se respalda el gate prístino al inicio del run; si el agente lo modifica,
-# se restaura y se anula el intento (el gate es código del framework, no del proyecto).
+# --- Gate integrity: the agent must not be able to alter gate.sh/gate_checks ---
+# The pristine gate is backed up at the start of the run; if the agent modifies it,
+# it is restored and the attempt is voided (the gate is framework code, not the project's).
 GATE_BACKUP_DIR="$(mktemp -d)"
 backup_gate() {
     rm -rf "$GATE_BACKUP_DIR"
@@ -831,10 +831,10 @@ gate_intacto() {
     return 0
 }
 
-# Consentimiento de primer uso: el gate ejecuta código del repo (gate_checks/)
-# sin sandbox, así que un proyecto desconocido no arranca sin aprobación.
-# Opt-in por entorno (DEDALO_GATE_CONSENT=1, ideal en CI) o por terminal.
-# El motor nativo (loop.py) además recuerda la aprobación por hash de contenido.
+# First-use consent: the gate runs repo code (gate_checks/)
+# without a sandbox, so an unknown project does not start without approval.
+# Opt-in via environment (DEDALO_GATE_CONSENT=1, ideal in CI) or via terminal.
+# The native engine (loop.py) also remembers the approval by content hash.
 consentimiento_gate() {
     local dir="$PROYECTO/gate_checks"
     [ -d "$dir" ] || return 0
@@ -864,8 +864,8 @@ restaurar_gate() {
     [ -d "$GATE_BACKUP_DIR/gate_checks" ] && cp -rf "$GATE_BACKUP_DIR/gate_checks/." "$PROYECTO/gate_checks/" 2>/dev/null
 }
 
-# Memoria del proyecto: añade una lección a lecciones.md (corrección única de
-# errores). La usa el agente en la siguiente tarea para no repetir el fallo.
+# Project memory: adds a lesson to lecciones.md (single-error
+# correction). The agent uses it in the next task so it doesn't repeat the failure.
 registrar_leccion() {
     local titulo="$1" sintoma="$2" causa="$3" prevencion="$4"
     {   printf '\n## %s — %s\n- Síntoma: %s\n- Causa: %s\n- Prevención: %s\n' \
@@ -884,13 +884,13 @@ proxima_tarea() {
     return 1
 }
 
-# Devuelve el criterio de aceptación de la PRIMERA tarea pendiente (- [ ]).
-# Formato del plan.md: línea "criterio: ..." indentada bajo la tarea.
+# Returns the acceptance criterion of the FIRST pending task (- [ ]).
+# plan.md format: line "criterio: ..." indented under the task.
 criterio_tarea() {
     local l en_tarea=0
     while IFS= read -r l || [ -n "$l" ]; do
         if [[ "$l" == "- [ ] "* ]]; then
-            # Criterio inline en la misma línea de la tarea
+            # Inline criterion on the task's own line
             if [[ "$l" =~ criterio:[[:space:]]+(.*)$ ]]; then
                 echo "${BASH_REMATCH[1]}"
                 return 0
@@ -903,7 +903,7 @@ criterio_tarea() {
             continue
         fi
         if [ "$en_tarea" -eq 1 ]; then
-            # Línea sin indentar corta el bloque de la tarea
+            # An unindented line cuts the task block
             [[ "$l" =~ ^[[:space:]] ]] || return 1
             if [[ "$l" =~ criterio:[[:space:]]*(.*)$ ]]; then
                 echo "${BASH_REMATCH[1]}"
@@ -915,13 +915,13 @@ criterio_tarea() {
 }
 
 esperar_revision_manual() {
-    # Solo si REVISION_MANUAL=1
+    # Only if REVISION_MANUAL=1
     [ "$REVISION_MANUAL" = "1" ] || return 0
 
     local dir_revision="$PROYECTO/.dedalo_review"
     mkdir -p "$dir_revision"
 
-    # Escribir diff y tarea para la GUI
+    # Write diff and task for the GUI
     git -C "$PROYECTO" diff --stat > "$dir_revision/diff.txt"
     git -C "$PROYECTO" diff >> "$dir_revision/diff.txt"
     echo "$TAREA" > "$dir_revision/tarea.txt"
@@ -936,7 +936,7 @@ esperar_revision_manual() {
             sleep 2
             esperado=$((esperado + 2))
 
-            # Criterio de infraestructura: si se cae la red, abortar como el resto del loop.
+            # Infrastructure criterion: if the network goes down, abort like the rest of the loop.
             if [ $((esperado % 30)) -eq 0 ] && ! hay_internet; then
                 echo "[dedalo] ✗ sin internet durante la revisión manual: abortando." | tee -a "$LOG"
                 logx "ABORTADO: sin internet durante revisión manual"
@@ -955,8 +955,8 @@ esperar_revision_manual() {
         done
         decision="$(cat "$dir_revision/decision")"
 
-        # Origen de la decisión: la GUI escribe "# origen=gui" y el servidor MCP
-        # "# origen=mcp" (respuesta al final del fichero). Sin marca = humano.
+        # Origin of the decision: the GUI writes "# origen=gui" and the MCP server
+        # "# origen=mcp" (answer at the end of the file). No mark = human.
         origen=""
         while IFS= read -r linea; do
             case "$linea" in
@@ -965,9 +965,9 @@ esperar_revision_manual() {
         done <<< "$decision"
         origen="$(printf '%s' "$origen" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
 
-        # Seguridad: un agente no puede aprobar su propio trabajo. Por defecto
-        # (REVISION_APRUEBA_AGENTE=0) un APPROVE con origen=mcp se ignora y se
-        # sigue esperando una aprobación humana; con 1 se acepta.
+        # Security: an agent cannot approve its own work. By default
+        # (REVISION_APRUEBA_AGENTE=0) an APPROVE with origen=mcp is ignored and it
+        # keeps waiting for human approval; with 1 it is accepted.
         case "$decision" in
             APPROVE*)
                 if [ "$origen" = "mcp" ] && [ "${REVISION_APRUEBA_AGENTE:-0}" != "1" ]; then
@@ -1008,10 +1008,10 @@ esperar_revision_manual() {
     esac
 }
 
-# ---- Autodetección de agente si no se especificó (o se pidió "auto") ----
-# "auto" y vacío significan lo mismo: usar el primer agente disponible según
-# AGENTES_PREFERIDOS. La GUI manda "auto" por defecto, así que resolver solo el
-# caso vacío dejaba el loop sin agente (agente_ok "auto" → aborta con exit 2).
+# ---- Agent autodetection if none was specified (or "auto" was requested) ----
+# "auto" and empty mean the same: use the first available agent according to
+# AGENTES_PREFERIDOS. The GUI sends "auto" by default, so resolving only the
+# empty case left the loop without an agent (agente_ok "auto" → aborts with exit 2).
 if [ -z "$AGENTE_TAREA" ] || [ "$AGENTE_TAREA" = "auto" ]; then
     AGENTE_TAREA="$(detectar_agente)"
     if [ -z "$AGENTE_TAREA" ]; then
@@ -1021,10 +1021,10 @@ if [ -z "$AGENTE_TAREA" ] || [ "$AGENTE_TAREA" = "auto" ]; then
     echo "[dedalo] Agente autodetectado: $AGENTE_TAREA"
 fi
 
-# Antes de lanzar el loop: si el binario del agente no existe, abortar ya.
+# Before launching the loop: if the agent's binary does not exist, abort now.
 if ! agente_ok "$AGENTE_TAREA"; then
     BIN="$(cli_agente "$AGENTE_TAREA")"
-    # ${VAR^^} es bash 4+; el /bin/bash de macOS es 3.2. `tr` es POSIX.
+    # ${VAR^^} is bash 4+; macOS's /bin/bash is 3.2. `tr` is POSIX.
     CLI_ENV="$(printf '%s' "$AGENTE_TAREA" | tr '[:lower:]' '[:upper:]')"
     echo "[dedalo] ✗✗ agente '$AGENTE_TAREA' no encontrado (busqué '$BIN')." \
          "Instálalo o configura el PATH (o CLI_${CLI_ENV}) y relanza." | tee -a "$LOG"
@@ -1049,12 +1049,12 @@ if ! hay_internet; then
 fi
 logx "Internet OK"
 
-# Consentimiento de primer uso del gate (ver loop.py/consentimiento.py):
-# el gate corre código del repo sin sandbox, así que un repo desconocido no
-# se ejecuta sin aprobación explícita (entorno o terminal interactivo).
+# First-use consent for the gate (see loop.py/consentimiento.py):
+# the gate runs repo code without a sandbox, so an unknown repo is not
+# run without explicit approval (environment or interactive terminal).
 consentimiento_gate
 
-# Respaldo del gate prístino ANTES de que el agente pueda tocar nada.
+# Backup of the pristine gate BEFORE the agent can touch anything.
 backup_gate
 
 echo "[dedalo] Baseline: gate.sh..."
@@ -1083,11 +1083,11 @@ else
 fi
 logx "Rama base: $RAMA_RUN"
 
-# --- Rama de trabajo (--trabajo): dónde se hace el trabajo real ---
-#   · si coincide con la rama principal (master/main) → se trabaja ahí mismo
-#   · si no existe → se crea desde la rama base (padre)
-#   · si existe (local u origin) → se usa tal cual
-#   · si la borran a mitad del run → se vuelve a la rama base para terminar
+# --- Work branch (--trabajo): where the real work is done ---
+#   · if it matches the main branch (master/main) → it works right there
+#   · if it does not exist → it is created from the base branch (parent)
+#   · if it exists (local or origin) → it is used as is
+#   · if it is deleted mid-run → it returns to the base branch to finish
 if [[ -n "${RAMA_TRABAJO:-}" && "$RAMA_TRABAJO" != "$RAMA_RUN" ]]; then
     if [[ "$RAMA_TRABAJO" == "master" || "$RAMA_TRABAJO" == "main" ]]; then
         git -C "$PROYECTO" checkout -q "$RAMA_TRABAJO" 2>/dev/null \
@@ -1156,8 +1156,8 @@ while (( iter < MAX_ITER )); do
     snapshot "$BEFORE"
 
     hecho=0
-    # `seq` no existe en BSD/macOS. El contador sube al ENTRAR del bucle para
-    # que un `continue` siga avanzando la intento.
+    # `seq` does not exist on BSD/macOS. The counter increments on ENTERING the loop so
+    # that a `continue` keeps advancing the attempt.
     intento=0
     while [ "$intento" -lt "$MAX_REINTENTOS" ]; do
         intento=$((intento + 1))
@@ -1165,18 +1165,18 @@ while (( iter < MAX_ITER )); do
         [ "$intento" -gt 1 ] && PRE="El intento anterior no pasó la verificación: no repitas tu cambio, corrígelo. "
         COSTO_ITER_ACTUAL="$(num -v t="$COSTO_ITER_ACTUAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a}')"
 
-        # --- MEMORIA DEL PROYECTO (corrección única de errores) ---
+        # --- PROJECT MEMORY (single-error correction) ---
         LECCIONES_CONTEXTO=""
         if [ -f "$LECCIONES" ] && [ -s "$LECCIONES" ]; then
             LECCIONES_CONTEXTO="$(cat "$LECCIONES")"
         fi
 
-        # --- NAVEGADOR AUTOMÁTICO (busca contexto antes de la tarea) ---
+        # --- AUTOMATIC NAVIGATOR (looks for context before the task) ---
         if [ "$NAVEGADOR" = "1" ] && agente_ok "$AGENTE_TAREA" && [ -n "$MODELO_NAVEGADOR" ]; then
             NAV_OUT="$(mktemp)"
             run_navegador "$NAV_OUT" "$MODELO_NAVEGADOR" "$TAREA" "$AGENTE_TAREA"
-            # El navegador no debe abortar el loop por auth: su output es solo contexto.
-            # Si falla por auth, simplemente no hay contexto.
+            # The navigator must not abort the loop over auth: its output is only context.
+            # If it fails due to auth, there is simply no context.
             if [ -s "$NAV_OUT" ]; then
                 NAV_CONTEXTO="$(cat "$NAV_OUT")"
             else
@@ -1205,8 +1205,8 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
             echo "[dedalo] ⚠ timeout: ${AGENTE_TAREA} tardó más de ${TIMEOUT_POR_TAREA}s" | tee -a "$LOG"
             alerta "Tiempo agotado en una tarea"
         elif [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
-            # El binario del agente no existe o no es ejecutable: sin agente no
-            # hay loop. Antes se seguía y se marcaba la tarea [x] sin trabajo.
+            # The agent's binary does not exist or is not executable: without an agent there
+            # is no loop. Before, it continued and marked the task [x] without work.
             echo "[dedalo] ✗✗ ${AGENTE_TAREA} no se pudo ejecutar (rc=$rc):" \
                  "binario no encontrado o sin permisos de ejecución." | tee -a "$LOG"
             logx "ABORTADO: agente no ejecutable (rc=$rc)"
@@ -1218,21 +1218,21 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         cat "$OUT" >> "$LOG"
         cat "$OUT"
 
-        # Snapshot del árbol tras el agente. Va ANTES de la comprobación de
-        # autenticación porque la corroboración necesita saber si el agente
-        # cambió algo; y se usa después para revertir este intento si el
-        # revisor dual o la revisión manual lo rechazan.
+        # Tree snapshot after the agent. It goes BEFORE the authentication
+        # check because the corroboration needs to know if the agent
+        # changed anything; and it is used later to revert this attempt if the
+        # dual reviewer or the manual review rejects it.
         snapshot "$AFTER"
 
-        # Agente instalado pero SIN sesión: no es un fallo de la tarea, es
-        # configuración. Sin este corte el loop marcaría cada tarea [B] y
-        # seguiría gastando iteraciones sin poder trabajar nunca.
-        # CORROBORACIÓN: solo aborta si hay sospecha de auth Y la iteración no
-        # cambió nada (sin trabajo = fallo real; con trabajo = falso positivo).
-        # NADA de `local`: esto está en el top-level del script (dentro del
-        # while), y `local` fuera de función deja la variable SIN CREAR →
-        # `set -u` abortaba en la línea siguiente con "unbound variable" y
-        # cualquier iteración con trabajo real terminaba el run con exit 1.
+        # Agent installed but WITHOUT a session: it is not a task failure, it is
+        # configuration. Without this cut the loop would mark every task [B] and
+        # keep burning iterations without ever being able to work.
+        # CORROBORATION: only aborts if there is auth suspicion AND the iteration
+        # changed nothing (no work = real failure; with work = false positive).
+        # NO `local`: this is at the top-level of the script (inside the
+        # while), and `local` outside a function leaves the variable UNCREATED →
+        # `set -u` aborted on the next line with "unbound variable" and
+        # any iteration with real work ended the run with exit 1.
         iter_sin_trabajo=0
         iteracion_sin_trabajo && iter_sin_trabajo=1
         if sin_autenticacion "${OUT}.err" "$OUT" "$iter_sin_trabajo"; then
@@ -1243,7 +1243,7 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
             exit 7
         fi
 
-        # Comprobar agotamiento de tokens/cuota en la salida del agente
+        # Check token/quota exhaustion in the agent's output
         if tokens_agotados "$OUT"; then
             echo "[dedalo] ✗ Tokens/cuota agotados del proveedor IA — deteniendo loop" | tee -a "$LOG"
             logx "ABORTADO: tokens/cuota agotados"
@@ -1258,12 +1258,12 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
             exit 3
         fi
 
-        # CRITERIO y MODELO_JUEZ viajan al gate (los lee 98_criterio.sh)
+        # CRITERIO and MODELO_JUEZ travel to the gate (98_criterio.sh reads them)
         export CRITERIO MODELO_JUEZ OPENCODE_AGENT_JUEZ
 
-        # Integridad del gate: si el agente alteró gate.sh/gate_checks/*.sh,
-        # restaurar el prístino y anular este intento (no se ejecuta el gate
-        # contaminado; es un vector de inyección de código).
+        # Gate integrity: if the agent altered gate.sh/gate_checks/*.sh,
+        # restore the pristine one and void this attempt (the contaminated gate
+        # is not run; it is a code injection vector).
         if ! gate_intacto; then
             restaurar_gate
             echo "[dedalo] ✗ el agente alteró gate.sh/gate_checks: gate restaurado, intento anulado." | tee -a "$LOG"
@@ -1274,12 +1274,12 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
 
         logx "GATE: ejecutando gate.sh (intento $intento)"
         GATE_OUT="$(mktemp)"
-        # tee: la salida del gate se ve en vivo Y se guarda para el feedback
+        # tee: the gate's output is seen live AND saved for feedback
         if ejecutar_esperando bash "$GATE" 2>&1 | tee "$GATE_OUT"; then
             if [ "$REVISION_DUAL" = "1" ] && [ -n "$REVISOR" ]; then
                 COSTO_ITER_ACTUAL="$(num -v t="$COSTO_ITER_ACTUAL" -v a="$COSTO_POR_ITER" 'BEGIN{printf "%.2f", t+a/2}')"
                 if revisar_diff "$REVISOR"; then
-                    # Gate dual pasó, ahora verificar revisión manual si está activada
+                    # Dual gate passed, now verify manual review if it is enabled
                     esperar_revision_manual
                     rc_rev=$?
                     if [ "$rc_rev" -eq 0 ]; then
@@ -1289,7 +1289,7 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
                         logx "Revisión manual: timeout, tarea marcada [B]"
                         break
                     else
-                        # Rechazado: revertir cambios antes de reintentar
+                        # Rejected: revert changes before retrying
                         revertir "$BEFORE" "$AFTER"
                         PRE="El diff fue rechazado en revisión manual: ${RECHAZO_MOTIVO}. Corrige esto en tu siguiente intento. "
                         logx "REVISIÓN MANUAL RECHAZADO, reintentando..."
@@ -1297,14 +1297,14 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
                 else
                     logx "REVISOR FAIL (intento $intento)"
                     echo "[dedalo] ✗ el revisor rechazó el diff (intento $intento/$MAX_REINTENTOS)"
-                    # Inyectar feedback del revisor en el siguiente intento
+                    # Inject reviewer feedback into the next attempt
                     if [ -n "$REVISOR_FEEDBACK" ]; then
                         PRE="El revisor rechazó el diff anterior: ${REVISOR_FEEDBACK}. Corrige esto en tu siguiente intento. "
                         logx "Feedback del revisor inyectado para siguiente intento"
                     fi
                 fi
             else
-                # Sin gate dual, verificar revisión manual
+                # Without a dual gate, verify manual review
                 esperar_revision_manual
                 rc_rev=$?
                 if [ "$rc_rev" -eq 0 ]; then
@@ -1322,8 +1322,8 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
         else
             logx "GATE FALLÓ tras el agente (intento $intento)"
             echo "[dedalo] ✗ la tarea no pasó el gate (intento $intento/$MAX_REINTENTOS)"
-            # Capturar la salida del gate para dársela al agente en el
-            # siguiente intento (patrón "pipe_output"): que sepa QUÉ falló.
+            # Capture the gate's output to give it to the agent in the
+            # next attempt ("pipe_output" pattern): so it knows WHAT failed.
             cat "$GATE_OUT" >> "$LOG"
             GATE_FEEDBACK="$(grep -vE '^\[GATE\] (✓|⚠)' "$GATE_OUT" | tail -15 | tr '\n' ' ' | cut -c1-500)"
             if [ -n "$GATE_FEEDBACK" ]; then
@@ -1340,11 +1340,11 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
     if [ "$hecho" -eq 1 ]; then
         CHANGED="$(comm -13 <(sort "$BEFORE") <(sort "$AFTER") | grep -vE "^($CONTROL)$")"
         if [ -n "$CHANGED" ]; then
-            # Subject corto (<50 chars, pág. git) + cuerpo con la tarea completa
+            # Short subject (<50 chars, see git) + body with the full task
             SUBJETO="dedalo: $(printf '%s' "$TAREA" | cut -c1-40)"
-            # $CHANGED puede contener saltos de línea y espacios: usar array para
-            # proteger rutas con espacios y evitar word-splitting.
-            # mapfile es bash 4+; usamos while portable.
+            # $CHANGED may contain line breaks and spaces: use an array to
+            # protect paths with spaces and avoid word-splitting.
+            # mapfile is bash 4+; we use a portable while.
             changed_arr=()
             while IFS= read -r line; do
                 [ -n "$line" ] && changed_arr+=("$line")
@@ -1357,13 +1357,13 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
             logx "tarea completada sin cambios nuevos"
             echo "[dedalo] ✔ tarea completada sin cambios nuevos"
         fi
-        # Solo si el merge --ff-only tiene éxito se marca [x] y se borra la rama.
-        # Si falla, se mantiene la rama para diagnóstico y se marca [B] con lección.
+        # Only if the merge --ff-only succeeds is it marked [x] and the branch deleted.
+        # If it fails, the branch is kept for diagnosis and marked [B] with a lesson.
         if git -C "$PROYECTO" checkout -q "$RAMA_RUN" \
             && git -C "$PROYECTO" merge -q --ff-only "$RAMA_TAREA" 2>/dev/null; then
             git -C "$PROYECTO" branch -q -d "$RAMA_TAREA"
             logx "mergeada $RAMA_TAREA -> $RAMA_RUN"
-            # Actualizar mapeo.txt automáticamente tras tarea completada
+            # Update mapeo.txt automatically after a completed task
             bash "$MAPEAR" > "$MAPA" 2>/dev/null && logx "mapeo.txt actualizado tras $TAREA"
             marcar_plan x
         else
@@ -1399,9 +1399,9 @@ Al terminar, responde con un resumen conciso de qué cambiaste y qué tests corr
     rm -f "$BEFORE" "$AFTER" "$OUT" "${OUT}.err"
 done
 
-# --- Integrar el trabajo en la rama destino (--trabajo distinta de la run) ---
-# El loop commitea en RAMA_RUN (rama base del run); si se pidió trabajar en
-# otra rama, se deja todo el run integrado allí al terminar.
+# --- Integrate the work into the target branch (--trabajo different from the run) ---
+# The loop commits on RAMA_RUN (the run's base branch); if working on
+# another branch was requested, the whole run is left integrated there at the end.
 if [ -n "${RAMA_TRABAJO:-}" ] && [ "$RAMA_TRABAJO" != "$RAMA_RUN" ]; then
     echo "[dedalo] Integrando $RAMA_RUN -> $RAMA_TRABAJO"
     if git -C "$PROYECTO" checkout -q "$RAMA_TRABAJO" && \
@@ -1412,9 +1412,9 @@ if [ -n "${RAMA_TRABAJO:-}" ] && [ "$RAMA_TRABAJO" != "$RAMA_RUN" ]; then
     fi
 fi
 
-# Intentar crear repo en GitHub si hay credenciales y no hay remote origin
-# Vía preferida: CLI gh (usa credenciales del keyring, sin token en línea de
-# comandos ni en logs). Fallback: GITHUB_TOKEN vía API.
+# Try to create a repo on GitHub if there are credentials and no remote origin
+# Preferred way: gh CLI (uses keyring credentials, no token on the
+# command line or in logs). Fallback: GITHUB_TOKEN via API.
 _asegurar_remote_origin() {
     if ! git -C "$PROYECTO" remote get-url origin >/dev/null 2>&1; then
         local repo_name="$(basename "$PROYECTO")"
@@ -1423,7 +1423,7 @@ _asegurar_remote_origin() {
             owner="$(gh api user --jq .login 2>/dev/null)"
             if [ -n "$owner" ] && gh repo create "$owner/$repo_name" --private >/dev/null 2>&1; then
                 echo "[dedalo] ✔ repo creado en GitHub: $owner/$repo_name"
-                # remote https: usa el credential helper de gh (keyring), no SSH.
+                # https remote: uses gh's credential helper (keyring), not SSH.
                 git -C "$PROYECTO" remote add origin "https://github.com/$owner/$repo_name.git"
                 logx "repo creado y remote origin configurado: https://github.com/$owner/$repo_name.git"
                 return 0
@@ -1461,12 +1461,12 @@ if [ -n "$PUSH" ]; then
     PUSH_RAMA="${RAMA_TRABAJO:-$RAMA_RUN}"
     ORIGIN_URL="$(git -C "$PROYECTO" remote get-url origin 2>/dev/null)"
     if [ -n "$ORIGIN_URL" ]; then
-        # Salvaguarda: nunca empujar la rama base (protegida) por accidente.
+        # Safeguard: never push the base branch (protected) by accident.
         if [ "$PUSH_RAMA" = "$RAMA_BASE" ] || [ "$PUSH_RAMA" = "master" ] || [ "$PUSH_RAMA" = "main" ]; then
             echo "[dedalo] ✗ push abortado: '$PUSH_RAMA' es la rama base; el trabajo debe ir en una rama dedalo/*." | tee -a "$LOG"
             logx "push abortado: '$PUSH_RAMA' es rama base"
         else
-            # Visibilidad: deja claro a qué remoto se sube antes de hacerlo.
+            # Visibility: make clear which remote it pushes to before doing it.
             echo "[dedalo] push → origin ($ORIGIN_URL) rama $PUSH_RAMA"
             logx "push: origin ($ORIGIN_URL) $PUSH_RAMA"
             if git -C "$PROYECTO" push -u origin "$PUSH_RAMA"; then

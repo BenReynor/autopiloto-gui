@@ -3,6 +3,8 @@
 from PySide6.QtCore import QProcess, Qt, QThread, Signal
 from PySide6.QtWidgets import QPlainTextEdit
 
+from .i18n import t
+
 SIGNAL_UI = Qt.ConnectionType.QueuedConnection
 
 
@@ -35,10 +37,10 @@ class Trabajo(QThread):
         """Connects `listo` to the slot guaranteeing delivery on the UI thread."""
         self.listo.connect(slot, SIGNAL_UI)
 
-    def liberar(self, widget, attr="worker"):
+    def liberar(self, widget, attr="_worker"):
         """Connects `finished` to release the thread reference.
 
-        Sets `widget.<attr> = None` (by default `widget.worker`) ONLY
+        Sets `widget.<attr> = None` (by default `widget._worker`) ONLY
         when the thread has already finished, avoiding destroying a
         running QThread.
         """
@@ -81,12 +83,14 @@ class Proceso(QProcess):
             self.panel.appendPlainText(text)
 
     def _terminado(self, code, status):
-        self.panel.appendPlainText(f"[fin] exit={code} ({status})")
+        self.panel.appendPlainText(
+            t("[fin] exit={code} ({status})", code=code, status=status))
         if self._on_fin:
             self._on_fin()
 
     def _error(self, error):
         if error == QProcess.ProcessError.FailedToStart:
-            self.panel.appendPlainText("[fin] error: FailedToStart (no se pudo iniciar el proceso)")
+            self.panel.appendPlainText(t(
+                "[fin] error: FailedToStart (could not start the process)"))
             if self._on_fin:
                 self._on_fin()

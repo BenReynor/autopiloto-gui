@@ -1,11 +1,11 @@
-"""Pruebas headless de la GUI: cada botón hace lo que dice.
+"""Headless GUI tests: each button does what it says.
 
-Instancia los paneles con QT_QPA_PLATFORM=offscreen y un proyecto temporal
-con repositorio git real. Verifica que pulsar cada botón produce el efecto
-esperado (señal emitida, archivo escrito, tree recargado, etc.).
+Instantiates the panels with QT_QPA_PLATFORM=offscreen and a temporary
+project with a real git repository. Verifies that pressing each button produces
+the expected effect (signal emitted, file written, tree reloaded, etc.).
 
-Los diálogos modales (QMessageBox, QFileDialog, QInputDialog) se cierran
-solos con un QTimer para no bloquear el test.
+Modal dialogs (QMessageBox, QFileDialog, QInputDialog) close
+themselves with a QTimer so as not to block the test.
 """
 
 import os
@@ -44,7 +44,7 @@ def _cerrar_todos_los_modales():
 
 
 def boton(curso, texto):
-    """Busca un QPushButton por texto exacto en un widget o hijo."""
+    """Finds a QPushButton by exact text in a widget or child."""
     for b in curso.findChildren(QPushButton):
         if b.text().strip() == texto:
             return b
@@ -53,7 +53,7 @@ def boton(curso, texto):
 
 @pytest.fixture
 def proyecto_git(tmp_path):
-    """Repo git con un plan.md y 2 commits de Dédalo."""
+    """Git repo with a plan.md and 2 Dédalo commits."""
     subprocess.run(["git", "init", "-q", "-b", "master"], cwd=tmp_path, check=True)
     (tmp_path / "plan.md").write_text(
         "# PLAN\n\n- [ ] #1 crear demo.py\n      criterio: demo.py existe\n",
@@ -80,19 +80,19 @@ def test_plan_guardar_modifica_archivo_y_kanban(app, proyecto_git):
     p.cargar(ruta)
     assert p.kanban.col_pend.badge.text() == "1"
 
-    # Editar y pulsar Guardar plan.md
+    # Edit and press Save plan.md
     p.editor.setPlainText(
         "# PLAN\n\n- [ ] #1 crear demo.py\n- [x] #0 tarea hecha\n")
     guardados = []
     p.guardado.connect(guardados.append)
-    boton(p, "Guardar plan.md").click()
+    boton(p, "Save plan.md").click()
     assert (proyecto_git / "plan.md").read_text(encoding="utf-8") == p.editor.toPlainText()
     assert guardados, "señal guardado no emitida"
     assert p.kanban.col_pend.badge.text() == "1"
     assert p.kanban.col_hecha.badge.text() == "1"
 
-    # Recargar vuelve al estado del disco
-    boton(p, "Recargar").click()
+    # Reload returns to the on-disk state
+    boton(p, "Reload").click()
     assert p.kanban.col_hecha.badge.text() == "1"
 
 
@@ -112,12 +112,12 @@ def test_lecciones_nueva_y_guardar(app, proyecto_git):
     p = PanelLecciones()
     ruta = str(proyecto_git / "lecciones.md")
     p.cargar(ruta)
-    boton(p, "＋ Nueva lección").click()
-    assert "Síntoma" in p.editor.toPlainText()
+    boton(p, "＋ New lesson").click()
+    assert "Symptom" in p.editor.toPlainText()
 
     guardados = []
     p.guardado.connect(guardados.append)
-    boton(p, "Guardar lecciones.md").click()
+    boton(p, "Save lecciones.md").click()
     assert (proyecto_git / "lecciones.md").read_text(encoding="utf-8") == p.editor.toPlainText()
     assert guardados
 
@@ -132,7 +132,7 @@ def test_lecciones_nueva_y_guardar(app, proyecto_git):
                            "se valida en Linux")
 def test_mapa_regenerar_crea_mapeo(app, proyecto_git):
     from dedalo.paneles import PanelMapa
-    # Añadir mapear.sh que genera mapeo.txt
+    # Add mapear.sh that generates mapeo.txt
     (proyecto_git / "mapear.sh").write_text(
         "#!/usr/bin/env bash\necho '# demo.py -> tests/test_demo.py' > mapeo.txt\n",
         encoding="utf-8",
@@ -141,8 +141,8 @@ def test_mapa_regenerar_crea_mapeo(app, proyecto_git):
     p = PanelMapa()
     p.cargar(str(proyecto_git / "mapeo.txt"))
     assert "demo.py" in p.editor.toPlainText()
-    # Regenerar desde disco
-    boton(p, "🔄 Regenerar mapeo").click()
+    # Regenerate from disk
+    boton(p, "🔄 Regenerate map").click()
     assert "# demo.py -> tests/test_demo.py" in p.editor.toPlainText()
 
 
@@ -152,7 +152,7 @@ def test_git_refrescar_lista_commits(app, proyecto_git):
     from dedalo.paneles import PanelGit
     p = PanelGit()
     p.cargar(str(proyecto_git))
-    # esperar worker
+    # wait for worker
     from PySide6.QtTest import QTest
     for _ in range(100):
         app.processEvents()
@@ -164,10 +164,27 @@ def test_git_refrescar_lista_commits(app, proyecto_git):
     assert p.tree.topLevelItemCount() >= 2
 
 
-def test_git_revert_devuelve_estado_anterior(app, proyecto_git):
-    """Pulsar '↩ Revertir' deshace el cambio manteniendo el repo intacto."""
+def test_git_worker_se_libera_y_no_crea_atributo_espurio(app, proyecto_git):
+    """After loading, the thread is released (self._worker = None) and no
+    'worker' attribute without an underscore appears (regression of the liberar() bug)."""
+    from PySide6.QtTest import QTest
+
     from dedalo.paneles import PanelGit
-    # El commit tarea 2 añadió demo.py; revertirlo debe quitar demo.py
+    p = PanelGit()
+    p.cargar(str(proyecto_git))
+    for _ in range(100):
+        app.processEvents()
+        if p._worker is None:
+            break
+        QTest.qWait(20)
+    assert p._worker is None
+    assert not hasattr(p, "worker")
+
+
+def test_git_revert_devuelve_estado_anterior(app, proyecto_git):
+    """Pressing '↩ Revertir' undoes the change while keeping the repo intact."""
+    from dedalo.paneles import PanelGit
+    # The tarea 2 commit added demo.py; reverting it must remove demo.py
     p = PanelGit()
     p.cargar(str(proyecto_git))
     from PySide6.QtTest import QTest
@@ -178,16 +195,16 @@ def test_git_revert_devuelve_estado_anterior(app, proyecto_git):
         QTest.qWait(20)
     assert (proyecto_git / "demo.py").exists()
 
-    # Emular el flujo de app.py: capturar señal emitida por el botón
+    # Emulate the app.py flow: capture the signal emitted by the button
     shas = []
     p.revertir_commit.connect(shas.append)
-    # Pulsar el botón del primer item
+    # Press the first item's button
     btn = p.tree.itemWidget(p.tree.topLevelItem(0), 4)
-    assert btn is not None and "Revertir" in btn.text()
+    assert btn is not None and "Revert" in btn.text()
     btn.click()
     assert shas, "el botón Revertir no emitió la señal"
 
-    # Revertir de verdad (mismo código que app.Ventana._git_revert)
+    # Actually revert (same code as app.Ventana._git_revert)
     sha = shas[0]
     out = subprocess.run(["git", "revert", "--no-commit", sha], cwd=proyecto_git,
                          capture_output=True, text=True)
@@ -195,32 +212,32 @@ def test_git_revert_devuelve_estado_anterior(app, proyecto_git):
     subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=T",
                     "commit", "-q", "-m", f"revert: {sha[:8]}"], cwd=proyecto_git,
                    check=True)
-    # demo.py lo añadió el commit revertido (tarea 2), así que deja de existir
+    # demo.py was added by the reverted commit (tarea 2), so it stops existing
     assert not (proyecto_git / "demo.py").exists()
 
 
 def test_git_revert_no_rompe_rama(app, proyecto_git):
-    """Tras revertir, git status limpio y la rama sigue en master."""
+    """After reverting, git status is clean and the branch is still master."""
     from dedalo.app import Ventana
-    # revertir el commit más reciente vía la función real del panel git
+    # revert the most recent commit via the git panel's real function
     _ = Ventana._git_revert  # referencia (usada por app)
     sha = subprocess.run(["git", "-C", str(proyecto_git), "rev-parse", "HEAD"],
                          capture_output=True, text=True).stdout.strip()
     import dedalo.app as app_mod
     ok = app_mod.Ventana._git_revert(None, str(proyecto_git), sha)
     assert ok
-    # repo sigue siendo válido: rama activa intacta, log sin romper
+    # repo is still valid: active branch intact, log unbroken
     rama = subprocess.run(["git", "-C", str(proyecto_git), "branch",
                            "--show-current"], capture_output=True, text=True).stdout.strip()
     assert rama == "master"
     out = subprocess.run(["git", "-C", str(proyecto_git), "log", "--oneline", "-3"],
                          capture_output=True, text=True)
     assert "revert:" in out.stdout
-    assert "tarea 2" in out.stdout  # el commit original sigue en el historial
+    assert "tarea 2" in out.stdout  # the original commit is still in the history
 
 
 def test_git_revert_aparece_en_lista(app, proyecto_git):
-    """El commit 'revert: ...' generado por el botón DEBE verse en PanelGit."""
+    """The 'revert: ...' commit generated by the button MUST show up in PanelGit."""
     from PySide6.QtTest import QTest
 
     from dedalo.paneles import PanelGit
@@ -243,17 +260,17 @@ def test_git_revert_aparece_en_lista(app, proyecto_git):
 
 
 def test_git_revert_conflicto_no_rompe_ui(app, proyecto_git, cerrar_modales):
-    """Revertir un commit que produce conflicto devuelve False (no crashea)."""
+    """Reverting a commit that produces a conflict returns False (it does not crash)."""
     import dedalo.app as app_mod
-    # Crear estado sucio que choca con el revert del commit 2
+    # Create a dirty state that clashes with reverting commit 2
     (proyecto_git / "demo.py").write_text("# modificado por el usuario\n",
                                           encoding="utf-8")
     sha = subprocess.run(["git", "-C", str(proyecto_git), "rev-parse", "HEAD"],
                          capture_output=True, text=True).stdout.strip()
-    # HEAD~1 añade demo.py? no: tarea1 plan.md, tarea2 demo.py. Revertir HEAD
-    # (que creó demo.py) con working tree tocado → conflicto o -m necesario.
+    # Does HEAD~1 add demo.py? no: tarea1 plan.md, tarea2 demo.py. Reverting HEAD
+    # (which created demo.py) with a touched working tree → conflict or -m needed.
     ok = app_mod.Ventana._git_revert(None, str(proyecto_git), sha)
-    assert ok is False  # no debe lanzar excepción ni dejar el repo roto
+    assert ok is False  # must not raise an exception or leave the repo broken
     rama = subprocess.run(["git", "-C", str(proyecto_git), "branch",
                            "--show-current"], capture_output=True, text=True).stdout.strip()
     assert rama == "master"
@@ -265,7 +282,7 @@ def test_metricas_exportar_csv(app, proyecto_git, cerrar_modales, tmp_path, monk
     from PySide6.QtWidgets import QFileDialog
 
     from dedalo.paneles_metricas import PanelMetricas
-    # Pasar un progreso.log mínimo con el formato real (timestamp)
+    # Pass a minimal progreso.log with the real format (timestamp)
     (proyecto_git / "progreso.log").write_text(
         "[2026-09-24 10:00:00] == Iteración 1: tarea demo "
         "(rama dedalo/tareas/2026-09-24/t1) ==\n"
@@ -274,11 +291,11 @@ def test_metricas_exportar_csv(app, proyecto_git, cerrar_modales, tmp_path, monk
         encoding="utf-8")
     p = PanelMetricas()
     p.cargar(str(proyecto_git))
-    # Forzar el diálogo de guardado a una ruta fija
+    # Force the save dialog to a fixed path
     destino = tmp_path / "metricas.csv"
     monkeypatch.setattr(QFileDialog, "getSaveFileName",
                         staticmethod(lambda *a, **k: (str(destino), "")))
-    b_export = boton(p, "📥 Exportar CSV")
+    b_export = boton(p, "📥 Export CSV")
     assert b_export is not None
     b_export.click()
     p._timer.stop()
@@ -296,7 +313,7 @@ def test_metricas_actualizar_kpis(app, proyecto_git):
         encoding="utf-8")
     p = PanelMetricas()
     p.cargar(str(proyecto_git))
-    boton(p, "🔄 Actualizar ahora").click()
+    boton(p, "🔄 Refresh now").click()
     p._timer.stop()
     assert p.kpi_total.lbl_valor.text() == "1"
     assert p.kpi_hechas.lbl_valor.text() == "1"
@@ -314,30 +331,30 @@ def test_ejecucion_botones_emiten_senales(app, proyecto_git):
     p.gate.connect(lambda: senales["gate"].append(True))
     p.refrescar_modelos.connect(lambda: senales["refrescar"].append(True))
 
-    # El botón Iniciar está habilitado
+    # The Start button is enabled
     assert p.b_iniciar.isEnabled()
-    boton(p, "▶ Iniciar loop").click()
+    boton(p, "▶ Start loop").click()
     assert senales["iniciar"]
 
-    # Detener deshabilitado hasta que corra
+    # Stop disabled until it runs
     assert not p.b_detener.isEnabled()
 
-    # Ejecutar gate emite
-    boton(p, "Ejecutar gate").click()
+    # Run gate emits
+    boton(p, "Run gate").click()
     assert senales["gate"]
 
-    # Refrescar modelos
-    boton(p, "↻ Refrescar modelos").click()
+    # Refresh models
+    boton(p, "↻ Refresh models").click()
     assert senales["refrescar"]
 
-    # config() devuelve lo que el usuario ve
+    # config() returns what the user sees
     conf = p.config()
     assert conf["iteraciones"] == 40
     assert "agente" in conf and "revisor" in conf
 
 
 def test_ejecucion_marca_agente_sin_login(app, proyecto_git, monkeypatch):
-    """Un CLI instalado pero sin sesión se muestra marcado y no se puede elegir."""
+    """An installed CLI without a session is shown marked and cannot be selected."""
     from dedalo import modelos, paneles
 
     monkeypatch.setattr(modelos.shutil, "which", lambda n: (
@@ -351,18 +368,18 @@ def test_ejecucion_marca_agente_sin_login(app, proyecto_git, monkeypatch):
     p = paneles.PanelEjecucion()
     textos = [p.cmb_agente_cli.itemText(i)
               for i in range(p.cmb_agente_cli.count())]
-    assert "claude (sin login)" in textos
+    assert "claude (no login)" in textos
 
-    idx_claude = textos.index("claude (sin login)")
+    idx_claude = textos.index("claude (no login)")
     assert not p.cmb_agente_cli.model().item(idx_claude).isEnabled()
-    # opencode sí es elegible y es el que marca "auto"
+    # opencode is eligible and is the one that marks "auto"
     idx_oc = textos.index("opencode")
     assert p.cmb_agente_cli.model().item(idx_oc).isEnabled()
     assert p.cmb_agente_cli.itemText(0) == "auto → opencode"
 
 
 def test_ejecucion_auto_sin_agente_operativo(app, proyecto_git, monkeypatch):
-    """Si el único CLI no tiene sesión, no se ofrece como auto."""
+    """If the only CLI has no session, it is not offered as auto."""
     from dedalo import modelos, paneles
 
     monkeypatch.setattr(modelos.shutil, "which", lambda n: (
@@ -373,17 +390,17 @@ def test_ejecucion_auto_sin_agente_operativo(app, proyecto_git, monkeypatch):
     modelos.invalidar_cache()
 
     p = paneles.PanelEjecucion()
-    assert "sin agentes con sesión" in p.cmb_agente_cli.itemText(0)
+    assert "auto (no agents with session)" in p.cmb_agente_cli.itemText(0)
     assert p.modelos_seleccion()["agente_cli"] == "auto"
 
 
 def test_ejecucion_config_devuelve_el_valor_y_no_la_etiqueta(
         app, proyecto_git, monkeypatch):
-    """config() alimenta AGENTE_TAREA, así que debe devolver el valor real.
+    """config() feeds AGENTE_TAREA, so it must return the real value.
 
-    La etiqueta del combo es decorativa ("auto → opencode"); si config()
-    devolviera el texto, el env llevaría "auto → opencode", dedalo.sh no
-    entraría en autodetección y abortaría con exit 2 sin llegar a la tarea 1.
+    The combo's label is decorative ("auto → opencode"); if config()
+    returned the text, the env would carry "auto → opencode", dedalo.sh would
+    not enter auto-detection and would abort with exit 2 without reaching tarea 1.
     """
     from dedalo import modelos, paneles
 
@@ -397,17 +414,17 @@ def test_ejecucion_config_devuelve_el_valor_y_no_la_etiqueta(
     assert p.cmb_agente_cli.currentText() == "auto → opencode"
 
     conf = p.config()
-    # ni la etiqueta decorativa ni un id de agente: exactamente "auto"
+    # neither the decorative label nor an agent id: exactly "auto"
     assert conf["agente_cli"] == "auto"
     assert conf["revisor_cli"] == "auto"
 
-    # app.py sólo resuelve el valor "auto" hacia la autodetección; cualquier
-    # otro valor se manda tal cual al env, así que debe ser un id de agente.
+    # app.py only resolves the "auto" value toward auto-detection; any
+    # other value is sent as is to the env, so it must be an agent id.
     for clave in ("agente_cli", "revisor_cli"):
         valor = conf[clave]
         assert valor == "auto", f"{clave} no es auto: {valor!r}"
 
-    # y con un agente concreto explícito, devuelve ese id (no la etiqueta)
+    # and with an explicit concrete agent, it returns that id (not the label)
     idx = p.cmb_agente_cli.findText("opencode")
     p.cmb_agente_cli.setCurrentIndex(idx)
     assert p.config()["agente_cli"] == "opencode"
@@ -421,7 +438,7 @@ def test_ejecucion_config_roundtrip(app, proyecto_git):
     conf = p.config()
     assert conf["hasta"] == "18:30"
     assert conf["iteraciones"] == 5
-    # aplicar de vuelta
+    # apply back
     p2 = PanelEjecucion()
     p2.aplicar_config(conf)
     assert p2.txt_hasta.text() == "18:30"
@@ -430,7 +447,7 @@ def test_ejecucion_config_roundtrip(app, proyecto_git):
 
 def test_ejecucion_combo_agente_solo_ofrece_instalados(
         app, proyecto_git, monkeypatch):
-    """El combo no debe ofrecer agentes que no existen en la máquina."""
+    """The combo must not offer agents that do not exist on the machine."""
     from dedalo import modelos, paneles
 
     monkeypatch.setattr(modelos.shutil, "which", lambda n: (
@@ -449,7 +466,7 @@ def test_ejecucion_combo_agente_solo_ofrece_instalados(
 
 
 def test_ejecucion_auto_usa_current_data(app, proyecto_git, monkeypatch):
-    """La etiqueta "auto → x" es decorativa: el valor real debe ser 'auto'."""
+    """The "auto → x" label is decorative: the real value must be 'auto'."""
     from dedalo import modelos, paneles
 
     monkeypatch.setattr(modelos.shutil, "which", lambda n: (
@@ -465,7 +482,7 @@ def test_ejecucion_auto_usa_current_data(app, proyecto_git, monkeypatch):
     assert idx > 0
     p.cmb_agente_cli.setCurrentIndex(idx)
     assert p.modelos_seleccion()["agente_cli"] == "claude"
-    # claude no acepta --model: el selector debe quedar deshabilitado.
+    # claude does not accept --model: the selector must become disabled.
     assert not p.cmb_agente.isEnabled()
 
     p.cmb_agente_cli.setCurrentIndex(0)
@@ -481,7 +498,7 @@ def test_seguridad_guardar_emite(app, proyecto_git, cerrar_modales):
     datos = []
     p.guardar_ajustes.connect(datos.append)
     p.txt_umbral.setText("90")
-    boton(p, "Guardar ajustes").click()
+    boton(p, "Save settings").click()
     assert datos and datos[-1]["seguridad"]["umbral"] == 90
 
 
@@ -490,10 +507,10 @@ def test_webhooks_guardar_emite_y_probar_no_crashea(app, cerrar_modales):
     p = PanelWebhooks({})
     datos = []
     p.guardado.connect(datos.append)
-    # Probar con token vacío no debe lanzar excepción
-    b = boton(p, "🧪 Probar Telegram")
+    # Testing with an empty token must not raise an exception
+    b = boton(p, "🧪 Test Telegram")
     b.click()
-    boton(p, "💾 Guardar configuración").click()
+    boton(p, "💾 Save settings").click()
     assert datos and "telegram_token" in datos[-1]
 
 
@@ -502,17 +519,17 @@ def test_webhooks_guardar_emite_y_probar_no_crashea(app, cerrar_modales):
 def test_logs_limpiar_maximizar(app):
     from dedalo.paneles import PanelLogs
     p = PanelLogs()
-    p.show()  # sin show() los widgets no están 'visible' para Qt
+    p.show()  # without show() the widgets are not 'visible' to Qt
     app.processEvents()
     p.panel_loop.setPlainText("línea de prueba")
     p.panel_gate.setPlainText("gate log")
     assert p.panel_loop.toPlainText() == "línea de prueba"
-    # Limpiar el panel LOOP (el botón dentro de su container)
-    b_limpiar_loop = boton(p.loop_container, "🗑 Limpiar")
+    # Clear the LOOP panel (the button inside its container)
+    b_limpiar_loop = boton(p.loop_container, "🗑 Clear")
     b_limpiar_loop.click()
     assert p.panel_loop.toPlainText() == ""
-    assert p.panel_gate.toPlainText() == "gate log"  # el otro no se toca
-    # Maximizar colapsa el panel gate
+    assert p.panel_gate.toPlainText() == "gate log"  # the other one is not touched
+    # Maximize collapses the gate panel
     b_max = None
     for b in p.gate_container.findChildren(QPushButton):
         if b.text().strip() == "⛶":
@@ -531,14 +548,14 @@ def test_logs_limpiar_maximizar(app):
 def test_aviso_continuar_no_apaga(app):
     from dedalo.paneles import AvisoTemperatura
     a = AvisoTemperatura(95, 30)
-    boton(a, "Continuar").click()
+    boton(a, "Continue").click()
     assert not a.apagar
 
 
-# ─── Todos los commits (no solo dedalo) ─────────────────────
+# ─── All the commits (not just dedalo) ─────────────────────
 
 def test_git_muestra_todos_los_commits(app):
-    """El PanelGit muestra commits MANUALES además de los de Dédalo."""
+    """PanelGit shows MANUAL commits in addition to Dédalo's."""
     import os
     import tempfile
 
@@ -566,17 +583,17 @@ def test_git_muestra_todos_los_commits(app):
         f"el commit manual no aparece (mensajes: {mensajes})"
 
 
-# ─── Quitar proyecto huérfano (sin ruta) ───────────────────────
+# ─── Remove orphan project (without path) ───────────────────────
 
 def test_quitar_proyecto_sin_ruta(app, monkeypatch):
-    """'Quitar' debe poder eliminar un proyecto guardado sin clave 'ruta'."""
+    """'Remove' must be able to delete a saved project without a 'ruta' key."""
     from PySide6.QtWidgets import QComboBox
 
     import dedalo.app as app_mod
 
     nombre = "proyecto_sin_ruta"
     monkeypatch.setattr(app_mod.plantillas, "quitar", lambda *a, **k: [])
-    # Ventana mínima sin __init__ (evita timers/workers/threads de la real)
+    # Minimal Window without __init__ (avoids the real one's timers/workers/threads)
     v = app_mod.Ventana.__new__(app_mod.Ventana)
     v.proyectos = {nombre: {"config": {}}}
     v.tema = "Oscuro"

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Tests para loop_git.py - operaciones git del loop nativo.
+"""Tests for loop_git.py - git operations of the native loop.
 
-Se ejercitan contra repos git reales en /tmp; requieren git (presente en CI).
+They are exercised against real git repos in /tmp; they require git (present in CI).
 """
 
 import os
@@ -27,7 +27,7 @@ from dedalo.loop_git import (
 
 
 def _repo(tmp_path):
-    """Crea un repo master con base.txt commiteado y config de autor."""
+    """Creates a master repo with base.txt committed and author config."""
     proyecto = tmp_path / "proy"
     proyecto.mkdir()
     for cmd in (["git", "init", "-q", "-b", "master"],
@@ -61,9 +61,9 @@ def test_snapshot_excluye_caches_e_incluye_cambios(tmp_path):
 
 def test_cambios_entre_simetrico(tmp_path):
     proy = _repo(tmp_path)
-    # Un archivo que aparece y desaparece del status (semántica EXACTA del
-    # bash: comparar las LISTAS de archivos). Un tracked modificado que luego
-    # se borra sigue en el status como " D", así que NO es "borrado".
+    # A file that appears and disappears from the status (EXACT semantics
+    # of bash: compare the LISTS of files). A tracked modified file that is
+    # then deleted stays in the status as " D", so it is NOT "deleted".
     (proy / "base.txt").write_text("modificado antes del before\n",
                                    encoding="utf-8")
     (proy / "tmp_borrable.txt").write_text("untracked\n", encoding="utf-8")
@@ -77,7 +77,7 @@ def test_cambios_entre_simetrico(tmp_path):
     nuevos, borrados = cambios_entre(before, after)
     assert nuevos == ["nuevo.txt"]
     assert borrados == ["tmp_borrable.txt"]
-    # Sin filtrar CONTROL, plan.md sí es "cambio"
+    # Without filtering CONTROL, plan.md IS a "change"
     nuevos_c, borrados_c = cambios_entre(before, after, control="NOEXISTE_COM0")
     assert "plan.md" in nuevos_c
 
@@ -136,7 +136,7 @@ def test_merge_ff_aborta_con_divergencia(tmp_path):
     subprocess.run(["git", "commit", "-q", "-m", "master-avanza"], cwd=proy,
                    check=True)
     assert merge_ff(proy, "rama-tarea") != 0
-    # No borra una rama que no se ha mergeado
+    # Does not delete a branch that has not been merged
     assert borrar_rama(proy, "rama-tarea", fuerza=False) != 0
     assert rama_existe(proy, "rama-tarea")
 
@@ -149,7 +149,7 @@ def test_revertir_restaura_y_quita_untracked(tmp_path):
     revertir(proy)
     assert (proy / "base.txt").read_text(encoding="utf-8") == "base\n"
     assert not (proy / "nuevo_del_agente.py").exists()
-    assert (proy / "plan.md").exists()  # CONTROL intacto
+    assert (proy / "plan.md").exists()  # CONTROL intact
 
 
 def test_revertir_archivo_borrado_se_restaura(tmp_path):
@@ -247,7 +247,7 @@ def test_preparar_ramas_origin_tracking(tmp_path):
                    check=True)
     subprocess.run(["git", "-C", str(proy), "checkout", "-q", "master"],
                    check=True)
-    # crear un remote local para que origin/feat/o exista
+    # create a local remote so that origin/feat/o exists
     base = tmp_path / "remoto"
     subprocess.run(["git", "-C", str(proy), "clone", "-q", "--bare",
                     str(proy), str(base)], check=True)
