@@ -36,8 +36,8 @@ for p in \
 done
 
 if [ -z "$PYTHON" ]; then
-    echo "Dédalo: no se encontró ningún Python con PySide6 instalado." >&2
-    echo "Instálalo con:  bash \"$PROYECTO/install.sh\"" >&2
+    echo "Dédalo: no Python with PySide6 installed was found." >&2
+    echo "Install it with:  bash \"$PROYECTO/install.sh\"" >&2
     exit 1
 fi
 

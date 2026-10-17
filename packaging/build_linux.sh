@@ -38,7 +38,7 @@ rm -rf "$OUT" build
     --clean --noconfirm --distpath "$OUT" --workpath "$OUT/build" \
     packaging/"$NOMBRE".spec
 APP="$OUT/$NOMBRE"
-[ -x "$APP/$NOMBRE" ] || { echo "el binario no salió en $APP" >&2; exit 1; }
+[ -x "$APP/$NOMBRE" ] || { echo "the binary was not produced in $APP" >&2; exit 1; }
 
 # The desktop umask (0002) leaves everything group-writable and that leaks
 # into the artifacts: dirs at 755 and files without the write bit, without
@@ -55,7 +55,7 @@ normalizar "$APP"
 # Structure: dedalo-<v>-linux-x86_64/
 #               dedalo     ← launcher (./dedalo)
 #               app/               ← onedir (exe + libs + data)
-echo "==> tar.gz portátil"
+echo "==> portable tar.gz"
 TAR="$OUT/$NOMBRE-$VERSION-linux-x86_64.tar.gz"
 DESP="$OUT/portable/$NOMBRE-$VERSION-linux-x86_64"
 rm -rf "$OUT/portable"
@@ -74,7 +74,7 @@ tar -czf "$TAR" -C "$OUT/portable" "$NOMBRE-$VERSION-linux-x86_64"
 echo "    $TAR"
 
 if [ "${SOLO_BINARIO:-0}" = "1" ]; then
-    echo "==> SOLO_BINARIO=1: fin aquí."
+    echo "==> SOLO_BINARIO=1: stop here."
     exit 0
 fi
 
@@ -99,7 +99,7 @@ EOF
 [Desktop Entry]
 Type=Application
 Name=Dédalo
-Comment=Panel de control de Dédalo
+Comment=Dédalo control panel
 Exec=/usr/bin/$NOMBRE
 Icon=$NOMBRE
 Terminal=false
@@ -116,21 +116,21 @@ Priority: optional
 Architecture: amd64
 Maintainer: BenReynor <benreynor@users.noreply.github.com>
 Depends: bash, git, libgl1, libegl1, libxkbcommon-x11-0, libdbus-1-3, libfontconfig1, libglib2.0-0
-Description: Panel de control de Dédalo (GUI PySide6)
- GUI de escritorio para orquestar agentes IA (opencode/codex/claude)
- sobre un proyecto, con gate de calidad, revisiones, métricas y alertas.
+Description: Dédalo control panel (PySide6 GUI)
+ Desktop GUI to orchestrate AI agents (opencode/codex/claude)
+ on a project, with a quality gate, reviews, metrics and alerts.
 EOF
     normalizar "$STAGE"
     DEB="$OUT/${NOMBRE}_${VERSION}_amd64.deb"
     dpkg-deb --build --root-owner-group "$STAGE" "$DEB"
     echo "    $DEB"
 else
-    echo "==> sin dpkg-deb: .deb omitido (instala dpkg-dev)"
+    echo "==> no dpkg-deb: .deb skipped (install dpkg-dev)"
 fi
 
 # ── 3) AppImage ────────────────────────────────────────────────────────────
 if [ "${SIN_APPIMAGE:-0}" = "1" ]; then
-    echo "==> SIN_APPIMAGE=1: AppImage omitido"
+    echo "==> SIN_APPIMAGE=1: AppImage skipped"
     exit 0
 fi
 
@@ -141,13 +141,13 @@ for cand in "$(command -v appimagetool || true)" \
 done
 
 if [ -z "$IMAGEN" ]; then
-    echo "==> descargando appimagetool"
+    echo "==> downloading appimagetool"
     URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
     if curl -fsSL --retry 3 -o "$OUT/appimagetool" "$URL"; then
         chmod +x "$OUT/appimagetool"
         IMAGEN="$OUT/appimagetool"
     else
-        echo "==> sin red: AppImage omitido (o exporta SIN_APPIMAGE=1)"
+        echo "==> no network: AppImage skipped (or export SIN_APPIMAGE=1)"
         exit 0
     fi
 fi
@@ -165,7 +165,7 @@ cat > "$APPDIR/$NOMBRE.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Dédalo
-Comment=Panel de control de Dédalo
+Comment=Dédalo control panel
 Exec=$NOMBRE
 Icon=$NOMBRE
 Terminal=false
@@ -178,4 +178,4 @@ ARCH=x86_64 "$IMAGEN" "$APPDIR" "$OUT/$NOMBRE-$VERSION-x86_64.AppImage" 2>/dev/n
        "$OUT/$NOMBRE-$VERSION-x86_64.AppImage"
 echo "    $OUT/$NOMBRE-$VERSION-x86_64.AppImage"
 
-echo "==> listo: $(ls -1 "$OUT" | grep -E '\.(deb|tar\.gz|AppImage)$' | tr '\n' ' ')"
+echo "==> done: $(ls -1 "$OUT" | grep -E '\.(deb|tar\.gz|AppImage)$' | tr '\n' ' ')"

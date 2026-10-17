@@ -43,7 +43,7 @@ rm -rf "$OUT" build
 "$PY" -m PyInstaller \
     --clean --noconfirm --distpath "$OUT" --workpath "$OUT/build" \
     packaging/"$NOMBRE".spec
-[ -d "$APP" ] || { echo "el bundle no salió en $APP" >&2; exit 1; }
+[ -d "$APP" ] || { echo "the bundle was not produced in $APP" >&2; exit 1; }
 
 # The desktop umask (0002) leaves everything group-writable: dirs at 755 and
 # files without the write bit, before signing (sign AFTER, not the other way).
@@ -57,7 +57,7 @@ SMOKE=$!
 sleep 6
 if ! kill -0 "$SMOKE" 2>/dev/null; then
     wait "$SMOKE" || true
-    echo "el binario murió al arrancar" >&2
+    echo "the binary died on startup" >&2
     exit 1
 fi
 kill -TERM "$SMOKE" 2>/dev/null || true
@@ -65,7 +65,7 @@ wait "$SMOKE" 2>/dev/null || true
 
 # ── Certificate (optional): disposable keychain in CI ────────────────────────
 if [ -n "${APPLE_CERT_P12:-}" ]; then
-    echo "==> importando certificado Developer ID"
+    echo "==> importing Developer ID certificate"
     KC="$OUT/firmas.keychain"
     KC_PW="$(date +%s)$$"
     security create-keychain -p "$KC_PW" "$KC"
@@ -109,14 +109,14 @@ fi
 # ── Notarization (optional) ──────────────────────────────────────────────────
 if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] \
    && [ -n "${APPLE_APP_PASSWORD:-}" ]; then
-    echo "==> notarización (notarytool)"
+    echo "==> notarization (notarytool)"
     xcrun notarytool submit "$DMG" \
         --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
         --password "$APPLE_APP_PASSWORD" --wait
     xcrun stapler staple "$DMG"
     xcrun stapler validate "$DMG"
 else
-    echo "==> sin credenciales: .dmg sin notarizar"
+    echo "==> no credentials: unsigned .dmg"
 fi
 
-echo "==> listo: $(ls -1 "$OUT" | grep '\.dmg$' | tr '\n' ' ')"
+echo "==> done: $(ls -1 "$OUT" | grep '\.dmg$' | tr '\n' ' ')"

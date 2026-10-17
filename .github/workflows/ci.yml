@@ -20,7 +20,7 @@ jobs:
 
       # The tests make REAL git commits/reverts: without a global identity,
       # `git commit` fails and the revert/initialize_git tests break.
-      - name: Identidad git
+      - name: Git identity
         run: |
           git config --global user.name "dedalo CI"
           git config --global user.email "ci@dedalo.local"
@@ -31,13 +31,13 @@ jobs:
           cache: pip
 
       # Qt in offscreen mode: no screen, but it needs these native libs.
-      - name: Dependencias del sistema (Qt headless)
+      - name: System dependencies (headless Qt)
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libgl1 libegl1 libxkbcommon-x11-0 libdbus-1-3 libfontconfig1
 
-      - name: Dependencias de Python
+      - name: Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
@@ -45,7 +45,7 @@ jobs:
       - name: Lint (ruff)
         run: python -m ruff check dedalo/ tests/
 
-      - name: Tests (pytest headless)
+      - name: Tests (headless pytest)
         shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
@@ -58,7 +58,7 @@ jobs:
   # light (without importing the package). The full suite on that OS is
   # validated by the "test-macos" job.
   portabilidad:
-    name: portabilidad (macOS)
+    name: portability (macOS)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -67,7 +67,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Sintaxis de las plantillas
+      - name: Template syntax
         run: |
           # git ls-files includes those in gate_checks and the root launchers.
           git ls-files '*.sh' | while read -r f; do
@@ -75,7 +75,7 @@ jobs:
             bash -n "$f" || exit 1
           done
 
-      - name: Lint de portabilidad
+      - name: Portability lint
         run: |
           python -m pip install --upgrade pip
           pip install pytest ruff
@@ -85,11 +85,11 @@ jobs:
           # macOS runner does not need Qt installed.
           python -m pytest tests/test_portabilidad.py -q --noconftest
 
-      - name: Sondeo de red con el ping de BSD
+      - name: Network probe with BSD ping
         # `ping -W` is seconds on GNU and milliseconds on BSD: if the flag
         # leaked in wrongly, the macOS runner would hang for 2000 s.
         run: |
-          /usr/bin/time -p ping -c1 -W2000 8.8.8.8 || echo "sin red (esperado en CI)"
+          /usr/bin/time -p ping -c1 -W2000 8.8.8.8 || echo "no network (expected in CI)"
 
   # macOS: the full suite, not just the portability lint. The old fear
   # ("PySide6 is not reliable on that runner") became obsolete: the Release
@@ -104,7 +104,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # Global git identity (same reason as in test/test-windows).
-      - name: Identidad git
+      - name: Git identity
         run: |
           git config --global user.name "dedalo CI"
           git config --global user.email "ci@dedalo.local"
@@ -114,7 +114,7 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Dependencias de Python
+      - name: Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
@@ -122,7 +122,7 @@ jobs:
       - name: Lint (ruff)
         run: python -m ruff check dedalo/ tests/
 
-      - name: Tests (pytest headless)
+      - name: Tests (headless pytest)
         shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
@@ -148,7 +148,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # The tests make REAL git commits (same reason as in test-linux).
-      - name: Identidad git
+      - name: Git identity
         run: |
           git config --global user.name "dedalo CI"
           git config --global user.email "ci@dedalo.local"
@@ -158,7 +158,7 @@ jobs:
       # installed distributions"). The git/gate/engine harnesses launch
       # chmod 755 scripts via `bash`, so the real Git Bash must be put
       # in front.
-      - name: Git Bash real en el PATH
+      - name: Real Git Bash on PATH
         shell: pwsh
         run: |
           $git = "C:\Program Files\Git"
@@ -170,7 +170,7 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Dependencias de Python
+      - name: Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
@@ -178,7 +178,7 @@ jobs:
       - name: Lint (ruff)
         run: python -m ruff check dedalo/ tests/
 
-      - name: Tests (pytest headless)
+      - name: Tests (headless pytest)
         shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
@@ -190,14 +190,14 @@ jobs:
   # text and the agents receive GITHUB_TOKEN: if something leaks into the
   # repo, it is cut off here. It also audits dependency CVEs.
   seguridad:
-    name: secretos + dependencias
+    name: secrets + dependencies
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0  # gitleaks reviews the WHOLE history, not the diff
 
-      - name: Secretos en el historial (gitleaks)
+      - name: Secrets in history (gitleaks)
         # On Dependabot PRs the token is read-only and gitleaks-action
         # blows up with "Resource not accessible by integration". Those PRs
         # only bump versions, they don't add secrets; the weekly push to
@@ -213,7 +213,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
 
-      - name: El lock está al día con pyproject.toml
+      - name: Lock is up to date with pyproject.toml
         # On Dependabot PRs the "Dependabot lock" workflow regenerates it;
         # here it would be skipped by a race. The push to main and the cron
         # do verify it.
@@ -225,13 +225,13 @@ jobs:
             -o requirements.lock pyproject.toml
           if ! git diff --quiet requirements.lock; then
             git diff requirements.lock
-            echo "::error::requirements.lock desactualizado: reintenta con" \
+            echo "::error::requirements.lock out of date: retry with" \
               "'uv pip compile --generate-hashes --extra dev --python-version" \
-              "3.10 -o requirements.lock pyproject.toml' y haz commit del lock"
+              "3.10 -o requirements.lock pyproject.toml' and commit the lock"
             exit 1
           fi
 
-      - name: Auditoría de dependencias (pip-audit sobre el lock)
+      - name: Dependency audit (pip-audit on the lock)
         run: |
           # --strict: a new CVE breaks the build instead of being printed and
           # forgotten. Justified exceptions are noted with

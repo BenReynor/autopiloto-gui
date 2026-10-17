@@ -20,7 +20,7 @@ cd "$RAIZ"
 PY="${PYTHON:-python}"
 VERSION="$("$PY" -c '
 import sys
-sys.stdout = sys.stdout or open("NUL", "w")  # binario windowed: stdout may be None
+sys.stdout = sys.stdout or open("NUL", "w")  # windowed binary: stdout may be None
 import tomllib
 from pathlib import Path
 with open(Path("pyproject.toml"), "rb") as f:
@@ -36,7 +36,7 @@ rm -rf "$OUT" build
 "$PY" -m PyInstaller \
     --clean --noconfirm --distpath "$OUT" --workpath "$OUT/build" \
     packaging/"$NOMBRE".spec
-[ -x "$APP/$NOMBRE.exe" ] || { echo "el binario no salió en $APP" >&2; exit 1; }
+[ -x "$APP/$NOMBRE.exe" ] || { echo "the binary was not produced in $APP" >&2; exit 1; }
 
 # ── Smoke 1: the GUI starts and is still alive at 6 s ─────────────────────────
 echo "==> smoke GUI (offscreen)"
@@ -45,7 +45,7 @@ SMOKE=$!
 sleep 6
 if ! kill -0 "$SMOKE" 2>/dev/null; then
     wait "$SMOKE" || true
-    echo "el binario murió al arrancar (GUI)" >&2
+    echo "the binary died on startup (GUI)" >&2
     exit 1
 fi
 (cmd //c "taskkill /F /PID $SMOKE" 2>/dev/null || kill "$SMOKE" 2>/dev/null || true) || true
@@ -57,7 +57,7 @@ for _i in 1 2 3 4 5 6 7 8 9 10; do
 done
 if kill -0 "$SMOKE" 2>/dev/null; then
     cmd //c "taskkill /F /IM $NOMBRE.exe" 2>/dev/null || true
-    echo "la GUI no responde al kill tras 10 s" >&2
+    echo "the GUI does not respond to kill after 10 s" >&2
     exit 1
 fi
 wait "$SMOKE" 2>/dev/null || true
@@ -67,7 +67,7 @@ wait "$SMOKE" 2>/dev/null || true
 # network/git/gate (script's order): rc 2 and the log documents the reason.
 # This validates the PyInstaller entrypoint branch and that the engine runs
 # in the windowed exe (its prints go to devnull, not to a nonexistent console).
-echo "==> smoke motor (--dedalo-loop)"
+echo "==> engine smoke (--dedalo-loop)"
 SMOKE_DIR="$OUT/smoke_loop"
 rm -rf "$SMOKE_DIR"
 mkdir -p "$SMOKE_DIR"
@@ -88,21 +88,21 @@ powershell -NoProfile -Command '
 RC=$?
 set -e
 if [ "$RC" = "124" ]; then
-    echo "el motor se colgó (>120 s con el agente inexistente)" >&2
+    echo "the engine hung (>120 s with the nonexistent agent)" >&2
     grep -a . "$SMOKE_DIR/progreso.log" 2>/dev/null | tail -6 >&2 || true
     exit 1
 fi
 if [ "$RC" != "2" ]; then
-    echo "el motor devolvió $RC (esperado 2)" >&2
+    echo "the engine returned $RC (expected 2)" >&2
     grep -a . "$SMOKE_DIR/progreso.log" 2>/dev/null | tail -6 >&2 || true
     exit 1
 fi
 grep -q "ABORTADO: agente no disponible (opencode)" "$SMOKE_DIR/progreso.log" \
-    || { echo "el log no documenta el aborto" >&2; exit 1; }
+    || { echo "the log does not document the abort" >&2; exit 1; }
 rm -rf "$SMOKE_DIR"
 
 # ── portable zip ────────────────────────────────────────────────────────────
-echo "==> zip portátil"
+echo "==> portable zip"
 ZIP="$OUT/$NOMBRE-$VERSION-win64.zip"
 rm -f "$ZIP"
 # Compress-Archive is native PowerShell and does not understand POSIX paths
@@ -112,4 +112,4 @@ W_ZIP="$(cygpath -w "$ZIP")"
 powershell -NoProfile -Command "Compress-Archive -Force -Path '$W_APP' -DestinationPath '$W_ZIP'"
 echo "    $ZIP"
 
-echo "==> listo: $(ls -1 "$OUT" | grep -E '\.zip$' | tr '\n' ' ')"
+echo "==> done: $(ls -1 "$OUT" | grep -E '\.zip$' | tr '\n' ' ')"
